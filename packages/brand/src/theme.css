@@ -1,0 +1,40 @@
+/* Come Offline — Tailwind v4 Theme Tokens */
+/* Import this file in each app's globals.css after @import "tailwindcss" */
+
+@theme {
+  /* Colors */
+  --color-cream: #FAF6F0;
+  --color-warm-white: #F5EFE6;
+  --color-sand: #E8DDD0;
+  --color-caramel: #D4A574;
+  --color-deep-caramel: #B8845A;
+  --color-terracotta: #C4704D;
+  --color-warm-brown: #8B6F5A;
+  --color-dark-brown: #3D2E22;
+  --color-near-black: #1A1715;
+  --color-soft-black: #2C2520;
+  --color-gate-black: #0E0D0B;
+  --color-gate-dark: #161412;
+  --color-muted: #9B8E82;
+  --color-highlight: #E6A97E;
+  --color-coral: #D4836B;
+  --color-sage: #A8B5A0;
+  --color-lavender: #B8A9C9;
+  --color-blush: #DBBCAC;
+
+  /* Admin surface colors */
+  --color-surface: #161412;
+  --color-surface-2: #1E1B18;
+  --color-surface-3: #262220;
+
+  /* Status colors */
+  --color-success: #7A9B6F;
+  --color-danger: #C75050;
+  --color-warning: #D4A03C;
+
+  /* Font families */
+  --font-serif: "Instrument Serif", Georgia, serif;
+  --font-sans: "DM Sans", sans-serif;
+  --font-mono: "DM Mono", monospace;
+  --font-hand: "Caveat", cursive;
+}

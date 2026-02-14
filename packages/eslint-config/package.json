@@ -1,0 +1,9 @@
+{
+  "name": "@comeoffline/eslint-config",
+  "version": "0.0.0",
+  "private": true,
+  "files": ["index.js"],
+  "devDependencies": {
+    "eslint": "^9.0.0"
+  }
+}

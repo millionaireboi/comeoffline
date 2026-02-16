@@ -1,8 +1,19 @@
 import { Router } from "express";
 import { requireAuth, type AuthRequest } from "../middleware/auth";
-import { getEvents, getEventById } from "../services/events.service";
+import { getEvents, getEventById, getPublicEvents } from "../services/events.service";
 
 const router = Router();
+
+/** GET /api/events/public — List upcoming events (no auth, for landing page) */
+router.get("/public", async (_req, res) => {
+  try {
+    const events = await getPublicEvents();
+    res.json({ success: true, data: events });
+  } catch (err) {
+    console.error("[events] public list error:", err);
+    res.status(500).json({ success: false, error: "Failed to fetch events" });
+  }
+});
 
 /** GET /api/events — List all upcoming events */
 router.get("/", requireAuth, async (_req: AuthRequest, res) => {

@@ -1,14 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-
-// Force dynamic rendering to prevent build-time Firebase initialization issues
-export const dynamic = 'force-dynamic';
 import { Instrument_Serif } from "next/font/google";
-import { useAuth } from "@/hooks/useAuth";
-import { apiFetch } from "@/lib/api";
+import { useAuth, AuthProvider } from "@/hooks/useAuth";
 import { useApi } from "@/hooks/useApi";
 import { apiClient } from "@/lib/apiClient";
+import { EventForm } from "@/components/EventForm";
+import type { Event, ContactSubmission, ContactSubmissionStatus, BrandInquiry, BrandInquiryStatus } from "@comeoffline/types";
 
 const instrumentSerif = Instrument_Serif({
   subsets: ["latin"],
@@ -16,11 +14,19 @@ const instrumentSerif = Instrument_Serif({
   variable: "--font-instrument-serif",
 });
 
-type Tab = "dashboard" | "events" | "check-in" | "validation" | "content" | "applications" | "members" | "invite-codes" | "settings";
+type Tab = "dashboard" | "events" | "check-in" | "validation" | "content" | "applications" | "members" | "invite-codes" | "contact" | "brands" | "settings";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
 export default function Home() {
+  return (
+    <AuthProvider>
+      <AdminDashboard />
+    </AuthProvider>
+  );
+}
+
+function AdminDashboard() {
   const { user, loading, isAdmin, login, logout } = useAuth();
   const [tab, setTab] = useState<Tab>("dashboard");
 
@@ -84,7 +90,7 @@ export default function Home() {
       {/* Tabs */}
       <nav className="overflow-x-auto border-b border-white/5 px-4 sm:px-6">
         <div className="flex gap-1 min-w-max">
-          {(["dashboard", "events", "check-in", "validation", "content", "applications", "members", "invite-codes", "settings"] as Tab[]).map((t) => (
+          {(["dashboard", "events", "check-in", "validation", "content", "applications", "members", "invite-codes", "contact", "brands", "settings"] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -110,6 +116,8 @@ export default function Home() {
         {tab === "applications" && <ApplicationsTab />}
         {tab === "members" && <MembersTab />}
         {tab === "invite-codes" && <InviteCodesTab />}
+        {tab === "contact" && <ContactTab />}
+        {tab === "brands" && <BrandsTab />}
         {tab === "settings" && <SettingsTab />}
       </main>
     </div>
@@ -119,183 +127,319 @@ export default function Home() {
 // ── Dashboard ──────────────────────────────────────
 
 function DashboardTab() {
-  const { getIdToken } = useAuth();
-  const [stats, setStats] = useState<Record<string, number | string> | null>(null);
-
-  useEffect(() => {
-    async function fetchStats() {
-      try {
-        const token = await getIdToken();
-        if (!token) return;
-        const res = await fetch(`${API_URL}/api/admin/dashboard-stats`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        const data = await res.json();
-        if (data.data) setStats(data.data);
-      } catch {
-        // API may not exist yet — show placeholders
-      }
-    }
-    fetchStats();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Only fetch once on mount
+  const { data: stats, loading: statsLoading, error: statsError } = useApi<Record<string, number | string>>("/api/admin/dashboard-stats");
+  const { data: events } = useApi<Event[]>("/api/admin/events");
 
   const items = [
-    { label: "total members", value: stats?.total_members ?? "\u2014", emoji: "\uD83D\uDC65" },
-    { label: "active events", value: stats?.active_events ?? "\u2014", emoji: "\uD83C\uDFAA" },
-    { label: "total tickets", value: stats?.total_tickets ?? "\u2014", emoji: "\uD83C\uDF9F\uFE0F" },
-    { label: "vouch codes used", value: stats?.vouch_codes_used ?? "\u2014", emoji: "\u2709\uFE0F" },
-    { label: "provisional users", value: stats?.provisional_users ?? "\u2014", emoji: "\uD83C\uDF31" },
-    { label: "total revenue", value: stats?.total_revenue != null ? `\u20B9${stats.total_revenue}` : "\u2014", emoji: "\uD83D\uDCB0" },
+    { label: "total members", value: stats?.total_members ?? "—", emoji: "👥" },
+    { label: "active events", value: stats?.active_events ?? "—", emoji: "🎪" },
+    { label: "total tickets", value: stats?.total_tickets ?? "—", emoji: "🎟️" },
+    { label: "vouch codes used", value: stats?.vouch_codes_used ?? "—", emoji: "✉️" },
+    { label: "provisional users", value: stats?.provisional_users ?? "—", emoji: "🌱" },
+    { label: "total revenue", value: stats?.total_revenue != null ? `₹${stats.total_revenue}` : "—", emoji: "💰" },
+    { label: "unread contacts", value: stats?.contact_unread ?? "—", emoji: "📬" },
+    { label: "new brand leads", value: stats?.brand_new ?? "—", emoji: "🤝" },
   ];
 
+  const lastEvent = events?.find((e) => e.status === "completed");
+  const upcomingEvents = events?.filter((e) => ["upcoming", "live", "draft"].includes(e.status)) || [];
+
+  if (statsLoading && !stats) {
+    return <p className="py-8 text-center font-mono text-sm text-muted">loading stats...</p>;
+  }
+
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
-      {items.map((stat) => (
-        <div key={stat.label} className="rounded-xl border border-white/5 bg-white/[0.02] p-5">
-          <span className="mb-2 block text-xl">{stat.emoji}</span>
-          <p className={`${instrumentSerif.className} text-3xl text-cream`}>{stat.value}</p>
-          <p className="mt-1 font-mono text-[10px] uppercase tracking-[1.5px] text-muted">
-            {stat.label}
-          </p>
+    <div className="space-y-5">
+      {statsError && (
+        <div className="rounded-xl border border-terracotta/20 bg-terracotta/5 px-4 py-3 font-mono text-xs text-terracotta">
+          {statsError.message}
         </div>
-      ))}
+      )}
+
+      {/* Stats grid */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
+        {items.map((stat) => (
+          <div key={stat.label} className="rounded-xl border border-white/5 bg-white/[0.02] p-5">
+            <span className="mb-2 block text-xl">{stat.emoji}</span>
+            <p className={`${instrumentSerif.className} text-3xl text-cream`}>{stat.value}</p>
+            <p className="mt-1 font-mono text-[10px] uppercase tracking-[1.5px] text-muted">
+              {stat.label}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {/* Last Event Card */}
+      {lastEvent && (
+        <div className="rounded-xl border border-white/5 bg-white/[0.02]">
+          <div className="flex items-center justify-between border-b border-white/5 px-5 py-3.5">
+            <span className="font-mono text-[10px] uppercase tracking-[1.5px] text-muted">last event</span>
+            <span
+              className="rounded-full px-2.5 py-0.5 font-mono text-[10px]"
+              style={{
+                color: lastEvent.accent || "#DBBCAC",
+                background: (lastEvent.accent || "#DBBCAC") + "15",
+              }}
+            >
+              {lastEvent.emoji} {lastEvent.title.toLowerCase()}
+            </span>
+          </div>
+          <div className="p-5">
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { value: `${lastEvent.spots_taken}/${lastEvent.total_spots}`, label: "attended", color: "#A8B5A0" },
+                { value: lastEvent.total_spots > 0 ? `${Math.round((lastEvent.spots_taken / lastEvent.total_spots) * 100)}%` : "—", label: "show rate", color: "#FAF6F0" },
+                { value: "—", label: "connected", color: "#D4A574" },
+              ].map((s, i) => (
+                <div key={i} className="rounded-lg bg-white/[0.04] p-3.5 text-center">
+                  <div className="font-mono text-xl font-medium" style={{ color: s.color }}>{s.value}</div>
+                  <div className="mt-1 text-[10px] text-muted">{s.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Upcoming Events Card */}
+      {upcomingEvents.length > 0 && (
+        <div className="overflow-hidden rounded-xl border border-white/5 bg-white/[0.02]">
+          <div className="border-b border-white/5 px-5 py-3.5">
+            <span className="font-mono text-[10px] uppercase tracking-[1.5px] text-muted">upcoming events</span>
+          </div>
+          {upcomingEvents.map((ev, i) => (
+            <div
+              key={ev.id}
+              className={`flex items-center justify-between px-5 py-3.5 ${
+                i < upcomingEvents.length - 1 ? "border-b border-white/5" : ""
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <span className="text-xl">{ev.emoji}</span>
+                <div>
+                  <div className="text-sm font-medium text-cream">{ev.title}</div>
+                  <div className="font-mono text-[10px] text-muted">{ev.date}</div>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="mb-1 font-mono text-xs text-cream">
+                  {ev.spots_taken}/{ev.total_spots}
+                </div>
+                <div className="h-[3px] w-[60px] overflow-hidden rounded-full bg-white/5">
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${ev.total_spots > 0 ? Math.min(100, (ev.spots_taken / ev.total_spots) * 100) : 0}%`,
+                      background: ev.accent || "#D4A574",
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
 // ── Events Management ──────────────────────────────
 
-interface AdminEvent {
-  id: string;
-  title: string;
-  emoji: string;
-  date: string;
-  status: string;
-  total_spots: number;
-  spots_taken: number;
-  tag: string;
-}
+const STATUS_COLORS: Record<string, string> = {
+  draft: "#7A8B9C",
+  upcoming: "#D4A574",
+  live: "#6B7A63",
+  sold_out: "#D4836B",
+  completed: "#9B8E82",
+};
 
 function EventsTab() {
-  const { getIdToken } = useAuth();
-  const [events, setEvents] = useState<AdminEvent[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    async function fetchEvents() {
-      try {
-        const token = await getIdToken();
-        if (!token) return;
-        const res = await fetch(`${API_URL}/api/admin/events`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        const data = await res.json();
-        if (data.data) setEvents(data.data);
-      } catch (err) {
-        console.error("Failed to fetch events:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchEvents();
-  }, [getIdToken]);
+  const { data: events, loading, refetch } = useApi<Event[]>("/api/admin/events");
+  const [mode, setMode] = useState<"list" | "create" | "edit">("list");
+  const [editingEvent, setEditingEvent] = useState<Event | null>(null);
+  const [expandedPickups, setExpandedPickups] = useState<string | null>(null);
 
   async function updateStatus(eventId: string, newStatus: string) {
     try {
-      const token = await getIdToken();
-      if (!token) return;
-      await fetch(`${API_URL}/api/admin/events/${eventId}/status`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ status: newStatus }),
-      });
-      setEvents((prev) =>
-        prev.map((e) => (e.id === eventId ? { ...e, status: newStatus } : e)),
-      );
+      await apiClient.put(`/api/admin/events/${eventId}/status`, { status: newStatus });
+      refetch();
     } catch (err) {
       console.error("Status update failed:", err);
     }
   }
 
-  if (loading) {
+  if (mode === "create") {
+    return (
+      <EventForm
+        onSave={() => { refetch(); setMode("list"); }}
+        onCancel={() => setMode("list")}
+        serifClassName={instrumentSerif.className}
+      />
+    );
+  }
+
+  if (mode === "edit" && editingEvent) {
+    return (
+      <EventForm
+        event={editingEvent}
+        onSave={() => { refetch(); setEditingEvent(null); setMode("list"); }}
+        onCancel={() => { setEditingEvent(null); setMode("list"); }}
+        serifClassName={instrumentSerif.className}
+      />
+    );
+  }
+
+  if (loading && !events) {
     return <p className="py-8 text-center font-mono text-sm text-muted">loading events...</p>;
   }
 
-  const STATUS_COLORS: Record<string, string> = {
-    draft: "#7A8B9C",
-    upcoming: "#D4A574",
-    live: "#6B7A63",
-    sold_out: "#D4836B",
-    completed: "#9B8E82",
-  };
+  const eventList = events || [];
 
   return (
     <div className="w-full space-y-4 sm:max-w-4xl">
       <div className="flex items-center justify-between">
-        <p className="font-mono text-[10px] text-muted">{events.length} events</p>
+        <p className="font-mono text-[10px] text-muted">{eventList.length} events</p>
+        <button
+          onClick={() => setMode("create")}
+          className="rounded-lg bg-caramel px-4 py-2 font-mono text-[10px] uppercase tracking-[2px] text-gate-black transition-colors hover:bg-caramel/90"
+        >
+          + create
+        </button>
       </div>
 
-      {events.map((event) => (
+      {eventList.map((event) => (
         <div
           key={event.id}
-          className="rounded-xl border border-white/5 bg-white/[0.02] p-5"
+          className="overflow-hidden rounded-xl border border-white/5 bg-white/[0.02]"
         >
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">{event.emoji}</span>
-              <div>
-                <p className="font-sans text-base font-medium text-cream">{event.title}</p>
-                <p className="font-mono text-[10px] text-muted">
-                  {event.date} &middot; {event.tag}
-                </p>
+          {/* Accent gradient bar */}
+          <div
+            className="h-[3px]"
+            style={{
+              background: event.accent && event.accent_dark
+                ? `linear-gradient(90deg, ${event.accent}, ${event.accent_dark})`
+                : `linear-gradient(90deg, #D4A574, #B8845A)`,
+            }}
+          />
+
+          <div className="p-5">
+            {/* Header row */}
+            <div className="mb-3 flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">{event.emoji}</span>
+                <div>
+                  <p className="font-sans text-base font-medium text-cream">{event.title}</p>
+                  <p className="font-mono text-[10px] text-muted">
+                    {event.tag} &middot; {event.date}
+                  </p>
+                </div>
+              </div>
+              <span
+                className="rounded-full px-2.5 py-1 font-mono text-[9px] uppercase"
+                style={{
+                  color: STATUS_COLORS[event.status] || "#9B8E82",
+                  background: (STATUS_COLORS[event.status] || "#9B8E82") + "15",
+                }}
+              >
+                {event.status === "live" ? "● live" : event.status}
+              </span>
+            </div>
+
+            {/* Stats grid */}
+            <div className="mb-3 grid grid-cols-3 gap-2">
+              <div className="rounded-lg bg-white/[0.04] p-2.5 text-center">
+                <div className="font-mono text-base font-medium text-cream">
+                  {event.spots_taken}/{event.total_spots}
+                </div>
+                <div className="text-[9px] text-muted">rsvps</div>
+              </div>
+              <div className="rounded-lg bg-white/[0.04] p-2.5 text-center">
+                <div className="font-mono text-base font-medium text-muted">—</div>
+                <div className="text-[9px] text-muted">attended</div>
+              </div>
+              <div className="rounded-lg bg-white/[0.04] p-2.5 text-center">
+                <div className="font-mono text-base font-medium text-muted">—</div>
+                <div className="text-[9px] text-muted">no-shows</div>
               </div>
             </div>
-            <span
-              className="rounded-full px-2.5 py-1 font-mono text-[9px] uppercase"
-              style={{
-                color: STATUS_COLORS[event.status] || "#9B8E82",
-                background: (STATUS_COLORS[event.status] || "#9B8E82") + "15",
-              }}
-            >
-              {event.status}
-            </span>
-          </div>
 
-          <div className="mt-4 flex items-center justify-between">
-            <p className="font-mono text-[10px] text-muted">
-              {event.spots_taken}/{event.total_spots} spots filled
-            </p>
+            {/* Capacity progress bar */}
+            <div className="mb-3">
+              <div className="h-1 overflow-hidden rounded-full bg-white/5">
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{
+                    width: `${event.total_spots > 0 ? Math.min(100, (event.spots_taken / event.total_spots) * 100) : 0}%`,
+                    background: event.accent || "#D4A574",
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Pickup Points (collapsible) */}
+            {event.pickup_points && event.pickup_points.length > 0 && (
+              <div className="mb-3">
+                <button
+                  onClick={() => setExpandedPickups(expandedPickups === event.id ? null : event.id)}
+                  className="mb-1.5 font-mono text-[9px] uppercase tracking-[1px] text-muted transition-colors hover:text-cream"
+                >
+                  pickup points ({event.pickup_points.length}) {expandedPickups === event.id ? "▲" : "▼"}
+                </button>
+                {expandedPickups === event.id && (
+                  <div className="flex flex-col gap-1">
+                    {event.pickup_points.map((p, i) => (
+                      <div
+                        key={i}
+                        className="flex justify-between rounded-md bg-white/[0.04] px-2.5 py-1.5 font-mono text-[11px]"
+                      >
+                        <span className="min-w-0 flex-1 truncate text-cream">{p.name}</span>
+                        <span className="ml-2 shrink-0 text-muted">{p.time} · {p.capacity}pax</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Action buttons */}
             <div className="flex gap-2">
+              <button
+                onClick={() => { setEditingEvent(event); setMode("edit"); }}
+                className="flex-1 rounded-lg bg-white/5 px-3 py-2 font-mono text-[10px] text-cream transition-colors hover:bg-white/10"
+              >
+                edit
+              </button>
               {event.status === "draft" && (
                 <button
                   onClick={() => updateStatus(event.id, "upcoming")}
-                  className="rounded-lg bg-caramel/20 px-3 py-1.5 font-mono text-[10px] text-caramel hover:bg-caramel/30"
+                  className="flex-1 rounded-lg bg-caramel/15 px-3 py-2 font-mono text-[10px] text-caramel transition-colors hover:bg-caramel/25"
                 >
                   publish
                 </button>
               )}
               {event.status === "upcoming" && (
-                <button
-                  onClick={() => updateStatus(event.id, "live")}
-                  className="rounded-lg bg-sage/20 px-3 py-1.5 font-mono text-[10px] text-sage hover:bg-sage/30"
-                >
-                  go live
-                </button>
+                <>
+                  <button
+                    onClick={() => updateStatus(event.id, "live")}
+                    className="flex-1 rounded-lg bg-sage/15 px-3 py-2 font-mono text-[10px] text-sage transition-colors hover:bg-sage/25"
+                  >
+                    go live
+                  </button>
+                </>
               )}
               {event.status === "live" && (
                 <button
                   onClick={() => updateStatus(event.id, "completed")}
-                  className="rounded-lg bg-white/10 px-3 py-1.5 font-mono text-[10px] text-muted hover:bg-white/20"
+                  className="flex-1 rounded-lg bg-white/10 px-3 py-2 font-mono text-[10px] text-muted transition-colors hover:bg-white/20"
                 >
                   complete
+                </button>
+              )}
+              {event.status === "completed" && (
+                <button
+                  className="flex-1 rounded-lg bg-lavender/15 px-3 py-2 font-mono text-[10px] text-lavender transition-colors hover:bg-lavender/25"
+                >
+                  memories
                 </button>
               )}
             </div>
@@ -321,7 +465,7 @@ interface TicketData {
 function CheckInTab() {
   const { getIdToken } = useAuth();
   const [eventId, setEventId] = useState("");
-  const [events, setEvents] = useState<AdminEvent[]>([]);
+  const [events, setEvents] = useState<Event[]>([]);
   const [tickets, setTickets] = useState<TicketData[]>([]);
   const [scanResult, setScanResult] = useState<{ success: boolean; message: string; ticket?: TicketData } | null>(null);
   const [manualSearch, setManualSearch] = useState("");
@@ -338,8 +482,10 @@ function CheckInTab() {
           headers: { Authorization: `Bearer ${token}` },
         });
         const data = await res.json();
-        if (data.data) setEvents(data.data.filter((e: AdminEvent) => e.status === "live" || e.status === "upcoming"));
-      } catch {}
+        if (data.data) setEvents(data.data.filter((e: Event) => e.status === "live" || e.status === "upcoming"));
+      } catch (err) {
+        console.error("Failed to fetch events for check-in:", err);
+      }
     }
     fetchEvents();
   }, [getIdToken]);
@@ -356,7 +502,9 @@ function CheckInTab() {
         });
         const data = await res.json();
         if (data.data) setTickets(data.data);
-      } catch {}
+      } catch (err) {
+        console.error("Failed to fetch tickets:", err);
+      }
     }
     fetchTickets();
   }, [eventId, scanResult, getIdToken]);
@@ -585,7 +733,7 @@ interface ValidationQueueItem {
 
 function ValidationTab() {
   const { getIdToken } = useAuth();
-  const [events, setEvents] = useState<AdminEvent[]>([]);
+  const [events, setEvents] = useState<Event[]>([]);
   const [queue, setQueue] = useState<ValidationQueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -605,7 +753,9 @@ function ValidationTab() {
         });
         const data = await res.json();
         if (data.data) setEvents(data.data);
-      } catch {}
+      } catch (err) {
+        console.error("Failed to fetch events for validation:", err);
+      }
     }
     fetchEvents();
   }, [getIdToken]);
@@ -623,8 +773,8 @@ function ValidationTab() {
       });
       const data = await res.json();
       if (data.data) setQueue(data.data);
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error("Failed to fetch validation queue:", err);
     } finally {
       setLoading(false);
     }
@@ -672,7 +822,11 @@ function ValidationTab() {
       setNoteUserId(null);
       setNoteText("");
       fetchQueue();
-    } catch {}
+    } catch (err) {
+      console.error("Failed to add note:", err);
+      setActionStatus("Failed to add note");
+      setTimeout(() => setActionStatus(""), 3000);
+    }
   }
 
   return (
@@ -1085,7 +1239,9 @@ function NotificationComposer() {
       });
       const data = await res.json();
       if (data.data) setHistory(data.data);
-    } catch {}
+    } catch (err) {
+      console.error("Failed to fetch notification history:", err);
+    }
   }, [getIdToken]);
 
   useEffect(() => {
@@ -1511,6 +1667,40 @@ function InviteCodesTab() {
   const [count, setCount] = useState("10");
   const [label, setLabel] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
+
+  async function handleCopyCode(code: string) {
+    try {
+      await navigator.clipboard.writeText(code);
+    } catch {
+      // Fallback for non-secure contexts
+      const input = document.createElement("input");
+      input.value = code;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand("copy");
+      document.body.removeChild(input);
+    }
+    setCopiedCode(code);
+    setTimeout(() => setCopiedCode(null), 2000);
+  }
+
+  async function handleCopyAllUnused() {
+    const unusedList = codes?.filter((c) => c.status === "unused").map((c) => c.code) ?? [];
+    if (unusedList.length === 0) return;
+    try {
+      await navigator.clipboard.writeText(unusedList.join("\n"));
+    } catch {
+      const input = document.createElement("textarea");
+      input.value = unusedList.join("\n");
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand("copy");
+      document.body.removeChild(input);
+    }
+    setCopiedCode("ALL");
+    setTimeout(() => setCopiedCode(null), 2000);
+  }
 
   async function handleCreate() {
     const countNum = parseInt(count, 10);
@@ -1632,6 +1822,16 @@ function InviteCodesTab() {
         </div>
       )}
 
+      {/* Bulk actions */}
+      {codes && unusedCodes > 0 && (
+        <button
+          onClick={handleCopyAllUnused}
+          className="rounded-xl border border-white/10 px-4 py-2 font-mono text-[11px] uppercase tracking-[2px] text-muted transition-colors hover:border-caramel/30 hover:text-cream"
+        >
+          {copiedCode === "ALL" ? "copied all" : `copy all ${unusedCodes} unused`}
+        </button>
+      )}
+
       {/* Codes List */}
       {loading ? (
         <p className="py-8 text-center font-mono text-sm text-muted">loading...</p>
@@ -1659,16 +1859,306 @@ function InviteCodesTab() {
                   {code.label && (
                     <p className="mt-0.5 font-mono text-[10px] text-muted/50">{code.label}</p>
                   )}
+                  {code.used_by_id && (
+                    <p className="mt-0.5 font-mono text-[10px] text-sage/70">
+                      redeemed by: {code.used_by_id.slice(0, 12)}...
+                    </p>
+                  )}
                 </div>
               </div>
-              <div className="text-right">
-                <p className="font-mono text-[11px] uppercase tracking-[2px] text-muted">
-                  {code.status}
-                </p>
-                <p className="mt-0.5 font-mono text-[10px] text-muted/50">
-                  {new Date(code.created_at).toLocaleDateString()}
-                </p>
+              <div className="flex items-center gap-3">
+                {code.status === "unused" && (
+                  <button
+                    onClick={() => handleCopyCode(code.code)}
+                    className="rounded-lg border border-white/10 px-3 py-1.5 font-mono text-[10px] text-muted transition-colors hover:border-caramel/30 hover:text-cream"
+                  >
+                    {copiedCode === code.code ? "copied" : "copy"}
+                  </button>
+                )}
+                <div className="text-right">
+                  <p className="font-mono text-[11px] uppercase tracking-[2px] text-muted">
+                    {code.status}
+                  </p>
+                  <p className="mt-0.5 font-mono text-[10px] text-muted/50">
+                    {new Date(code.created_at).toLocaleDateString()}
+                  </p>
+                </div>
               </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Contact Submissions ──────────────────────────────
+
+function ContactTab() {
+  const { getIdToken } = useAuth();
+  const [submissions, setSubmissions] = useState<ContactSubmission[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<string>("all");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [actionStatus, setActionStatus] = useState("");
+
+  const fetchSubmissions = useCallback(async () => {
+    setLoading(true);
+    try {
+      const token = await getIdToken();
+      if (!token) return;
+      const url = filter === "all"
+        ? `${API_URL}/api/admin/contact`
+        : `${API_URL}/api/admin/contact?status=${filter}`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.data) setSubmissions(data.data);
+    } catch (err) {
+      console.error("Failed to fetch contacts:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [filter, getIdToken]);
+
+  useEffect(() => {
+    fetchSubmissions();
+  }, [fetchSubmissions]);
+
+  async function handleStatusUpdate(id: string, status: ContactSubmissionStatus) {
+    try {
+      const token = await getIdToken();
+      if (!token) return;
+      const res = await fetch(`${API_URL}/api/admin/contact/${id}/status`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ status }),
+      });
+      if (res.ok) {
+        setActionStatus(`Marked as ${status}`);
+        fetchSubmissions();
+        setTimeout(() => setActionStatus(""), 3000);
+      }
+    } catch (err) {
+      setActionStatus(`Error: ${err}`);
+    }
+  }
+
+  return (
+    <div className="w-full space-y-6 sm:max-w-3xl">
+      <div className="flex flex-wrap gap-2">
+        {["all", "unread", "read", "replied"].map((f) => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className={`rounded-lg px-3 py-1.5 font-mono text-[10px] uppercase tracking-[1px] transition-colors sm:px-4 sm:py-2 sm:text-[11px] ${
+              filter === f ? "bg-caramel text-near-black" : "bg-white/5 text-muted hover:text-cream"
+            }`}
+          >
+            {f}
+          </button>
+        ))}
+      </div>
+
+      {actionStatus && (
+        <div className="rounded-xl bg-caramel/10 px-4 py-3 font-mono text-[12px] text-caramel">{actionStatus}</div>
+      )}
+
+      {loading ? (
+        <p className="py-8 text-center font-mono text-sm text-muted">loading...</p>
+      ) : submissions.length === 0 ? (
+        <p className="py-8 text-center font-mono text-sm text-muted">no {filter === "all" ? "" : filter + " "}submissions</p>
+      ) : (
+        <div className="space-y-3">
+          {submissions.map((sub) => (
+            <div key={sub.id} className="overflow-hidden rounded-xl border border-white/5 bg-white/[0.02]">
+              <button
+                onClick={() => setExpandedId(expandedId === sub.id ? null : sub.id)}
+                className="flex w-full items-center justify-between p-5 text-left"
+              >
+                <div>
+                  <p className="font-sans text-sm font-medium text-cream">{sub.name}</p>
+                  <p className="mt-0.5 font-mono text-[10px] text-muted">
+                    {sub.email} &middot; {new Date(sub.submitted_at).toLocaleDateString()}
+                  </p>
+                </div>
+                <span
+                  className="rounded-full px-2.5 py-1 font-mono text-[9px] uppercase"
+                  style={{
+                    color: sub.status === "unread" ? "#D4A574" : sub.status === "read" ? "#A8B5A0" : "#B8A9C9",
+                    background: sub.status === "unread" ? "#D4A57415" : sub.status === "read" ? "#A8B5A015" : "#B8A9C915",
+                  }}
+                >
+                  {sub.status}
+                </span>
+              </button>
+
+              {expandedId === sub.id && (
+                <div className="border-t border-white/5 px-5 pb-5 pt-4">
+                  <div className="space-y-3">
+                    <div>
+                      <p className="mb-1 font-mono text-[10px] uppercase tracking-[1px] text-muted">message</p>
+                      <p className="font-sans text-sm leading-relaxed text-cream/80">{sub.message}</p>
+                    </div>
+                  </div>
+                  <div className="mt-5 flex gap-3">
+                    {sub.status === "unread" && (
+                      <button onClick={() => handleStatusUpdate(sub.id, "read")} className="rounded-lg bg-sage px-5 py-2.5 font-mono text-[11px] font-medium text-white transition-opacity hover:opacity-80">mark read</button>
+                    )}
+                    {sub.status !== "replied" && (
+                      <button onClick={() => handleStatusUpdate(sub.id, "replied")} className="rounded-lg bg-lavender/80 px-5 py-2.5 font-mono text-[11px] font-medium text-white transition-opacity hover:opacity-80">mark replied</button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Brand Inquiries ──────────────────────────────────
+
+function BrandsTab() {
+  const { getIdToken } = useAuth();
+  const [inquiries, setInquiries] = useState<BrandInquiry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<string>("all");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [actionStatus, setActionStatus] = useState("");
+
+  const fetchInquiries = useCallback(async () => {
+    setLoading(true);
+    try {
+      const token = await getIdToken();
+      if (!token) return;
+      const url = filter === "all"
+        ? `${API_URL}/api/admin/brands`
+        : `${API_URL}/api/admin/brands?status=${filter}`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.data) setInquiries(data.data);
+    } catch (err) {
+      console.error("Failed to fetch brand inquiries:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [filter, getIdToken]);
+
+  useEffect(() => {
+    fetchInquiries();
+  }, [fetchInquiries]);
+
+  async function handleStatusUpdate(id: string, status: BrandInquiryStatus) {
+    try {
+      const token = await getIdToken();
+      if (!token) return;
+      const res = await fetch(`${API_URL}/api/admin/brands/${id}/status`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ status }),
+      });
+      if (res.ok) {
+        setActionStatus(`Updated to ${status}`);
+        fetchInquiries();
+        setTimeout(() => setActionStatus(""), 3000);
+      }
+    } catch (err) {
+      setActionStatus(`Error: ${err}`);
+    }
+  }
+
+  return (
+    <div className="w-full space-y-6 sm:max-w-3xl">
+      <div className="flex flex-wrap gap-2">
+        {["all", "new", "contacted", "in_progress", "closed"].map((f) => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className={`rounded-lg px-3 py-1.5 font-mono text-[10px] uppercase tracking-[1px] transition-colors sm:px-4 sm:py-2 sm:text-[11px] ${
+              filter === f ? "bg-caramel text-near-black" : "bg-white/5 text-muted hover:text-cream"
+            }`}
+          >
+            {f.replace("_", " ")}
+          </button>
+        ))}
+      </div>
+
+      {actionStatus && (
+        <div className="rounded-xl bg-caramel/10 px-4 py-3 font-mono text-[12px] text-caramel">{actionStatus}</div>
+      )}
+
+      {loading ? (
+        <p className="py-8 text-center font-mono text-sm text-muted">loading...</p>
+      ) : inquiries.length === 0 ? (
+        <p className="py-8 text-center font-mono text-sm text-muted">no {filter === "all" ? "" : filter.replace("_", " ") + " "}inquiries</p>
+      ) : (
+        <div className="space-y-3">
+          {inquiries.map((inq) => (
+            <div key={inq.id} className="overflow-hidden rounded-xl border border-white/5 bg-white/[0.02]">
+              <button
+                onClick={() => setExpandedId(expandedId === inq.id ? null : inq.id)}
+                className="flex w-full items-center justify-between p-5 text-left"
+              >
+                <div>
+                  <p className="font-sans text-sm font-medium text-cream">{inq.brand}</p>
+                  <p className="mt-0.5 font-mono text-[10px] text-muted">
+                    {inq.name} &middot; {inq.email} &middot; {new Date(inq.submitted_at).toLocaleDateString()}
+                  </p>
+                </div>
+                <span
+                  className="rounded-full px-2.5 py-1 font-mono text-[9px] uppercase"
+                  style={{
+                    color: inq.status === "new" ? "#D4A574" : inq.status === "contacted" ? "#A8B5A0" : inq.status === "in_progress" ? "#B8A9C9" : "#9B8E82",
+                    background: inq.status === "new" ? "#D4A57415" : inq.status === "contacted" ? "#A8B5A015" : inq.status === "in_progress" ? "#B8A9C915" : "#9B8E8215",
+                  }}
+                >
+                  {inq.status.replace("_", " ")}
+                </span>
+              </button>
+
+              {expandedId === inq.id && (
+                <div className="border-t border-white/5 px-5 pb-5 pt-4">
+                  <div className="space-y-3">
+                    <div>
+                      <p className="mb-1 font-mono text-[10px] uppercase tracking-[1px] text-muted">role</p>
+                      <p className="font-sans text-sm text-cream/80">{inq.role || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="mb-1 font-mono text-[10px] uppercase tracking-[1px] text-muted">interest</p>
+                      <p className="font-sans text-sm text-cream/80">{inq.interest || "—"}</p>
+                    </div>
+                    {inq.notes && (
+                      <div>
+                        <p className="mb-1 font-mono text-[10px] uppercase tracking-[1px] text-muted">notes</p>
+                        <p className="font-sans text-sm text-cream/80">{inq.notes}</p>
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-5 flex flex-wrap gap-2">
+                    {inq.status !== "contacted" && (
+                      <button onClick={() => handleStatusUpdate(inq.id, "contacted")} className="rounded-lg bg-sage px-4 py-2 font-mono text-[11px] font-medium text-white transition-opacity hover:opacity-80">contacted</button>
+                    )}
+                    {inq.status !== "in_progress" && (
+                      <button onClick={() => handleStatusUpdate(inq.id, "in_progress")} className="rounded-lg bg-lavender/80 px-4 py-2 font-mono text-[11px] font-medium text-white transition-opacity hover:opacity-80">in progress</button>
+                    )}
+                    {inq.status !== "closed" && (
+                      <button onClick={() => handleStatusUpdate(inq.id, "closed")} className="rounded-lg bg-white/10 px-4 py-2 font-mono text-[11px] font-medium text-muted transition-opacity hover:opacity-80">close</button>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>

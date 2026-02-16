@@ -26,14 +26,15 @@ export async function getApplications(
   status?: string,
 ): Promise<Application[]> {
   const db = await getDb();
-  let query = db.collection("applications").orderBy("submitted_at", "desc");
+  // Simple orderBy-only query avoids needing a composite index
+  const snap = await db.collection("applications").orderBy("submitted_at", "desc").get();
+  let apps = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as Application);
 
   if (status) {
-    query = query.where("status", "==", status) as typeof query;
+    apps = apps.filter((a) => a.status === status);
   }
 
-  const snap = await query.get();
-  return snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as Application);
+  return apps;
 }
 
 /** Get a single application */

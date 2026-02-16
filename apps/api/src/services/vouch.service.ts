@@ -1,14 +1,32 @@
 import { getDb } from "../config/firebase-admin";
+import type { Firestore } from "firebase-admin/firestore";
 import type { VouchCode } from "@comeoffline/types";
+import crypto from "crypto";
 
 const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // No I/O/0/1
 
 function generateCode(length = 6): string {
+  const bytes = crypto.randomBytes(length);
   let code = "";
   for (let i = 0; i < length; i++) {
-    code += ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
+    code += ALPHABET[bytes[i] % ALPHABET.length];
   }
   return code;
+}
+
+/** Generate a unique code that doesn't exist in the DB */
+async function generateUniqueCode(db: Firestore): Promise<string> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const code = `OFF-${generateCode()}`;
+    const existing = await db
+      .collection("vouch_codes")
+      .where("code", "==", code)
+      .limit(1)
+      .get();
+    if (existing.empty) return code;
+  }
+  // Fallback: use longer code to avoid collision
+  return `OFF-${generateCode(8)}`;
 }
 
 /** Get vouch codes owned by a user */
@@ -35,7 +53,7 @@ export async function generateVouchCodes(
 
   for (let i = 0; i < count; i++) {
     const ref = db.collection("vouch_codes").doc();
-    const code = `OFF-${generateCode()}`;
+    const code = await generateUniqueCode(db);
     const data = {
       code,
       owner_id: userId,
@@ -73,7 +91,7 @@ export async function createSeedCodes(
 
   for (let i = 0; i < count; i++) {
     const ref = db.collection("vouch_codes").doc();
-    const code = `OFF-${generateCode()}`;
+    const code = await generateUniqueCode(db);
     const data = {
       code,
       owner_id: "admin",

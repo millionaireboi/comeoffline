@@ -1,35 +1,49 @@
 /* eslint-disable no-restricted-globals */
 
 // Firebase Messaging Service Worker
-importScripts("https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js");
-importScripts("https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js");
+// Config is injected via message from the main thread before messaging is used.
 
-firebase.initializeApp({
-  apiKey: self.__FIREBASE_CONFIG__?.apiKey || "",
-  authDomain: self.__FIREBASE_CONFIG__?.authDomain || "",
-  projectId: self.__FIREBASE_CONFIG__?.projectId || "",
-  storageBucket: self.__FIREBASE_CONFIG__?.storageBucket || "",
-  messagingSenderId: self.__FIREBASE_CONFIG__?.messagingSenderId || "",
-  appId: self.__FIREBASE_CONFIG__?.appId || "",
+let firebaseConfig = null;
+let messagingInitialized = false;
+
+// Listen for Firebase config from the main thread
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "FIREBASE_CONFIG") {
+    firebaseConfig = event.data.config;
+    initMessaging();
+  }
 });
 
-const messaging = firebase.messaging();
+function initMessaging() {
+  if (messagingInitialized || !firebaseConfig || !firebaseConfig.projectId) return;
 
-// Handle background push notifications
-messaging.onBackgroundMessage((payload) => {
-  const { title, body } = payload.notification || {};
+  try {
+    importScripts("https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js");
+    importScripts("https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js");
 
-  if (!title) return;
+    firebase.initializeApp(firebaseConfig);
+    const messaging = firebase.messaging();
 
-  self.registration.showNotification(title, {
-    body: body || "",
-    icon: "/icon-192.png",
-    badge: "/icon-192.png",
-    vibrate: [100, 50, 100],
-    data: payload.data || {},
-    actions: [{ action: "open", title: "Open" }],
-  });
-});
+    // Handle background push notifications
+    messaging.onBackgroundMessage((payload) => {
+      const { title, body } = payload.notification || {};
+      if (!title) return;
+
+      self.registration.showNotification(title, {
+        body: body || "",
+        icon: "/icon-192.png",
+        badge: "/icon-192.png",
+        vibrate: [100, 50, 100],
+        data: payload.data || {},
+        actions: [{ action: "open", title: "Open" }],
+      });
+    });
+
+    messagingInitialized = true;
+  } catch (err) {
+    console.error("[sw] Failed to initialize Firebase messaging:", err);
+  }
+}
 
 // Handle notification click — navigate to the app
 self.addEventListener("notificationclick", (event) => {
@@ -39,26 +53,20 @@ self.addEventListener("notificationclick", (event) => {
 
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windowClients) => {
-      // Focus existing window if available
       for (const client of windowClients) {
         if (client.url.includes(self.location.origin) && "focus" in client) {
           return client.focus();
         }
       }
-      // Otherwise open a new window
       return self.clients.openWindow(urlToOpen);
     }),
   );
 });
 
-// Basic cache-first strategy for app shell
+// Basic network-first strategy for navigation, skip API & external
 const CACHE_NAME = "comeoffline-v1";
-const APP_SHELL = ["/", "/manifest.json"];
 
-self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)),
-  );
+self.addEventListener("install", () => {
   self.skipWaiting();
 });
 
@@ -72,14 +80,22 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
-  // Only cache GET requests for same-origin navigation
   if (event.request.method !== "GET") return;
 
-  // Skip API calls and external resources
   const url = new URL(event.request.url);
   if (url.pathname.startsWith("/api") || url.origin !== self.location.origin) return;
 
+  // Network-first: try network, fall back to cache for offline support
   event.respondWith(
-    fetch(event.request).catch(() => caches.match(event.request)),
+    fetch(event.request)
+      .then((response) => {
+        // Cache successful navigation responses for offline fallback
+        if (response.ok && event.request.mode === "navigate") {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        }
+        return response;
+      })
+      .catch(() => caches.match(event.request)),
   );
 });

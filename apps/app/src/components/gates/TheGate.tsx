@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Noise } from "@/components/shared/Noise";
 import { useAuth } from "@/hooks/useAuth";
+import { useAppStore } from "@/store/useAppStore";
 import { apiFetch } from "@/lib/api";
 
 const rejectLines = [
@@ -38,6 +39,7 @@ export function TheGate() {
   const [showInput, setShowInput] = useState(false);
   const [confetti, setConfetti] = useState<ConfettiPiece[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const unlockedRef = useRef(false);
   const { loginWithToken } = useAuth();
 
   // Typewriter effect
@@ -58,15 +60,19 @@ export function TheGate() {
   }, []);
 
   const submit = useCallback(async () => {
-    if (!code.trim() || status === "checking") return;
+    if (!code.trim() || status === "checking" || status === "unlocked") return;
     setStatus("checking");
 
     try {
-      const data = await apiFetch<{ token: string }>("/api/auth/validate-code", {
+      const res = await apiFetch<{
+        success: boolean;
+        data: { token: string; user: Record<string, unknown> };
+      }>("/api/auth/validate-code", {
         method: "POST",
         body: JSON.stringify({ code: code.trim().toUpperCase() }),
       });
 
+      unlockedRef.current = true;
       setStatus("unlocked");
       const pieces: ConfettiPiece[] = Array.from({ length: 30 }, (_, i) => ({
         id: i,
@@ -78,17 +84,33 @@ export function TheGate() {
       }));
       setConfetti(pieces);
 
-      // Login with the token from the API
-      await loginWithToken(data.token);
-    } catch {
-      setStatus("rejected");
-      setRejectMsg(rejectLines[rejectCount % rejectLines.length]);
-      setRejectCount((c) => c + 1);
-      setTimeout(() => {
-        setStatus("idle");
-        setCode("");
-        inputRef.current?.focus();
-      }, 1800);
+      // Set user + stage in the store immediately so useStage doesn't flicker back to "gate"
+      // while we wait for the Firebase auth listener to catch up
+      if (res.data.user) {
+        const { setUser, setStage } = useAppStore.getState();
+        setUser(res.data.user as unknown as import("@comeoffline/types").User);
+        setStage("accepted");
+      }
+
+      // Login with the token from the API — fires onAuthStateChanged in useAuth
+      // which will re-fetch the user from Firestore (harmless, just confirms the data)
+      await loginWithToken(res.data.token);
+    } catch (err) {
+      // Only show rejection if we haven't already unlocked
+      // (loginWithToken failing after unlock shouldn't send user back to code entry)
+      if (!unlockedRef.current) {
+        setStatus("rejected");
+        setRejectMsg(rejectLines[rejectCount % rejectLines.length]);
+        setRejectCount((c) => c + 1);
+        setTimeout(() => {
+          setStatus("idle");
+          setCode("");
+          inputRef.current?.focus();
+        }, 1800);
+      } else {
+        // Login failed after successful code validation — retry silently
+        console.error("[TheGate] loginWithToken failed after unlock:", err);
+      }
     }
   }, [code, status, rejectCount, loginWithToken]);
 

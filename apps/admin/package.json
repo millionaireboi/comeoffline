@@ -15,6 +15,7 @@
     "react-dom": "^19.0.0",
     "framer-motion": "^11.15.0",
     "@comeoffline/brand": "*",
+    "@comeoffline/firebase": "*",
     "@comeoffline/types": "*"
   },
   "devDependencies": {

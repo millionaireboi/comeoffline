@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { requireAdmin, type AuthRequest } from "../../middleware/auth";
 import {
-  getEvents,
+  getAllEvents,
   getEventById,
   createEvent,
   updateEvent,
@@ -13,12 +13,26 @@ const router = Router();
 /** GET /api/admin/events — List all events (including drafts) */
 router.get("/", requireAdmin, async (_req: AuthRequest, res) => {
   try {
-    // Admin sees all events, not just upcoming
-    const events = await getEvents();
+    const events = await getAllEvents();
     res.json({ success: true, data: events });
   } catch (err) {
     console.error("[admin/events] list error:", err);
     res.status(500).json({ success: false, error: "Failed to fetch events" });
+  }
+});
+
+/** GET /api/admin/events/:id — Get single event */
+router.get("/:id", requireAdmin, async (req: AuthRequest, res) => {
+  try {
+    const event = await getEventById(req.params.id as string);
+    if (!event) {
+      res.status(404).json({ success: false, error: "Event not found" });
+      return;
+    }
+    res.json({ success: true, data: event });
+  } catch (err) {
+    console.error("[admin/events] get error:", err);
+    res.status(500).json({ success: false, error: "Failed to fetch event" });
   }
 });
 
@@ -29,7 +43,9 @@ router.post("/", requireAdmin, async (req: AuthRequest, res) => {
     res.status(201).json({ success: true, data: event });
   } catch (err) {
     console.error("[admin/events] create error:", err);
-    res.status(500).json({ success: false, error: "Failed to create event" });
+    const message = err instanceof Error ? err.message : "Failed to create event";
+    const status = message.includes("required") ? 400 : 500;
+    res.status(status).json({ success: false, error: message });
   }
 });
 

@@ -326,6 +326,39 @@ export interface PushNotification {
   created_at: string;
 }
 
+// ── Contact Submission ──────────────────────────────
+
+export type ContactSubmissionStatus = "unread" | "read" | "replied";
+
+export interface ContactSubmission {
+  id: string;
+  name: string;
+  email: string;
+  message: string;
+  status: ContactSubmissionStatus;
+  submitted_at: string;
+  read_by?: string;
+  read_at?: string;
+}
+
+// ── Brand Inquiry ───────────────────────────────────
+
+export type BrandInquiryStatus = "new" | "contacted" | "in_progress" | "closed";
+
+export interface BrandInquiry {
+  id: string;
+  name: string;
+  email: string;
+  brand: string;
+  role: string;
+  interest: string;
+  status: BrandInquiryStatus;
+  submitted_at: string;
+  responded_by?: string;
+  responded_at?: string;
+  notes?: string;
+}
+
 // ── API ───────────────────────────────────────────
 
 export interface ApiResponse<T = unknown> {

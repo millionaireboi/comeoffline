@@ -33,6 +33,8 @@ router.get("/dashboard-stats", requireAdmin, async (_req, res) => {
       confirmedTicketsSnap,
       checkedInTicketsSnap,
       vouchSnap,
+      contactUnreadSnap,
+      brandNewSnap,
     ] = await Promise.all([
       db.collection("users").count().get(),
       db.collection("users").where("status", "==", "provisional").count().get(),
@@ -41,6 +43,8 @@ router.get("/dashboard-stats", requireAdmin, async (_req, res) => {
       db.collection("tickets").where("status", "==", "confirmed").count().get(),
       db.collection("tickets").where("status", "==", "checked_in").count().get(),
       db.collection("vouch_codes").where("status", "==", "used").count().get(),
+      db.collection("contact_submissions").where("status", "==", "unread").count().get(),
+      db.collection("brand_inquiries").where("status", "==", "new").count().get(),
     ]);
 
     const total_members = totalMembersSnap.data().count;
@@ -48,6 +52,8 @@ router.get("/dashboard-stats", requireAdmin, async (_req, res) => {
     const total_tickets = confirmedTicketsSnap.data().count + checkedInTicketsSnap.data().count;
     const vouch_codes_used = vouchSnap.data().count;
     const provisional_users = provisionalUsersSnap.data().count;
+    const contact_unread = contactUnreadSnap.data().count;
+    const brand_new = brandNewSnap.data().count;
 
     // For revenue, we still need to read ticket docs (consider maintaining a counter in a separate doc)
     const ticketsWithPrice = await db.collection("tickets")
@@ -63,6 +69,8 @@ router.get("/dashboard-stats", requireAdmin, async (_req, res) => {
       vouch_codes_used,
       provisional_users,
       total_revenue,
+      contact_unread,
+      brand_new,
     };
 
     // Update cache

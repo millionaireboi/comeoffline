@@ -48,6 +48,8 @@ import adminValidationRouter from "./routes/admin/validation";
 import adminDashboardRouter from "./routes/admin/dashboard";
 import adminNotificationsRouter from "./routes/admin/notifications";
 import adminVouchRouter from "./routes/admin/vouch";
+import contactRouter from "./routes/contact";
+import brandsRouter from "./routes/brands";
 console.log('[startup] All routes imported');
 
 console.log('[startup] Creating Express app...');
@@ -87,6 +89,10 @@ app.use("/api/admin", adminLimiter, adminValidationRouter);
 app.use("/api/admin", adminLimiter, adminDashboardRouter);
 app.use("/api/admin", adminLimiter, adminNotificationsRouter);
 app.use("/api/admin", adminLimiter, adminVouchRouter);
+app.use("/api/contact", contactRouter);
+app.use("/api/brands", brandsRouter);
+app.use("/api/admin/contact", adminLimiter, contactRouter);
+app.use("/api/admin/brands", adminLimiter, brandsRouter);
 console.log('[startup] Routes registered');
 
 // Error handling

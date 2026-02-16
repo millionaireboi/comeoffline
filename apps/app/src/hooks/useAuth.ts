@@ -24,22 +24,62 @@ export function useAuth() {
           }
           lastUserId = firebaseUser.uid;
 
-          // Fetch user profile from Firestore
-          const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
-          if (userDoc.exists()) {
-            const userData = { id: userDoc.id, ...userDoc.data() } as User;
-            setUser(userData);
-
-            // Determine initial stage
-            if (!userData.has_seen_welcome) {
+          // If TheGate already set this user in the store (from API response),
+          // skip the Firestore fetch — we already have the data and the token
+          // may not be fully authorized for Firestore reads yet.
+          const storeUser = useAppStore.getState().user;
+          if (storeUser && storeUser.id === firebaseUser.uid) {
+            if (!storeUser.has_seen_welcome) {
               setStage("accepted");
             } else {
               setStage("feed");
             }
-          } else {
-            // User exists in auth but not in Firestore profile collection
-            setUser(null);
-            setStage("gate");
+            setLoading(false);
+            return;
+          }
+
+          // Fetch user profile from Firestore
+          try {
+            const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
+            if (userDoc.exists()) {
+              const userData = { id: userDoc.id, ...userDoc.data() } as User;
+              setUser(userData);
+
+              // Determine initial stage
+              if (!userData.has_seen_welcome) {
+                setStage("accepted");
+              } else {
+                setStage("feed");
+              }
+            } else {
+              // User exists in auth but not yet in Firestore — may still be propagating
+              // from the Admin SDK write. Only reset if the store doesn't already have this user.
+              const currentUser = useAppStore.getState().user;
+              if (!currentUser || currentUser.id !== firebaseUser.uid) {
+                setUser(null);
+                setStage("gate");
+              }
+            }
+          } catch (firestoreErr) {
+            // Firestore read failed (e.g. rules not deployed, permissions error).
+            // Fall back to fetching profile from the API instead.
+            console.warn("[useAuth] Firestore read failed, falling back to API:", firestoreErr);
+            try {
+              const token = await firebaseUser.getIdToken();
+              const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002"}/api/users/me`, {
+                headers: { Authorization: `Bearer ${token}` },
+              });
+              if (res.ok) {
+                const data = await res.json();
+                if (data.data) {
+                  const userData = data.data as User;
+                  setUser(userData);
+                  setStage(userData.has_seen_welcome ? "feed" : "accepted");
+                }
+              }
+            } catch (apiErr) {
+              console.error("[useAuth] API fallback also failed:", apiErr);
+            }
           }
         } else {
           lastUserId = null;
@@ -48,8 +88,13 @@ export function useAuth() {
         }
       } catch (error) {
         console.error("[useAuth] Failed to resolve auth/profile state:", error);
-        setUser(null);
-        setStage("gate");
+        // Only reset if the store doesn't already have a valid user
+        // (TheGate may have set the user directly from the API response)
+        const currentUser = useAppStore.getState().user;
+        if (!currentUser) {
+          setUser(null);
+          setStage("gate");
+        }
       } finally {
         setLoading(false);
       }

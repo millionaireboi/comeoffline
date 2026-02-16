@@ -1,18 +1,26 @@
 import rateLimit from "express-rate-limit";
 
+const isDev = process.env.NODE_ENV !== "production";
+
+// In express-rate-limit v7+, max:0 blocks ALL requests (not disables).
+// Use the `skip` function to disable in dev instead.
+const skipInDev = isDev ? () => true : undefined;
+
 /**
  * General API rate limiter
- * - 100 requests per 15 minutes per IP
+ * - 500 requests per 15 minutes per IP
+ * - Skipped in development
  */
 export const generalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per windowMs
+  windowMs: 15 * 60 * 1000,
+  limit: 500,
+  skip: skipInDev,
   message: {
     success: false,
     error: "Too many requests, please try again later.",
   },
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
 /**
@@ -21,7 +29,8 @@ export const generalLimiter = rateLimit({
  */
 export const strictLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  limit: 10,
+  skip: skipInDev,
   message: {
     success: false,
     error: "Too many requests for this resource. Please try again in 15 minutes.",
@@ -32,11 +41,12 @@ export const strictLimiter = rateLimit({
 
 /**
  * Auth rate limiter
- * - 20 auth attempts per 15 minutes per IP
+ * - 30 auth attempts per 15 minutes per IP
  */
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  limit: 30,
+  skip: skipInDev,
   message: {
     success: false,
     error: "Too many authentication attempts. Please try again later.",
@@ -47,11 +57,12 @@ export const authLimiter = rateLimit({
 
 /**
  * Admin rate limiter
- * - 200 requests per 15 minutes per IP (more lenient since admins need frequent access)
+ * - 500 requests per 15 minutes per IP
  */
 export const adminLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 200,
+  limit: 500,
+  skip: skipInDev,
   message: {
     success: false,
     error: "Too many admin requests. Please slow down.",

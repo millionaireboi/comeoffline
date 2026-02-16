@@ -1,5 +1,5 @@
 import { getDb, getAuthService } from "../config/firebase-admin";
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, type DocumentReference, type DocumentData } from "firebase-admin/firestore";
 import crypto from "crypto";
 
 interface ValidateCodeResult {
@@ -102,28 +102,44 @@ export async function validateCode(
   const auth = await getAuthService();
   const normalizedCode = code.toUpperCase().trim();
 
-  // Look up code in vouch_codes collection
-  const codesSnap = await db
-    .collection("vouch_codes")
-    .where("code", "==", normalizedCode)
-    .where("status", "==", "unused")
-    .limit(1)
-    .get();
+  // Step 1: Atomically find and claim the code using a transaction
+  let codeDocRef: DocumentReference;
+  let codeData: DocumentData;
 
-  if (codesSnap.empty) {
-    return { valid: false, error: "Invalid or used code" };
+  try {
+    const result = await db.runTransaction(async (transaction) => {
+      const codesSnap = await transaction.get(
+        db.collection("vouch_codes")
+          .where("code", "==", normalizedCode)
+          .where("status", "==", "unused")
+          .limit(1)
+      );
+
+      if (codesSnap.empty) {
+        throw new Error("INVALID_CODE");
+      }
+
+      const doc = codesSnap.docs[0];
+
+      // Atomically mark as used to prevent double-redemption
+      transaction.update(doc.ref, {
+        status: "used",
+        used_at: FieldValue.serverTimestamp(),
+      });
+
+      return { ref: doc.ref, data: doc.data() };
+    });
+
+    codeDocRef = result.ref;
+    codeData = result.data;
+  } catch (err) {
+    if (err instanceof Error && err.message === "INVALID_CODE") {
+      return { valid: false, error: "Invalid or used code" };
+    }
+    throw err;
   }
 
-  const codeDoc = codesSnap.docs[0];
-  const codeData = codeDoc.data();
-
-  // Mark code as used
-  await codeDoc.ref.update({
-    status: "used",
-    used_at: FieldValue.serverTimestamp(),
-  });
-
-  // Create Firebase Auth user
+  // Step 2: Create Firebase Auth user
   const displayName = name || `user_${Date.now()}`;
   const userHandle = handle || `@${displayName.toLowerCase().replace(/\s+/g, "_")}`;
 
@@ -133,12 +149,15 @@ export async function validateCode(
       displayName,
     });
   } catch {
-    // If user creation fails, un-use the code
-    await codeDoc.ref.update({ status: "unused", used_at: null });
+    // Rollback: restore the code to unused
+    await codeDocRef.update({
+      status: "unused",
+      used_at: FieldValue.delete(),
+    });
     return { valid: false, error: "Failed to create user" };
   }
 
-  // Create user document in Firestore
+  // Step 3: Create user document in Firestore
   const userData = {
     id: firebaseUser.uid,
     name: displayName,
@@ -146,7 +165,7 @@ export async function validateCode(
     vibe_tag: vibeTag || "",
     invite_code_used: normalizedCode,
     vouched_by: codeData.owner_id || null,
-    entry_path: codeData.owner_id ? "vouch" : "invite",
+    entry_path: codeData.owner_id === "admin" ? "invite" : "vouch",
     vibe_check_answers: [],
     badges: [],
     status: "active",
@@ -156,13 +175,11 @@ export async function validateCode(
 
   await db.collection("users").doc(firebaseUser.uid).set(userData);
 
-  // Update the vouch code with who used it
-  await codeDoc.ref.update({ used_by_id: firebaseUser.uid });
+  // Step 4: Update the vouch code with who used it
+  await codeDocRef.update({ used_by_id: firebaseUser.uid });
 
-  // Generate custom token for client sign-in
+  // Step 5: Generate tokens for client sign-in
   const token = await auth.createCustomToken(firebaseUser.uid);
-
-  // Generate handoff token for landing→PWA redirect
   const handoffToken = await generateHandoffToken(firebaseUser.uid, "landing", "active");
 
   return { valid: true, token, handoff_token: handoffToken, user: userData };

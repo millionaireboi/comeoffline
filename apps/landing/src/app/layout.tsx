@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import { ClientShell } from "@/components/ClientShell";
 import "./globals.css";
 
 const dmSans = localFont({
@@ -76,7 +77,7 @@ export default function RootLayout({
       <body
         className={`${dmSans.variable} ${dmMono.variable} ${instrumentSerif.variable} ${caveat.variable} font-sans antialiased`}
       >
-        {children}
+        <ClientShell>{children}</ClientShell>
       </body>
     </html>
   );

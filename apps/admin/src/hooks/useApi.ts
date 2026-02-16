@@ -50,11 +50,21 @@ export function useApi<T>(
     // Ensure token provider is set before making request
     apiClient.setTokenProvider(getIdToken);
 
+    // Pre-check: don't attempt fetch if we can't get a token yet.
+    // The effect will re-fire when getIdToken updates (user signs in).
+    const token = await getIdToken();
+    if (!token) {
+      if (mountedRef.current) setLoading(false);
+      return;
+    }
+
     // Check cache first
     const cached = cache.get(endpoint);
     if (cached && Date.now() - cached.timestamp < dedupingInterval) {
-      setData(cached.data as T);
-      setLoading(false);
+      if (mountedRef.current) {
+        setData(cached.data as T);
+        setLoading(false);
+      }
       return;
     }
 
@@ -82,21 +92,25 @@ export function useApi<T>(
     }
     setError(null);
 
-    const requestPromise = apiClient.get<{ success: boolean; data: T }>(endpoint);
-    pendingRequests.set(endpoint, requestPromise);
+    // Store a promise that resolves to the extracted data (not the full response)
+    // so deduped callers get the correct shape
+    const dataPromise = apiClient
+      .get<{ success: boolean; data: T }>(endpoint)
+      .then((response) => {
+        if (response.success && response.data !== undefined) {
+          return response.data;
+        }
+        throw new Error("Invalid response format");
+      });
+    pendingRequests.set(endpoint, dataPromise);
 
     try {
-      const response = await requestPromise;
+      const extractedData = await dataPromise;
 
       if (!mountedRef.current) return;
 
-      if (response.success && response.data) {
-        setData(response.data);
-        // Update cache
-        cache.set(endpoint, { data: response.data, timestamp: Date.now() });
-      } else {
-        throw new Error("Invalid response format");
-      }
+      setData(extractedData);
+      cache.set(endpoint, { data: extractedData, timestamp: Date.now() });
     } catch (err) {
       if (!mountedRef.current) return;
 
@@ -105,9 +119,9 @@ export function useApi<T>(
       // Handle quota errors gracefully
       if (error.status === 429) {
         console.warn("[useApi] Rate limited, using cached data if available");
-        // Keep existing data instead of showing error
-        if (!data && cached) {
-          setData(cached.data as T);
+        const staleCache = cache.get(endpoint);
+        if (staleCache) {
+          setData(staleCache.data as T);
         }
         setError(new Error("Rate limited. Showing cached data."));
       } else {
@@ -119,7 +133,7 @@ export function useApi<T>(
         setLoading(false);
       }
     }
-  }, [endpoint, dedupingInterval, data, getIdToken]);
+  }, [endpoint, dedupingInterval, getIdToken]);
 
   // Initial fetch
   useEffect(() => {
@@ -143,8 +157,9 @@ export function useApi<T>(
     }
   }, [refreshInterval, endpoint, fetchData]);
 
-  // Cleanup
+  // Cleanup — reset mountedRef on each mount so StrictMode remounts work
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
       mountedRef.current = false;
       if (intervalRef.current) {

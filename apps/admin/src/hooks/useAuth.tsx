@@ -1,8 +1,21 @@
-import { useState, useEffect, useCallback } from "react";
+"use client";
+
+import { useState, useEffect, useCallback, useContext, createContext, type ReactNode } from "react";
 import { auth } from "@comeoffline/firebase";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, type User } from "firebase/auth";
 
-export function useAuth() {
+interface AuthContextValue {
+  user: User | null;
+  loading: boolean;
+  isAdmin: boolean;
+  login: (email: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
+  getIdToken: () => Promise<string | null>;
+}
+
+const AuthContext = createContext<AuthContextValue | null>(null);
+
+export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -13,8 +26,6 @@ export function useAuth() {
 
       if (firebaseUser) {
         try {
-          // Get token without forcing refresh to avoid quota limits
-          // Only force refresh on first load or after a reasonable time
           const tokenResult = await firebaseUser.getIdTokenResult(false);
           setIsAdmin(!!tokenResult.claims.admin);
         } catch (error) {
@@ -46,8 +57,6 @@ export function useAuth() {
   const getIdToken = useCallback(async (): Promise<string | null> => {
     if (!user) return null;
     try {
-      // Don't force refresh - use cached token to avoid quota limits
-      // Firebase will automatically refresh when the token expires (~1 hour)
       return await user.getIdToken(false);
     } catch (error) {
       console.error('Failed to get ID token:', error);
@@ -55,5 +64,17 @@ export function useAuth() {
     }
   }, [user]);
 
-  return { user, loading, isAdmin, login, logout, getIdToken };
+  return (
+    <AuthContext.Provider value={{ user, loading, isAdmin, login, logout, getIdToken }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function useAuth(): AuthContextValue {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
+  return context;
 }

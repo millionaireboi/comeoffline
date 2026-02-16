@@ -15,6 +15,8 @@ interface ProfileData {
     vibe_tag: string;
     instagram_handle?: string;
     entry_path: string;
+    status: string;
+    vibe_check_answers?: Array<{ question: string; answer: string }>;
     created_at: string;
   };
   stats: {
@@ -150,16 +152,25 @@ export function ProfileScreen() {
             </div>
           </div>
 
-          {/* Vibe tag */}
-          <div className="mb-5 flex items-center gap-3">
+          {/* Vibe tag + status */}
+          <div className="mb-5 flex flex-wrap items-center gap-2">
             <span
               className="rounded-full px-3 py-1 font-mono text-[10px] font-medium uppercase tracking-[1px]"
               style={{ color: vibeColor, background: vibeColor + "15" }}
             >
               {profile.user.vibe_tag}
             </span>
+            <span
+              className="rounded-full px-3 py-1 font-mono text-[10px] font-medium uppercase tracking-[1px]"
+              style={{
+                color: profile.user.status === "active" ? "#D4A574" : "#8B7EC8",
+                background: profile.user.status === "active" ? "#D4A57415" : "#8B7EC815",
+              }}
+            >
+              {profile.user.status === "active" ? "vouched" : "proving"}
+            </span>
             <span className="font-mono text-[10px] text-muted">
-              member since {memberSince}
+              since {memberSince}
             </span>
           </div>
 
@@ -253,6 +264,26 @@ export function ProfileScreen() {
               >
                 <span className="text-base">{badge.emoji}</span>
                 <span className="font-mono text-[10px] text-near-black">{badge.name}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Vibe check answers (provisional users) */}
+      {profile.user.status === "provisional" && profile.user.vibe_check_answers && profile.user.vibe_check_answers.length > 0 && (
+        <section className="animate-fadeSlideUp px-5 pt-5" style={{ animationDelay: "0.18s" }}>
+          <span className="mb-3 block font-mono text-[10px] uppercase tracking-[2px] text-muted">
+            your vibe check
+          </span>
+          <div className="flex flex-col gap-2">
+            {profile.user.vibe_check_answers.map((qa, i) => (
+              <div
+                key={i}
+                className="rounded-[14px] bg-white p-4 shadow-[0_1px_3px_rgba(26,23,21,0.04)]"
+              >
+                <p className="mb-1 font-mono text-[10px] text-muted">{qa.question}</p>
+                <p className="font-sans text-[13px] text-near-black">{qa.answer}</p>
               </div>
             ))}
           </div>

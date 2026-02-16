@@ -4,9 +4,15 @@ import { useAppStore } from "@/store/useAppStore";
 import { Noise } from "@/components/shared/Noise";
 
 export function DayOfScreen() {
-  const { currentEvent, activeRsvp, setStage } = useAppStore();
+  const { currentEvent, activeRsvp, activeTicket, setStage } = useAppStore();
 
   if (!currentEvent) return null;
+
+  const pickupPoint =
+    activeTicket?.pickup_point ||
+    activeRsvp?.pickup_point ||
+    currentEvent.pickup_points[0]?.name ||
+    "TBD";
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-cream px-6 pt-[60px]">
@@ -27,11 +33,35 @@ export function DayOfScreen() {
         </h2>
         <p className="mb-10 font-sans text-[15px] text-warm-brown">{currentEvent.time}</p>
 
+        {/* QR Code — show if user has a confirmed ticket */}
+        {activeTicket?.qr_code && (
+          <div className="mb-6 rounded-[20px] border border-sand bg-white p-6">
+            <span className="mb-3 block font-mono text-[10px] uppercase tracking-[2px] text-muted">
+              show this at entry
+            </span>
+            <img
+              src={activeTicket.qr_code}
+              alt="Ticket QR Code"
+              className="mx-auto h-[200px] w-[200px] rounded-xl"
+            />
+            <div className="mt-3 flex items-center justify-center gap-2">
+              <span className="font-sans text-[13px] font-medium text-near-black">
+                {activeTicket.tier_name}
+              </span>
+              {activeTicket.quantity > 1 && (
+                <span className="rounded-full bg-near-black/5 px-2 py-0.5 font-mono text-[10px] text-muted">
+                  {activeTicket.quantity} people
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Venue card */}
         <div className="mb-4 rounded-[20px] border border-sand bg-white p-6 text-left">
           <div className="mb-4 flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blush/20 text-xl">
-              📍
+              &#x1F4CD;
             </div>
             <div>
               <p className="font-sans text-base font-medium text-near-black">
@@ -59,7 +89,7 @@ export function DayOfScreen() {
                 from
               </span>
               <span className="font-sans text-sm text-near-black">
-                {activeRsvp?.pickup_point || currentEvent.pickup_points[0]?.name || "TBD"}
+                {pickupPoint}
               </span>
             </div>
           </div>
@@ -67,7 +97,6 @@ export function DayOfScreen() {
 
         {/* Dress code */}
         <div className="mb-8 flex items-center gap-2.5 rounded-[14px] bg-blush/10 px-[18px] py-3.5">
-          <span className="text-base">👗</span>
           <p className="font-sans text-[13px] text-warm-brown">
             dress code: <span className="font-semibold">{currentEvent.dress_code}</span>
           </p>
@@ -85,7 +114,7 @@ export function DayOfScreen() {
         </button>
 
         <p className="mt-5 font-mono text-[11px] text-muted/40">
-          see you on the other side ✌️
+          see you on the other side &#x270C;&#xFE0F;
         </p>
       </div>
     </div>

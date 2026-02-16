@@ -1,4 +1,4 @@
-import { db } from "../config/firebase-admin";
+import { getDb } from "../config/firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import type { RSVP, Event } from "@comeoffline/types";
 
@@ -14,6 +14,7 @@ export async function createRsvp(
   userId: string,
   pickupPointName?: string,
 ): Promise<RsvpResult> {
+  const db = await getDb();
   const eventRef = db.collection("events").doc(eventId);
 
   return db.runTransaction(async (tx) => {
@@ -88,6 +89,7 @@ export async function getUserRsvp(
   eventId: string,
   userId: string,
 ): Promise<RSVP | null> {
+  const db = await getDb();
   const snap = await db
     .collection("events")
     .doc(eventId)
@@ -104,6 +106,7 @@ export async function getUserRsvp(
 
 /** Get all RSVPs for an event (admin) */
 export async function getEventRsvps(eventId: string): Promise<RSVP[]> {
+  const db = await getDb();
   const snap = await db
     .collection("events")
     .doc(eventId)
@@ -120,6 +123,7 @@ export async function cancelRsvp(
   rsvpId: string,
   userId: string,
 ): Promise<boolean> {
+  const db = await getDb();
   const eventRef = db.collection("events").doc(eventId);
   const rsvpRef = eventRef.collection("rsvps").doc(rsvpId);
 

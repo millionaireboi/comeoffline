@@ -1,4 +1,4 @@
-import { db } from "../config/firebase-admin";
+import { getDb } from "../config/firebase-admin";
 import type { ChatbotSettings, VouchSettings } from "@comeoffline/types";
 
 const DEFAULT_CHATBOT: ChatbotSettings = {
@@ -28,6 +28,7 @@ const DEFAULT_VOUCH: VouchSettings = {
 
 /** Get chatbot settings */
 export async function getChatbotSettings(): Promise<ChatbotSettings> {
+  const db = await getDb();
   const doc = await db.collection("settings").doc("chatbot").get();
   if (!doc.exists) return DEFAULT_CHATBOT;
   return doc.data() as ChatbotSettings;
@@ -35,11 +36,13 @@ export async function getChatbotSettings(): Promise<ChatbotSettings> {
 
 /** Update chatbot settings */
 export async function updateChatbotSettings(settings: Partial<ChatbotSettings>): Promise<void> {
+  const db = await getDb();
   await db.collection("settings").doc("chatbot").set(settings, { merge: true });
 }
 
 /** Get vouch settings */
 export async function getVouchSettings(): Promise<VouchSettings> {
+  const db = await getDb();
   const doc = await db.collection("settings").doc("vouch").get();
   if (!doc.exists) return DEFAULT_VOUCH;
   return doc.data() as VouchSettings;
@@ -47,5 +50,6 @@ export async function getVouchSettings(): Promise<VouchSettings> {
 
 /** Update vouch settings */
 export async function updateVouchSettings(settings: Partial<VouchSettings>): Promise<void> {
+  const db = await getDb();
   await db.collection("settings").doc("vouch").set(settings, { merge: true });
 }

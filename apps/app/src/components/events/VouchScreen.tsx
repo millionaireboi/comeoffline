@@ -9,12 +9,13 @@ import { Noise } from "@/components/shared/Noise";
 
 export function VouchScreen() {
   const { getIdToken } = useAuth();
-  const { currentEvent, setStage } = useAppStore();
+  const { currentEvent, user, setStage } = useAppStore();
   const [codes, setCodes] = useState<VouchCode[]>([]);
   const [loading, setLoading] = useState(true);
   const [claiming, setClaiming] = useState(false);
   const [revealedIds, setRevealedIds] = useState<Set<string>>(new Set());
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const isProvisional = user?.status === "provisional";
 
   useEffect(() => {
     async function fetchCodes() {
@@ -129,8 +130,25 @@ export function VouchScreen() {
         </p>
       </section>
 
+      {/* Provisional user message */}
+      {isProvisional && (
+        <section className="animate-fadeSlideUp px-4 pb-6" style={{ animationDelay: "0.2s" }}>
+          <div className="rounded-[20px] border border-lavender/30 bg-lavender/5 p-6 text-center">
+            <span className="mb-3 block text-3xl">&#x1F331;</span>
+            <p className="font-sans text-[15px] font-medium text-near-black">
+              still proving yourself
+            </p>
+            <p className="mt-2 font-mono text-[11px] text-muted">
+              attend your first event to earn invite codes.
+              <br />
+              show up, vibe, and the community will decide.
+            </p>
+          </div>
+        </section>
+      )}
+
       {/* Claim CTA */}
-      {hasClaimable && (
+      {hasClaimable && !isProvisional && (
         <section className="animate-fadeSlideUp px-4 pb-6" style={{ animationDelay: "0.2s" }}>
           <button
             onClick={handleClaim}

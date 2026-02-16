@@ -5,11 +5,11 @@ import { useAppStore } from "@/store/useAppStore";
 import { Noise } from "@/components/shared/Noise";
 
 const disconnectQuotes = [
-  { text: "the best things in life aren't on a screen.", author: "— literally everyone's grandma" },
-  { text: "be where your feet are.", author: "— someone wise" },
-  { text: "your screen time report is disappointed in you.", author: "— your phone" },
-  { text: "touch grass. it's free.", author: "— nature" },
-  { text: "you're holding a rectangle when you could be holding a drink.", author: "— come offline" },
+  { text: "the best things in life aren\u2019t on a screen.", author: "\u2014 literally everyone\u2019s grandma" },
+  { text: "be where your feet are.", author: "\u2014 someone wise" },
+  { text: "your screen time report is disappointed in you.", author: "\u2014 your phone" },
+  { text: "touch grass. it\u2019s free.", author: "\u2014 nature" },
+  { text: "you\u2019re holding a rectangle when you could be holding a drink.", author: "\u2014 come offline" },
 ];
 
 function useCountdown(targetDate: string) {
@@ -33,7 +33,7 @@ function useCountdown(targetDate: string) {
 }
 
 export function CountdownScreen() {
-  const { currentEvent, setStage } = useAppStore();
+  const { currentEvent, activeTicket, setStage } = useAppStore();
   const [quote] = useState(
     () => disconnectQuotes[Math.floor(Math.random() * disconnectQuotes.length)],
   );
@@ -60,15 +60,49 @@ export function CountdownScreen() {
             className="h-2 w-2 rounded-full bg-sage"
             style={{ animation: "breathe 3s ease infinite" }}
           />
-          <span className="font-mono text-[11px] text-[#6B7A63]">rsvp accepted</span>
+          <span className="font-mono text-[11px] text-[#6B7A63]">
+            {activeTicket ? "ticket confirmed" : "rsvp accepted"}
+          </span>
         </div>
         <h2 className="mb-1 font-serif text-[32px] font-normal text-near-black">
           {currentEvent.title} {currentEvent.emoji}
         </h2>
         <p className="font-sans text-sm text-muted">
-          {currentEvent.date} · {currentEvent.time}
+          {currentEvent.date} &middot; {currentEvent.time}
         </p>
       </div>
+
+      {/* Ticket details card */}
+      {activeTicket && (
+        <div
+          className="animate-fadeSlideUp mb-5 rounded-[20px] border border-sand bg-white p-5"
+          style={{ animationDelay: "0.15s" }}
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="font-mono text-[10px] uppercase tracking-[2px] text-muted">your ticket</span>
+              <p className="mt-1 font-sans text-[15px] font-medium text-near-black">
+                {activeTicket.tier_name}
+              </p>
+            </div>
+            <div className="text-right">
+              <span className="font-sans text-lg font-semibold text-near-black">
+                {activeTicket.price === 0 ? "Free" : `\u20B9${activeTicket.price}`}
+              </span>
+              {activeTicket.quantity > 1 && (
+                <p className="font-mono text-[10px] text-muted">{activeTicket.quantity} people</p>
+              )}
+            </div>
+          </div>
+          {activeTicket.pickup_point && activeTicket.pickup_point !== "TBD" && (
+            <div className="mt-3 border-t border-sand pt-3">
+              <span className="font-mono text-[10px] text-muted">
+                pickup: {activeTicket.pickup_point}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Countdown card */}
       <div
@@ -123,7 +157,7 @@ export function CountdownScreen() {
         className="animate-fadeSlideUp relative mb-5 overflow-hidden rounded-[20px] bg-white p-7 shadow-[0_1px_4px_rgba(26,23,21,0.03)]"
         style={{ animationDelay: "0.3s" }}
       >
-        <div className="absolute -right-2.5 -top-5 text-[80px] opacity-5">💭</div>
+        <div className="absolute -right-2.5 -top-5 text-[80px] opacity-5">&#x1F4AD;</div>
         <span className="mb-3.5 block font-mono text-[10px] uppercase tracking-[2px] text-muted">
           daily reminder
         </span>
@@ -139,7 +173,7 @@ export function CountdownScreen() {
         style={{ animationDelay: "0.4s" }}
       >
         <div className="mb-3 flex items-center gap-3">
-          <span className="text-xl">📱</span>
+          <span className="text-xl">&#x1F4F1;</span>
           <span className="font-mono text-[10px] uppercase tracking-[2px] text-muted">
             screen time today
           </span>
@@ -156,7 +190,7 @@ export function CountdownScreen() {
         className="animate-fadeSlideUp w-full rounded-[20px] border-[1.5px] border-dashed border-caramel/25 bg-caramel/5 p-5 text-center transition-all hover:bg-caramel/10"
         style={{ animationDelay: "0.5s" }}
       >
-        <span className="mb-2 block text-2xl">✉️</span>
+        <span className="mb-2 block text-2xl">&#x2709;&#xFE0F;</span>
         <p className="mb-1 font-sans text-sm font-medium text-warm-brown">venue sealed</p>
         <p className="font-mono text-[11px] text-muted">tap to peek (demo)</p>
       </button>

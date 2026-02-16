@@ -1,8 +1,8 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { db } from "../config/firebase-admin";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import { getDb } from "../config/firebase-admin";
 import { env } from "../config/env";
 
-const anthropic = new Anthropic({ apiKey: env.anthropicApiKey });
+const genAI = new GoogleGenerativeAI(env.googleAiApiKey);
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -17,13 +17,13 @@ Your personality:
 - You're like a cool friend who knows all the best spots
 - You believe deeply that real connection happens face to face
 - You're anti-doom-scroll, pro-real-life
+- Gen-Z energy. Short, punchy. Max 1-2 emojis per message.
 
 Your job:
 - Answer questions about Come Offline events and community
-- If someone's trying to prove themselves worthy, ask them personality questions
+- If someone's trying to prove themselves worthy, run a vibe check
 - Be conversational, not corporate
 - Keep responses short (2-3 sentences max)
-- Use occasional emoji but don't overdo it
 
 What you know:
 - Come Offline hosts curated, phone-free events in Bangalore
@@ -32,11 +32,32 @@ What you know:
 - Phones are locked away at every event
 - The community values authenticity, presence, and real conversation
 
-If someone asks to join without a code, guide them through the prove-yourself path by asking personality questions.`;
+VIBE CHECK FLOW (for prove-yourself users):
+When someone wants to prove themselves, run a quick vibe check:
+1. Ask 2-3 fun personality questions (not corporate). Examples:
+   - "what's your go-to move when the aux cord is passed to you?"
+   - "describe your ideal saturday night in 5 words"
+   - "what's the last thing that made you genuinely laugh out loud?"
+2. Ask for their first name
+3. Ask for their Instagram handle (just so we know they're real)
+4. Make a vibe call based on their energy
+
+PASSING CRITERIA (lean toward passing — real curation happens post-event):
+- Pass anyone who engages genuinely and seems fun
+- Pass anyone who gives thoughtful/creative answers
+- Fail ONLY if they: give single-word answers to everything, are rude/aggressive, clearly don't care
+
+IMPORTANT - When you decide to pass or fail, include one of these EXACT markers at the END of your message:
+- [VIBE_CHECK_PASSED] — when you decide they're in
+- [VIBE_CHECK_FAILED] — when you decide they're not a fit
+
+Only include the marker when you've collected their name and at least 2 answers and are ready to make a call.
+Do NOT include the marker in your early conversational messages.`;
 
 /** Get system prompt from Firestore settings, fall back to default */
 async function getSystemPrompt(): Promise<string> {
   try {
+    const db = await getDb();
     const doc = await db.collection("settings").doc("chatbot").get();
     if (doc.exists && doc.data()?.system_prompt) {
       return doc.data()!.system_prompt;
@@ -54,22 +75,29 @@ export async function chat(
 ): Promise<string> {
   const systemPrompt = await getSystemPrompt();
 
-  const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-5-20250929",
-    max_tokens: 300,
-    system: systemPrompt,
-    messages: messages.map((m) => ({
-      role: m.role,
-      content: m.content,
-    })),
+  const model = genAI.getGenerativeModel({
+    model: "gemini-2.0-flash",
+    systemInstruction: systemPrompt,
   });
 
-  const textBlock = response.content.find((b) => b.type === "text");
-  return textBlock?.text || "hmm, i'm at a loss for words. try again?";
+  // Convert messages to Gemini's format
+  const history = messages.slice(0, -1).map((m) => ({
+    role: m.role === "assistant" ? "model" as const : "user" as const,
+    parts: [{ text: m.content }],
+  }));
+
+  const chatSession = model.startChat({ history });
+
+  const lastMessage = messages[messages.length - 1];
+  const result = await chatSession.sendMessage(lastMessage.content);
+  const text = result.response.text();
+
+  return text || "hmm, i'm at a loss for words. try again?";
 }
 
 /** Rate limiting: check if user has exceeded message limit */
 export async function checkRateLimit(userId: string): Promise<boolean> {
+  const db = await getDb();
   const key = `rate_limit:${userId}`;
   const doc = await db.collection("rate_limits").doc(key).get();
 

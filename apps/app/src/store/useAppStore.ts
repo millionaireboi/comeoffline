@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { User, Event, RSVP } from "@comeoffline/types";
+import type { User, Event, RSVP, Ticket } from "@comeoffline/types";
 
 export type AppStage =
   | "install"
@@ -13,7 +13,8 @@ export type AppStage =
   | "memories"
   | "reconnect"
   | "vouch"
-  | "profile";
+  | "profile"
+  | "poll";
 
 interface AppState {
   // Auth
@@ -28,9 +29,13 @@ interface AppState {
   currentEvent: Event | null;
   setCurrentEvent: (event: Event | null) => void;
 
-  // Active RSVP
+  // Active RSVP (legacy, for free events)
   activeRsvp: RSVP | null;
   setActiveRsvp: (rsvp: RSVP | null) => void;
+
+  // Active Ticket (for ticketed events)
+  activeTicket: Ticket | null;
+  setActiveTicket: (ticket: Ticket | null) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -45,4 +50,7 @@ export const useAppStore = create<AppState>((set) => ({
 
   activeRsvp: null,
   setActiveRsvp: (rsvp) => set({ activeRsvp: rsvp }),
+
+  activeTicket: null,
+  setActiveTicket: (ticket) => set({ activeTicket: ticket }),
 }));

@@ -24,6 +24,24 @@ const VIBE_COLORS: Record<string, string> = {
   "the observer": "#7A8B9C",
 };
 
+const RECONNECT_HOURS = 48;
+
+function getTimeRemaining(eventDate: string): { hours: number; minutes: number; expired: boolean } {
+  const deadline = new Date(eventDate);
+  // Reconnect window: event day + 1 day + RECONNECT_HOURS
+  deadline.setDate(deadline.getDate() + 1);
+  deadline.setHours(deadline.getHours() + RECONNECT_HOURS);
+
+  const now = new Date();
+  const diff = deadline.getTime() - now.getTime();
+
+  if (diff <= 0) return { hours: 0, minutes: 0, expired: true };
+
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+  return { hours, minutes, expired: false };
+}
+
 export function ReconnectScreen() {
   const { getIdToken } = useAuth();
   const { currentEvent, setStage } = useAppStore();
@@ -31,6 +49,20 @@ export function ReconnectScreen() {
   const [loading, setLoading] = useState(true);
   const [connectingId, setConnectingId] = useState<string | null>(null);
   const [mutualMatch, setMutualMatch] = useState<AttendeeInfo | null>(null);
+  const [timeLeft, setTimeLeft] = useState({ hours: 0, minutes: 0, expired: false });
+
+  // Countdown timer — update every minute
+  useEffect(() => {
+    if (!currentEvent) return;
+
+    function tick() {
+      setTimeLeft(getTimeRemaining(currentEvent!.date));
+    }
+
+    tick();
+    const interval = setInterval(tick, 60_000);
+    return () => clearInterval(interval);
+  }, [currentEvent]);
 
   useEffect(() => {
     async function fetchAttendees() {
@@ -54,7 +86,7 @@ export function ReconnectScreen() {
 
   const handleConnect = useCallback(
     async (attendee: AttendeeInfo) => {
-      if (!currentEvent) return;
+      if (!currentEvent || timeLeft.expired) return;
       setConnectingId(attendee.id);
       try {
         const token = await getIdToken();
@@ -68,7 +100,6 @@ export function ReconnectScreen() {
           body: JSON.stringify({ toUserId: attendee.id }),
         });
 
-        // Update attendee in list
         setAttendees((prev) =>
           prev.map((a) =>
             a.id === attendee.id
@@ -77,10 +108,8 @@ export function ReconnectScreen() {
           ),
         );
 
-        // Show mutual match confetti
         if (data.data.mutual) {
           const updated = { ...attendee, mutual: true, connected: true };
-          // Refetch to get IG handle
           const refreshed = await apiFetch<{ success: boolean; data: AttendeeInfo[] }>(
             `/api/events/${currentEvent.id}/attendees`,
             { token },
@@ -95,7 +124,7 @@ export function ReconnectScreen() {
         setConnectingId(null);
       }
     },
-    [currentEvent, getIdToken],
+    [currentEvent, getIdToken, timeLeft.expired],
   );
 
   if (!currentEvent) return null;
@@ -115,25 +144,55 @@ export function ReconnectScreen() {
       <Noise />
 
       {/* Header */}
-      <section className="px-5 pb-6 pt-10">
+      <section className="px-5 pb-4 pt-10">
         <button
           onClick={() => setStage("memories")}
           className="mb-5 font-mono text-[11px] text-muted transition-colors hover:text-near-black"
         >
-          ← back to memories
+          &larr; back to memories
         </button>
 
         <h2
           className="animate-fadeSlideUp mb-2 font-serif text-[32px] font-normal leading-none text-near-black"
           style={{ letterSpacing: "-1px" }}
         >
-          reconnect ✌️
+          reconnect &#x270C;&#xFE0F;
         </h2>
         <p className="animate-fadeSlideUp font-sans text-[15px] text-warm-brown" style={{ animationDelay: "0.1s" }}>
           found a vibe? let them know.
           <br />
           <span className="text-muted">if it&apos;s mutual, you&apos;ll see their instagram.</span>
         </p>
+      </section>
+
+      {/* Countdown timer bar */}
+      <section className="animate-fadeSlideUp px-4 pb-5" style={{ animationDelay: "0.15s" }}>
+        <div
+          className={`flex items-center justify-between rounded-2xl px-5 py-3 ${
+            timeLeft.expired
+              ? "border border-terracotta/20 bg-terracotta/5"
+              : "border border-caramel/20 bg-caramel/5"
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            <span className="text-lg">{timeLeft.expired ? "\u23F0" : "\u23F3"}</span>
+            <span className="font-mono text-[12px] font-medium text-near-black">
+              {timeLeft.expired
+                ? "reconnect window closed"
+                : `${timeLeft.hours}h ${timeLeft.minutes}m left to connect`}
+            </span>
+          </div>
+          {!timeLeft.expired && (
+            <span className="rounded-full bg-caramel/10 px-2.5 py-1 font-mono text-[9px] text-caramel">
+              open
+            </span>
+          )}
+          {timeLeft.expired && (
+            <span className="rounded-full bg-terracotta/10 px-2.5 py-1 font-mono text-[9px] text-terracotta">
+              closed
+            </span>
+          )}
+        </div>
       </section>
 
       {/* Attendee list */}
@@ -144,7 +203,6 @@ export function ReconnectScreen() {
             className="animate-fadeSlideUp flex items-center gap-4 rounded-[16px] bg-white p-4 shadow-[0_1px_3px_rgba(26,23,21,0.04)]"
             style={{ animationDelay: `${0.2 + i * 0.06}s` }}
           >
-            {/* Avatar placeholder */}
             <div
               className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full font-serif text-lg text-white"
               style={{ background: VIBE_COLORS[attendee.vibe_tag.toLowerCase()] || "#D4A574" }}
@@ -152,7 +210,6 @@ export function ReconnectScreen() {
               {attendee.name.charAt(0)}
             </div>
 
-            {/* Info */}
             <div className="flex-1 overflow-hidden">
               <p className="font-sans text-[15px] font-medium text-near-black">{attendee.name}</p>
               <p className="font-mono text-[10px] text-muted">@{attendee.handle}</p>
@@ -167,15 +224,16 @@ export function ReconnectScreen() {
               </span>
             </div>
 
-            {/* Action */}
             <div className="shrink-0">
               {attendee.mutual ? (
                 <div className="text-center">
-                  <span className="block text-xs">🤝</span>
+                  <span className="block text-xs">&#x1F91D;</span>
                   <span className="font-mono text-[9px] text-sage">mutual</span>
                 </div>
               ) : attendee.connected ? (
-                <span className="font-mono text-[10px] text-muted">sent ✓</span>
+                <span className="font-mono text-[10px] text-muted">sent &#x2713;</span>
+              ) : timeLeft.expired ? (
+                <span className="font-mono text-[10px] text-muted/40">window closed</span>
               ) : (
                 <button
                   onClick={() => handleConnect(attendee)}
@@ -192,7 +250,7 @@ export function ReconnectScreen() {
 
         {attendees.length === 0 && (
           <div className="animate-fadeSlideUp py-12 text-center" style={{ animationDelay: "0.2s" }}>
-            <span className="mb-4 block text-4xl">🫥</span>
+            <span className="mb-4 block text-4xl">&#x1FAE5;</span>
             <p className="font-serif text-xl text-warm-brown">no one here yet</p>
             <p className="mt-2 font-mono text-[11px] text-muted">check back later</p>
           </div>
@@ -207,7 +265,7 @@ export function ReconnectScreen() {
             style={{ animation: "chatSlideIn 0.4s cubic-bezier(0.16,1,0.3,1) both" }}
           >
             <div className="mb-5 text-5xl" style={{ animation: "breathe 2s ease infinite" }}>
-              🎉
+              &#x1F389;
             </div>
             <h3 className="mb-1 font-serif text-[26px] text-near-black">it&apos;s mutual!</h3>
             <p className="mb-6 font-sans text-sm text-warm-brown">
@@ -229,7 +287,7 @@ export function ReconnectScreen() {
               onClick={() => setMutualMatch(null)}
               className="w-full rounded-2xl bg-near-black py-4 font-sans text-sm font-medium text-white"
             >
-              nice ✌️
+              nice &#x270C;&#xFE0F;
             </button>
           </div>
         </div>

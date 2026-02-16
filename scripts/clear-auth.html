@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Clear Firebase Auth</title>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+</head>
+<body>
+  <h1>Clearing Firebase Auth...</h1>
+  <div id="status">Working...</div>
+  <script>
+    // Your Firebase config
+    const firebaseConfig = {
+      apiKey: "AIzaSyC5w5fxYoQTJqd8EQxDr-k_Rb39vRQs_lk",
+      authDomain: "comeoffline-509fc.firebaseapp.com",
+      projectId: "comeoffline-509fc"
+    };
+    
+    firebase.initializeApp(firebaseConfig);
+    
+    firebase.auth().signOut().then(() => {
+      document.getElementById('status').innerHTML = '✅ Signed out! Now close this tab and sign back into your admin panel.';
+    }).catch((error) => {
+      document.getElementById('status').innerHTML = '❌ Error: ' + error.message;
+    });
+  </script>
+</body>
+</html>

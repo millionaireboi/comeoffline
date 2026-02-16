@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
-import { auth } from "../config/firebase-admin";
+import { getAuthService } from "../config/firebase-admin";
 
 export interface AuthRequest extends Request {
   uid?: string;
@@ -19,12 +19,14 @@ export async function requireAuth(
   }
 
   try {
+    const auth = await getAuthService();
     const token = header.split("Bearer ")[1];
     const decoded = await auth.verifyIdToken(token);
     req.uid = decoded.uid;
     req.claims = decoded;
     next();
-  } catch {
+  } catch (err) {
+    console.error('[auth] Token verification failed:', err instanceof Error ? err.message : String(err));
     res.status(401).json({ success: false, error: "Invalid auth token" });
   }
 }

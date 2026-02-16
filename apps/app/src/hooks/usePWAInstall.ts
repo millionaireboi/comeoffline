@@ -13,7 +13,7 @@ export function usePWAInstall() {
       window.matchMedia("(display-mode: standalone)").matches ||
       (window.navigator as unknown as Record<string, unknown>).standalone === true;
 
-    setIsStandalone(standalone);
+    setIsStandalone(standalone || process.env.NODE_ENV === "development");
 
     // Detect iOS
     const iOS = /iPad|iPhone|iPod/.test(navigator.userAgent);

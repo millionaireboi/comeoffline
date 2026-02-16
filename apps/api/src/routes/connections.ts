@@ -35,6 +35,11 @@ router.post("/:eventId/connect", requireAuth, async (req: AuthRequest, res) => {
     const result = await createConnection(eventId, req.uid!, toUserId);
     res.json({ success: true, data: result });
   } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to create connection";
+    if (message.includes("window")) {
+      res.status(400).json({ success: false, error: message });
+      return;
+    }
     console.error("[connections] create error:", err);
     res.status(500).json({ success: false, error: "Failed to create connection" });
   }

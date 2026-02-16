@@ -1,8 +1,9 @@
-import { db } from "../config/firebase-admin";
+import { getDb } from "../config/firebase-admin";
 import type { Event } from "@comeoffline/types";
 
 /** Fetch all upcoming/live events for the user feed */
 export async function getEvents(): Promise<Event[]> {
+  const db = await getDb();
   const snap = await db
     .collection("events")
     .where("status", "in", ["upcoming", "sold_out", "live"])
@@ -14,6 +15,7 @@ export async function getEvents(): Promise<Event[]> {
 
 /** Fetch a single event by ID */
 export async function getEventById(eventId: string): Promise<Event | null> {
+  const db = await getDb();
   const doc = await db.collection("events").doc(eventId).get();
   if (!doc.exists) return null;
   return { id: doc.id, ...doc.data() } as Event;
@@ -23,6 +25,7 @@ export async function getEventById(eventId: string): Promise<Event | null> {
 export async function createEvent(
   data: Omit<Event, "id">,
 ): Promise<Event> {
+  const db = await getDb();
   const ref = await db.collection("events").add({
     ...data,
     spots_taken: 0,
@@ -37,6 +40,7 @@ export async function updateEvent(
   eventId: string,
   data: Partial<Omit<Event, "id">>,
 ): Promise<Event | null> {
+  const db = await getDb();
   const ref = db.collection("events").doc(eventId);
   const doc = await ref.get();
   if (!doc.exists) return null;
@@ -51,6 +55,7 @@ export async function updateEventStatus(
   eventId: string,
   status: Event["status"],
 ): Promise<boolean> {
+  const db = await getDb();
   const ref = db.collection("events").doc(eventId);
   const doc = await ref.get();
   if (!doc.exists) return false;

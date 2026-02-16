@@ -1,28 +1,36 @@
 import type { Metadata, Viewport } from "next";
-import { DM_Sans, DM_Mono, Instrument_Serif, Caveat } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 
-const dmSans = DM_Sans({
-  subsets: ["latin"],
+const dmSans = localFont({
+  src: "../../../../packages/brand/fonts/DMSans-Variable.woff2",
   variable: "--font-dm-sans",
+  display: "swap",
 });
 
-const dmMono = DM_Mono({
-  subsets: ["latin"],
-  weight: ["300", "400", "500"],
+const dmMono = localFont({
+  src: [
+    { path: "../../../../packages/brand/fonts/DMMono-Light.woff2", weight: "300" },
+    { path: "../../../../packages/brand/fonts/DMMono-Regular.woff2", weight: "400" },
+    { path: "../../../../packages/brand/fonts/DMMono-Medium.woff2", weight: "500" },
+  ],
   variable: "--font-dm-mono",
+  display: "swap",
 });
 
-const instrumentSerif = Instrument_Serif({
-  subsets: ["latin"],
-  weight: "400",
-  style: ["normal", "italic"],
+const instrumentSerif = localFont({
+  src: [
+    { path: "../../../../packages/brand/fonts/InstrumentSerif-Regular.woff2", style: "normal" },
+    { path: "../../../../packages/brand/fonts/InstrumentSerif-Italic.woff2", style: "italic" },
+  ],
   variable: "--font-instrument-serif",
+  display: "swap",
 });
 
-const caveat = Caveat({
-  subsets: ["latin"],
+const caveat = localFont({
+  src: "../../../../packages/brand/fonts/Caveat-Variable.woff2",
   variable: "--font-caveat",
+  display: "swap",
 });
 
 export const metadata: Metadata = {

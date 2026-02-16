@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import type { Event, RSVP } from "@comeoffline/types";
+import type { Event, RSVP, Ticket } from "@comeoffline/types";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppStore } from "@/store/useAppStore";
 import { apiFetch } from "@/lib/api";
@@ -12,11 +12,11 @@ import { Noise } from "@/components/shared/Noise";
 
 export function EventFeed() {
   const { getIdToken } = useAuth();
-  const { setCurrentEvent, setActiveRsvp, setStage } = useAppStore();
+  const { setCurrentEvent, setActiveRsvp, setActiveTicket, setStage } = useAppStore();
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [detailEvent, setDetailEvent] = useState<Event | null>(null);
-  const [rsvpLoading, setRsvpLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
 
   useEffect(() => {
     async function fetchEvents() {
@@ -36,9 +36,10 @@ export function EventFeed() {
     fetchEvents();
   }, [getIdToken]);
 
+  // Legacy RSVP flow for free events
   const handleRsvp = useCallback(
     async (event: Event) => {
-      setRsvpLoading(true);
+      setActionLoading(true);
       try {
         const token = await getIdToken();
         if (!token) return;
@@ -54,10 +55,42 @@ export function EventFeed() {
       } catch (err) {
         console.error("RSVP failed:", err);
       } finally {
-        setRsvpLoading(false);
+        setActionLoading(false);
       }
     },
     [getIdToken, setCurrentEvent, setActiveRsvp, setStage],
+  );
+
+  // Ticket purchase flow for ticketed events
+  const handleTicketPurchase = useCallback(
+    async (event: Event, tierId: string, pickupPoint?: string, timeSlotId?: string) => {
+      setActionLoading(true);
+      try {
+        const token = await getIdToken();
+        if (!token) return;
+        const data = await apiFetch<{ success: boolean; data: Ticket }>("/api/tickets/create", {
+          method: "POST",
+          token,
+          body: JSON.stringify({
+            event_id: event.id,
+            tier_id: tierId,
+            pickup_point: pickupPoint,
+            time_slot_id: timeSlotId,
+          }),
+        });
+        if (data.data) {
+          setCurrentEvent(event);
+          setActiveTicket(data.data);
+          setDetailEvent(null);
+          setStage("countdown");
+        }
+      } catch (err) {
+        console.error("Ticket purchase failed:", err);
+      } finally {
+        setActionLoading(false);
+      }
+    },
+    [getIdToken, setCurrentEvent, setActiveTicket, setStage],
   );
 
   if (loading) {
@@ -84,7 +117,7 @@ export function EventFeed() {
           }}
         />
         <p className="mb-4 font-mono text-[11px] uppercase tracking-[3px] text-muted">
-          invite only · est. 2026
+          invite only &middot; est. 2026
         </p>
         <h2
           className="mb-3 max-w-[340px] font-serif text-[38px] font-normal leading-[1.15] text-near-black"
@@ -119,7 +152,7 @@ export function EventFeed() {
           className="animate-fadeSlideUp rounded-[20px] border-[1.5px] border-dashed border-sand p-8 text-center"
           style={{ animationDelay: `${events.length * 0.12 + 0.12}s` }}
         >
-          <span className="mb-3 block text-[28px]">👀</span>
+          <span className="mb-3 block text-[28px]">&#x1F440;</span>
           <p className="font-serif text-lg text-warm-brown">more coming soon</p>
           <p className="mt-1 font-mono text-[11px] text-muted">
             we&apos;re cooking something unhinged
@@ -133,7 +166,10 @@ export function EventFeed() {
           event={detailEvent}
           onClose={() => setDetailEvent(null)}
           onRsvp={() => handleRsvp(detailEvent)}
-          loading={rsvpLoading}
+          onTicketPurchase={(tierId, pickupPoint, timeSlotId) =>
+            handleTicketPurchase(detailEvent, tierId, pickupPoint, timeSlotId)
+          }
+          loading={actionLoading}
         />
       )}
     </div>

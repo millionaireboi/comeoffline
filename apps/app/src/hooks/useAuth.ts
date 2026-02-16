@@ -12,26 +12,47 @@ export function useAuth() {
   const { user, setUser, setStage } = useAppStore();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        // Fetch user profile from Firestore
-        const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
-        if (userDoc.exists()) {
-          const userData = { id: userDoc.id, ...userDoc.data() } as User;
-          setUser(userData);
+    let lastUserId: string | null = null; // Track last processed user to prevent duplicate fetches
 
-          // Determine initial stage
-          if (!userData.has_seen_welcome) {
-            setStage("accepted");
-          } else {
-            setStage("feed");
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      try {
+        if (firebaseUser) {
+          // Skip if we already processed this user (prevents duplicate fetch on token handoff)
+          if (lastUserId === firebaseUser.uid) {
+            setLoading(false);
+            return;
           }
+          lastUserId = firebaseUser.uid;
+
+          // Fetch user profile from Firestore
+          const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
+          if (userDoc.exists()) {
+            const userData = { id: userDoc.id, ...userDoc.data() } as User;
+            setUser(userData);
+
+            // Determine initial stage
+            if (!userData.has_seen_welcome) {
+              setStage("accepted");
+            } else {
+              setStage("feed");
+            }
+          } else {
+            // User exists in auth but not in Firestore profile collection
+            setUser(null);
+            setStage("gate");
+          }
+        } else {
+          lastUserId = null;
+          setUser(null);
+          setStage("gate");
         }
-      } else {
+      } catch (error) {
+        console.error("[useAuth] Failed to resolve auth/profile state:", error);
         setUser(null);
         setStage("gate");
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return () => unsubscribe();

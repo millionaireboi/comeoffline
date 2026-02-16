@@ -10,20 +10,41 @@ export async function apiFetch<T = unknown>(
 ): Promise<T> {
   const { token, headers, ...rest } = options;
 
-  const res = await fetch(`${API_URL}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...headers,
-    },
-    ...rest,
-  });
+  // Add timeout (10s default)
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-  const data = await res.json();
+  try {
+    const res = await fetch(`${API_URL}${path}`, {
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...headers,
+      },
+      signal: controller.signal,
+      ...rest,
+    });
 
-  if (!res.ok) {
-    throw new Error(data.error || `API error: ${res.status}`);
+    clearTimeout(timeoutId);
+
+    // Parse JSON safely
+    let data;
+    try {
+      data = await res.json();
+    } catch (e) {
+      throw new Error(`Invalid JSON response from ${path}`);
+    }
+
+    if (!res.ok) {
+      throw new Error(data.error || `API error: ${res.status}`);
+    }
+
+    return data;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Request timeout');
+    }
+    throw error;
   }
-
-  return data;
 }

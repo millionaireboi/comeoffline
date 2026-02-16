@@ -22,12 +22,14 @@ router.get("/me", requireAuth, async (req: AuthRequest, res) => {
 /** PUT /api/users/me — Update current user's profile */
 router.put("/me", requireAuth, async (req: AuthRequest, res) => {
   try {
-    const { name, handle, vibe_tag, instagram_handle } = req.body;
-    const updates: Record<string, string> = {};
+    const { name, handle, vibe_tag, instagram_handle, has_seen_welcome, fcm_token } = req.body;
+    const updates: Record<string, unknown> = {};
     if (name) updates.name = name;
     if (handle) updates.handle = handle;
     if (vibe_tag) updates.vibe_tag = vibe_tag;
     if (instagram_handle !== undefined) updates.instagram_handle = instagram_handle;
+    if (has_seen_welcome !== undefined) updates.has_seen_welcome = !!has_seen_welcome;
+    if (fcm_token !== undefined) updates.fcm_token = fcm_token;
 
     if (Object.keys(updates).length === 0) {
       res.status(400).json({ success: false, error: "No fields to update" });

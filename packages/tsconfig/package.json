@@ -2,5 +2,8 @@
   "name": "@comeoffline/tsconfig",
   "version": "0.0.0",
   "private": true,
+  "scripts": {
+    "build": "true"
+  },
   "files": ["base.json", "nextjs.json", "node.json"]
 }

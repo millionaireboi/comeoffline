@@ -1,4 +1,7 @@
-@import "tailwindcss";
+@import "tailwindcss" source(none);
+@source "../../**/*.{ts,tsx}";
+@source "../../../../packages/ui/src/**/*.{ts,tsx}";
+@source "../../../../packages/brand/src/**/*.{ts,tsx}";
 @import "@comeoffline/brand/src/theme.css";
 
 /* Global base styles */
@@ -16,21 +19,103 @@ html {
   scroll-behavior: smooth;
 }
 
-@keyframes marquee {
-  from { transform: translateX(0); }
-  to { transform: translateX(-50%); }
+::placeholder {
+  color: rgba(155, 142, 130, 0.3);
 }
 
-@keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-15px); }
+input:focus,
+textarea:focus {
+  outline: none;
+}
+
+/* Animations */
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(28px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-8px); }
+  40% { transform: translateX(8px); }
+  60% { transform: translateX(-6px); }
+  80% { transform: translateX(4px); }
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 1; }
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes glow {
+  0%, 100% { box-shadow: 0 0 8px rgba(212, 165, 116, 0.12); }
+  50% { box-shadow: 0 0 20px rgba(212, 165, 116, 0.2); }
+}
+
+@keyframes grain {
+  0% { transform: translate(0, 0); }
+  10% { transform: translate(-2%, -2%); }
+  30% { transform: translate(1%, 2%); }
+  50% { transform: translate(-1%, 1%); }
+  70% { transform: translate(3%, 1%); }
+  100% { transform: translate(0, 0); }
+}
+
+@keyframes tickerSlide {
+  from { transform: translateY(100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 }
 
 .font-caveat {
   font-family: var(--font-hand);
+}
+
+/* Utility animation classes */
+.animate-fade-slide-up {
+  animation: fadeSlideUp 0.6s ease both;
+}
+.animate-fade-in {
+  animation: fadeIn 0.8s ease both;
+}
+.animate-blink {
+  animation: blink 0.8s step-end infinite;
+}
+.animate-marquee {
+  animation: marquee 22s linear infinite;
+}
+.animate-shake {
+  animation: shake 0.4s ease;
+}
+.animate-pulse-custom {
+  animation: pulse 2s ease infinite;
+}
+.animate-spin-slow {
+  animation: spin 25s linear infinite;
+}
+.animate-grain {
+  animation: grain 0.5s steps(1) infinite;
 }

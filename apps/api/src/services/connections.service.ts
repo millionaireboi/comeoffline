@@ -1,4 +1,4 @@
-import { db } from "../config/firebase-admin";
+import { getDb } from "../config/firebase-admin";
 import type { Connection, User, RSVP } from "@comeoffline/types";
 
 interface AttendeeInfo {
@@ -16,6 +16,7 @@ export async function getEventAttendees(
   eventId: string,
   currentUserId: string,
 ): Promise<AttendeeInfo[]> {
+  const db = await getDb();
   // Get all confirmed/attended RSVPs
   const rsvpSnap = await db
     .collection("events")
@@ -83,6 +84,20 @@ export async function createConnection(
   fromUserId: string,
   toUserId: string,
 ): Promise<{ connection: Connection; mutual: boolean }> {
+  const db = await getDb();
+  // Check reconnect window — server-side enforcement
+  const eventDoc = await db.collection("events").doc(eventId).get();
+  if (eventDoc.exists) {
+    const eventDate = new Date(eventDoc.data()!.date);
+    const deadline = new Date(eventDate);
+    deadline.setDate(deadline.getDate() + 1);
+    deadline.setHours(deadline.getHours() + 48); // 48-hour window after event day + 1
+
+    if (new Date() > deadline) {
+      throw new Error("Reconnect window has closed");
+    }
+  }
+
   // Check for existing outgoing connection
   const existingSnap = await db
     .collection("connections")
@@ -137,6 +152,7 @@ export async function createConnection(
 
 /** Get all mutual connections for a user */
 export async function getUserMutualConnections(userId: string): Promise<Connection[]> {
+  const db = await getDb();
   const snap = await db
     .collection("connections")
     .where("from_user_id", "==", userId)

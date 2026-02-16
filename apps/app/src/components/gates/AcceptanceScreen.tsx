@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { Noise } from "@/components/shared/Noise";
 import { useAppStore } from "@/store/useAppStore";
+import { useAuth } from "@/hooks/useAuth";
+import { apiFetch } from "@/lib/api";
 
 const rules = [
   { icon: "🤝", text: "be kind. be real. be present." },
@@ -13,7 +15,8 @@ const rules = [
 
 export function AcceptanceScreen() {
   const [phase, setPhase] = useState(0);
-  const setStage = useAppStore((s) => s.setStage);
+  const { setStage, setUser, user } = useAppStore();
+  const { getIdToken } = useAuth();
 
   useEffect(() => {
     const t1 = setTimeout(() => setPhase(1), 600);
@@ -25,6 +28,25 @@ export function AcceptanceScreen() {
       clearTimeout(t3);
     };
   }, []);
+
+  const handleContinue = async () => {
+    try {
+      const token = await getIdToken();
+      if (token) {
+        await apiFetch("/api/users/me", {
+          method: "PUT",
+          token,
+          body: JSON.stringify({ has_seen_welcome: true }),
+        });
+      }
+    } catch {
+      // Non-blocking — still navigate even if persist fails
+    }
+    if (user) {
+      setUser({ ...user, has_seen_welcome: true });
+    }
+    setStage("feed");
+  };
 
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-gate-black px-6 py-10">
@@ -87,7 +109,7 @@ export function AcceptanceScreen() {
         {phase >= 3 && (
           <div className="animate-fadeSlideUp mt-10">
             <button
-              onClick={() => setStage("feed")}
+              onClick={handleContinue}
               className="rounded-full bg-cream px-10 py-[18px] font-sans text-base font-medium text-gate-black transition-all hover:-translate-y-0.5 hover:shadow-[0_8px_32px_rgba(212,165,116,0.2)] active:scale-[0.98]"
             >
               show me what&apos;s happening →

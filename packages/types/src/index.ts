@@ -13,8 +13,8 @@ export interface Badge {
   event_id?: string;
 }
 
-export type EntryPath = "invite" | "vouch" | "prove";
-export type UserStatus = "active" | "pending" | "suspended";
+export type EntryPath = "invite" | "vouch" | "chatbot";
+export type UserStatus = "active" | "provisional" | "inactive";
 
 export interface User {
   id: string;
@@ -30,6 +30,10 @@ export interface User {
   status: UserStatus;
   has_seen_welcome: boolean;
   fcm_token?: string;
+  second_chance?: boolean;
+  validated_at?: string;
+  validated_by?: string;
+  events_attended?: number;
   created_at: string;
 }
 
@@ -50,6 +54,37 @@ export interface PickupPoint {
 }
 
 export type EventStatus = "draft" | "upcoming" | "sold_out" | "live" | "completed";
+
+export interface TicketTier {
+  id: string; // unique tier ID within event
+  name: string; // flexible: "early_bird", "regular", "last_call", "vip", "couples", etc.
+  label: string; // display name: "Early Bird", "Regular", "VIP Table", "Couples Pass"
+  price: number; // in paise (INR). 0 = free
+  capacity: number;
+  sold: number;
+  deadline: string; // ISO date — when this tier closes
+  opens_at?: string; // ISO date — when this tier becomes available
+  description: string; // e.g. "for the ones who don't hesitate"
+  per_person?: number; // defaults to 1. "2" for couples pass, etc.
+}
+
+export interface TimeSlot {
+  id: string;
+  label: string; // e.g. "4:00 PM – 5:00 PM"
+  start_time: string;
+  end_time: string;
+  capacity: number;
+  booked: number;
+}
+
+export interface TicketingConfig {
+  enabled: boolean; // false = free RSVP, true = ticketed
+  tiers: TicketTier[];
+  time_slots_enabled: boolean; // if true, user picks a time slot during purchase
+  time_slots?: TimeSlot[];
+  max_per_user: number; // usually 1, but could be 2 for +1 events
+  refund_policy?: string; // shown to user at checkout
+}
 
 export interface Event {
   id: string;
@@ -73,6 +108,8 @@ export interface Event {
   venue_reveal_date: string;
   pickup_points: PickupPoint[];
   status: EventStatus;
+  ticketing?: TicketingConfig;
+  is_free?: boolean; // shorthand: true if no ticketing or all tiers are price 0
 }
 
 // ── RSVP ──────────────────────────────────────────
@@ -86,6 +123,42 @@ export interface RSVP {
   pickup_point: string;
   status: RSVPStatus;
   rsvp_at: string;
+}
+
+// ── Ticket ────────────────────────────────────────
+
+export type TicketStatus =
+  | "pending_payment"
+  | "confirmed"
+  | "cancelled"
+  | "checked_in"
+  | "no_show";
+
+export interface Ticket {
+  id: string;
+  user_id: string;
+  event_id: string;
+  tier_id: string; // references TicketTier.id
+  tier_name: string; // denormalized for display
+  price: number;
+  quantity: number; // usually 1, but could be 2 for couples pass
+  status: TicketStatus;
+  qr_code: string;
+  pickup_point: string;
+  time_slot?: string; // references TimeSlot.id if time slots enabled
+  purchased_at: string;
+  checked_in_at?: string;
+}
+
+// ── Handoff Token ────────────────────────────────
+
+export interface HandoffToken {
+  token: string;
+  user_id: string;
+  source: "landing" | "chatbot";
+  user_status: UserStatus;
+  expires_at: string;
+  used: boolean;
 }
 
 // ── Connection ────────────────────────────────────
@@ -106,10 +179,13 @@ export type VouchCodeStatus = "unused" | "used" | "expired";
 export interface VouchCode {
   id: string;
   code: string;
-  owner_id: string;
+  owner_id: string; // "admin" for seed codes, user_id for earned codes
   used_by_id?: string;
   status: VouchCodeStatus;
-  earned_from_event: string;
+  earned_from_event?: string; // undefined for admin-created seed codes
+  created_by_admin?: string; // admin user_id who created this code
+  created_at: string;
+  label?: string; // optional admin label for tracking batches (e.g., "Press Kit", "Founding 50")
 }
 
 // ── Application ───────────────────────────────────
@@ -156,6 +232,54 @@ export interface Memories {
   stats: EventStats;
 }
 
+// ── Community Poll ────────────────────────────────
+
+export interface CommunityPollVote {
+  voter_id: string;
+  subject_id: string;
+  vibed: boolean;
+}
+
+export interface CommunityPoll {
+  id: string;
+  event_id: string;
+  votes: CommunityPollVote[];
+  created_at: string;
+  closes_at: string;
+}
+
+// ── Validation ───────────────────────────────────
+
+export interface ValidationSignals {
+  reconnect_count: number;
+  poll_score: number; // 0-100 percentage
+  check_in_time?: string;
+  admin_notes?: string[];
+}
+
+export type ValidationDecision = "approved" | "another_chance" | "revoked";
+
+export interface ValidationReview {
+  id: string;
+  user_id: string;
+  event_id: string;
+  decision: ValidationDecision;
+  signals: ValidationSignals;
+  reviewed_by: string;
+  reviewed_at: string;
+}
+
+// ── Admin Note ───────────────────────────────────
+
+export interface AdminNote {
+  id: string;
+  user_id: string;
+  event_id: string;
+  note: string;
+  created_by: string;
+  created_at: string;
+}
+
 // ── Admin ─────────────────────────────────────────
 
 export type AdminRole = "super_admin" | "event_manager" | "community_manager";
@@ -184,6 +308,22 @@ export interface NotificationTemplate {
   trigger: string;
   message: string;
   timing: string;
+}
+
+export type NotificationAudience = "all" | "event_attendees" | "active" | "provisional";
+export type NotificationStatus = "draft" | "scheduled" | "sent" | "failed";
+
+export interface PushNotification {
+  id: string;
+  title: string;
+  message: string;
+  audience: NotificationAudience;
+  event_id?: string;
+  scheduled_at?: string;
+  sent_at?: string;
+  status: NotificationStatus;
+  created_by: string;
+  created_at: string;
 }
 
 // ── API ───────────────────────────────────────────

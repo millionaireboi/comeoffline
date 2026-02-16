@@ -1,0 +1,74 @@
+
+> build
+> turbo build
+
+• turbo 2.8.9
+• Packages in scope: @comeoffline/admin, @comeoffline/api, @comeoffline/app, @comeoffline/brand, @comeoffline/eslint-config, @comeoffline/firebase, @comeoffline/landing, @comeoffline/tsconfig, @comeoffline/types, @comeoffline/ui
+• Running build in 10 packages
+• Remote caching disabled
+@comeoffline/firebase:build: cache hit, replaying logs 9c2fe5923f60ea53
+@comeoffline/eslint-config:build: cache hit, replaying logs 582c93f04b97b324
+@comeoffline/types:build: cache hit, replaying logs 470c75fec880df00
+@comeoffline/brand:build: cache hit, replaying logs 2f9fae19c27ee111
+@comeoffline/eslint-config:build: 
+@comeoffline/eslint-config:build: > @comeoffline/eslint-config@0.0.0 build
+@comeoffline/tsconfig:build: cache hit, replaying logs 3770f02568e9de12
+@comeoffline/eslint-config:build: > true
+@comeoffline/eslint-config:build: 
+@comeoffline/brand:build: 
+@comeoffline/brand:build: > @comeoffline/brand@0.0.0 build
+@comeoffline/brand:build: > true
+@comeoffline/brand:build: 
+@comeoffline/tsconfig:build: 
+@comeoffline/tsconfig:build: > @comeoffline/tsconfig@0.0.0 build
+@comeoffline/tsconfig:build: > true
+@comeoffline/tsconfig:build: 
+@comeoffline/firebase:build: 
+@comeoffline/types:build: 
+@comeoffline/types:build: 
+@comeoffline/types:build: > @comeoffline/types@0.0.0 build
+@comeoffline/types:build: > true
+@comeoffline/types:build: 
+@comeoffline/types:build: [1G[0K[1G[0K⠙[1G[0K
+@comeoffline/firebase:build: > @comeoffline/firebase@0.0.0 build
+@comeoffline/firebase:build: > true
+@comeoffline/firebase:build: 
+@comeoffline/ui:build: cache hit, replaying logs 0850390468d33d51
+@comeoffline/ui:build: 
+@comeoffline/ui:build: > @comeoffline/ui@0.0.0 build
+@comeoffline/ui:build: > true
+@comeoffline/ui:build: 
+@comeoffline/admin:build: cache miss, executing 36f1fcf8142dddf2
+@comeoffline/landing:build: cache miss, executing d5eed7c07ed0cb19
+@comeoffline/app:build: cache miss, executing 45e7b67f8a272be9
+@comeoffline/api:build: cache hit, replaying logs aedf8f85f8ec2760
+@comeoffline/api:build: 
+@comeoffline/api:build: 
+@comeoffline/api:build: > @comeoffline/api@0.0.0 build
+@comeoffline/api:build: > tsc
+@comeoffline/api:build: 
+@comeoffline/api:build: [1G[0K[1G[0K⠙[1G[0K
+@comeoffline/landing:build: 
+@comeoffline/landing:build: > @comeoffline/landing@0.0.0 build
+@comeoffline/landing:build: > next build
+@comeoffline/landing:build: 
+@comeoffline/app:build: 
+@comeoffline/app:build: > @comeoffline/app@0.0.0 build
+@comeoffline/app:build: > next build
+@comeoffline/app:build: 
+@comeoffline/admin:build: 
+@comeoffline/admin:build: > @comeoffline/admin@0.0.0 build
+@comeoffline/admin:build: > next build
+@comeoffline/admin:build: 
+@comeoffline/app:build:    ▲ Next.js 15.5.12
+@comeoffline/app:build:    - Environments: .env
+@comeoffline/app:build: 
+@comeoffline/landing:build:    ▲ Next.js 15.5.12
+@comeoffline/landing:build:    - Environments: .env
+@comeoffline/landing:build: 
+@comeoffline/admin:build:    ▲ Next.js 15.5.12
+@comeoffline/admin:build:    - Environments: .env
+@comeoffline/admin:build: 
+@comeoffline/app:build:    Creating an optimized production build ...
+@comeoffline/admin:build:    Creating an optimized production build ...
+@comeoffline/landing:build:    Creating an optimized production build ...

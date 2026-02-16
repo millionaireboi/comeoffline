@@ -11,6 +11,19 @@ router.get("/", requireAdmin, async (_req: AuthRequest, res) => {
     res.json({ success: true, data: users });
   } catch (err) {
     console.error("[admin/members] list error:", err);
+
+    const error = err as Error;
+
+    // Check if it's a quota error
+    if (error.message && error.message.includes('quota')) {
+      res.status(429).json({
+        success: false,
+        error: "Firestore quota exceeded. Data may be cached. Try again in a few minutes.",
+        cached: true
+      });
+      return;
+    }
+
     res.status(500).json({ success: false, error: "Failed to fetch members" });
   }
 });

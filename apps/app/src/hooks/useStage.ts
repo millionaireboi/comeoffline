@@ -24,6 +24,19 @@ export function useStage() {
         return;
       }
 
+      // Onboarding gates — grandfather existing users who have attended events
+      const isGrandfathered = user.events_attended && user.events_attended > 0;
+
+      if (!user.has_completed_profile && !isGrandfathered) {
+        setStage("profile_setup");
+        return;
+      }
+
+      if (!user.has_completed_onboarding && !isGrandfathered) {
+        setStage("app_education");
+        return;
+      }
+
       // Manual stages that shouldn't be auto-overridden
       if (["profile", "vouch", "poll"].includes(stage)) return;
 

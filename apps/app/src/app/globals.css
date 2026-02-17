@@ -134,6 +134,38 @@ input::placeholder {
   to { left: 200%; }
 }
 
+@keyframes slideCardIn {
+  from { opacity: 0; transform: translateX(60px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes cardScale {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+@keyframes moonGlow {
+  0%, 100% { text-shadow: 0 0 20px rgba(250,246,240,0.2); }
+  50% { text-shadow: 0 0 40px rgba(250,246,240,0.5), 0 0 80px rgba(250,246,240,0.2); }
+}
+
+@keyframes polaroidDrop {
+  0% { transform: translateY(-40px) rotate(-8deg); opacity: 0; }
+  60% { transform: translateY(4px) rotate(2deg); opacity: 1; }
+  100% { transform: translateY(0) rotate(-3deg); opacity: 1; }
+}
+
+@keyframes polaroidDrop2 {
+  0% { transform: translateY(-40px) rotate(5deg); opacity: 0; }
+  60% { transform: translateY(4px) rotate(-1deg); opacity: 1; }
+  100% { transform: translateY(0) rotate(4deg); opacity: 1; }
+}
+
+@keyframes countdownTick {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 /* ═══════════════════════════════════════════
    ANIMATION UTILITY CLASSES
    ═══════════════════════════════════════════ */
@@ -152,4 +184,16 @@ input::placeholder {
 
 .animate-scaleIn {
   animation: scaleIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-slideCardIn {
+  animation: slideCardIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-cardScale {
+  animation: cardScale 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-breathe {
+  animation: breathe 3s ease infinite;
 }

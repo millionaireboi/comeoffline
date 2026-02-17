@@ -57,6 +57,7 @@ router.post("/validate-token", async (req, res) => {
         token: result.token,
         user: result.user,
         has_seen_welcome: result.has_seen_welcome,
+        source: result.source,
       },
     });
   } catch (err) {

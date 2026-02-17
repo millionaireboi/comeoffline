@@ -124,8 +124,20 @@ export async function getUserProfile(userId: string): Promise<ProfileData | null
 /** Update user profile fields */
 export async function updateUserProfile(
   userId: string,
-  updates: Partial<Pick<User, "name" | "handle" | "vibe_tag" | "instagram_handle" | "has_seen_welcome" | "fcm_token">>,
+  updates: Partial<Pick<User,
+    | "name" | "handle" | "vibe_tag" | "instagram_handle" | "has_seen_welcome" | "fcm_token"
+    | "avatar_url" | "avatar_type" | "area" | "age_range" | "hot_take"
+    | "drink_of_choice" | "referral_source" | "has_completed_profile"
+    | "has_completed_onboarding" | "onboarding_source"
+  >>,
 ): Promise<void> {
   const db = await getDb();
   await db.collection("users").doc(userId).update(updates);
+}
+
+/** Check if a handle is available */
+export async function checkHandleAvailable(handle: string): Promise<boolean> {
+  const db = await getDb();
+  const snap = await db.collection("users").where("handle", "==", handle).limit(1).get();
+  return snap.empty;
 }

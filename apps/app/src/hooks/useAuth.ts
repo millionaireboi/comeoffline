@@ -24,16 +24,12 @@ export function useAuth() {
           }
           lastUserId = firebaseUser.uid;
 
-          // If TheGate already set this user in the store (from API response),
+          // If TheGate or useTokenHandoff already set this user in the store (from API response),
           // skip the Firestore fetch — we already have the data and the token
           // may not be fully authorized for Firestore reads yet.
+          // useStage will derive the correct stage from the user data.
           const storeUser = useAppStore.getState().user;
           if (storeUser && storeUser.id === firebaseUser.uid) {
-            if (!storeUser.has_seen_welcome) {
-              setStage("accepted");
-            } else {
-              setStage("feed");
-            }
             setLoading(false);
             return;
           }
@@ -44,13 +40,7 @@ export function useAuth() {
             if (userDoc.exists()) {
               const userData = { id: userDoc.id, ...userDoc.data() } as User;
               setUser(userData);
-
-              // Determine initial stage
-              if (!userData.has_seen_welcome) {
-                setStage("accepted");
-              } else {
-                setStage("feed");
-              }
+              // useStage will derive the correct stage from userData
             } else {
               // User exists in auth but not yet in Firestore — may still be propagating
               // from the Admin SDK write. Only reset if the store doesn't already have this user.
@@ -74,7 +64,7 @@ export function useAuth() {
                 if (data.data) {
                   const userData = data.data as User;
                   setUser(userData);
-                  setStage(userData.has_seen_welcome ? "feed" : "accepted");
+                  // useStage will derive the correct stage from userData
                 }
               }
             } catch (apiErr) {

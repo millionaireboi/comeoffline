@@ -15,7 +15,7 @@ const rules = [
 
 export function AcceptanceScreen() {
   const [phase, setPhase] = useState(0);
-  const { setStage, setUser, user } = useAppStore();
+  const { setUser, user } = useAppStore();
   const { getIdToken } = useAuth();
 
   useEffect(() => {
@@ -45,7 +45,7 @@ export function AcceptanceScreen() {
     if (user) {
       setUser({ ...user, has_seen_welcome: true });
     }
-    setStage("feed");
+    // useStage will derive the next stage (profile_setup) from the updated user data
   };
 
   return (

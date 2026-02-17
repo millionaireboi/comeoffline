@@ -15,6 +15,7 @@ export interface Badge {
 
 export type EntryPath = "invite" | "vouch" | "chatbot";
 export type UserStatus = "active" | "provisional" | "inactive";
+export type OnboardingSource = "landing_code" | "landing_chatbot" | "direct_pwa";
 
 export interface User {
   id: string;
@@ -29,6 +30,16 @@ export interface User {
   badges: Badge[];
   status: UserStatus;
   has_seen_welcome: boolean;
+  avatar_url?: string;
+  avatar_type?: "uploaded" | "illustrated" | "gradient";
+  area?: string;
+  age_range?: "21-24" | "25-28" | "29-32" | "33+";
+  hot_take?: string;
+  drink_of_choice?: string;
+  referral_source?: string;
+  has_completed_profile?: boolean;
+  has_completed_onboarding?: boolean;
+  onboarding_source?: OnboardingSource;
   fcm_token?: string;
   second_chance?: boolean;
   validated_at?: string;

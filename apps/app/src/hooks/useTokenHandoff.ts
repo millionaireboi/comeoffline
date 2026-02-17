@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useAppStore } from "@/store/useAppStore";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
@@ -49,6 +50,22 @@ export function useTokenHandoff() {
         const data = await res.json();
 
         if (data.success && data.data?.token) {
+          // Capture onboarding source from handoff token
+          const source = data.data.source;
+          const { setOnboardingSource, setUser } = useAppStore.getState();
+          setOnboardingSource(
+            source === "chatbot" ? "landing_chatbot" : "landing_code"
+          );
+          // Persist to localStorage for crash recovery
+          if (typeof localStorage !== "undefined") {
+            localStorage.setItem("co_onboarding_source",
+              source === "chatbot" ? "landing_chatbot" : "landing_code"
+            );
+          }
+          // Set user in store immediately if available
+          if (data.data.user) {
+            setUser(data.data.user);
+          }
           await loginWithToken(data.data.token);
           setHandled(true);
         }

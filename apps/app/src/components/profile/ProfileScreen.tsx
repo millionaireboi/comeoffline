@@ -7,6 +7,14 @@ import { useAppStore } from "@/store/useAppStore";
 import { apiFetch } from "@/lib/api";
 import { Noise } from "@/components/shared/Noise";
 
+const AVATAR_GRADIENTS = [
+  ["#D4A574", "#C4704D"], ["#B8A9C9", "#8B7BA8"], ["#A8B5A0", "#7A9170"],
+  ["#DBBCAC", "#D4836B"], ["#E6A97E", "#B8845A"], ["#D4836B", "#8B6F5A"],
+  ["#C4956A", "#3D2E22"], ["#B8A9C9", "#C4704D"],
+];
+
+const AVATAR_EMOJIS = ["\u2728", "\u{1F33F}", "\u{1F319}", "\u{1F98B}", "\u{1F525}", "\u{1F3B5}", "\u{1F4AB}", "\u{1F338}"];
+
 interface ProfileData {
   user: {
     id: string;
@@ -14,6 +22,12 @@ interface ProfileData {
     handle: string;
     vibe_tag: string;
     instagram_handle?: string;
+    avatar_url?: string;
+    avatar_type?: string;
+    area?: string;
+    age_range?: string;
+    hot_take?: string;
+    drink_of_choice?: string;
     entry_path: string;
     status: string;
     vibe_check_answers?: Array<{ question: string; answer: string }>;
@@ -42,6 +56,42 @@ const VIBE_COLORS: Record<string, string> = {
   "the wildcard": "#D4836B",
   "the observer": "#7A8B9C",
 };
+
+function ProfileAvatar({ user, vibeColor }: { user: ProfileData["user"]; vibeColor: string }) {
+  // Uploaded avatar
+  if (user.avatar_type === "uploaded" && user.avatar_url && !user.avatar_url.startsWith("gradient:")) {
+    return (
+      <div className="h-16 w-16 overflow-hidden rounded-full">
+        <img src={user.avatar_url} alt={user.name} className="h-full w-full object-cover" />
+      </div>
+    );
+  }
+
+  // Gradient avatar
+  if (user.avatar_type === "gradient" && user.avatar_url?.startsWith("gradient:")) {
+    const index = parseInt(user.avatar_url.replace("gradient:", ""), 10);
+    const grad = AVATAR_GRADIENTS[index] || AVATAR_GRADIENTS[0];
+    const emoji = AVATAR_EMOJIS[index] || "\u2728";
+    return (
+      <div
+        className="flex h-16 w-16 items-center justify-center rounded-full text-2xl"
+        style={{ background: `linear-gradient(135deg, ${grad[0]}, ${grad[1]})` }}
+      >
+        {emoji}
+      </div>
+    );
+  }
+
+  // Fallback: first letter of name
+  return (
+    <div
+      className="flex h-16 w-16 items-center justify-center rounded-full font-serif text-2xl text-white"
+      style={{ background: vibeColor }}
+    >
+      {user.name.charAt(0)}
+    </div>
+  );
+}
 
 export function ProfileScreen() {
   const { getIdToken, logout } = useAuth();
@@ -113,6 +163,8 @@ export function ProfileScreen() {
     year: "numeric",
   });
 
+  const hasPersonalityData = profile.user.hot_take || profile.user.area || profile.user.age_range || profile.user.drink_of_choice;
+
   return (
     <div className="min-h-screen bg-cream pb-[120px]">
       <Noise />
@@ -138,12 +190,7 @@ export function ProfileScreen() {
         <div className="rounded-[24px] bg-white p-6 shadow-[0_2px_12px_rgba(26,23,21,0.06)]">
           {/* Avatar */}
           <div className="mb-5 flex items-center gap-4">
-            <div
-              className="flex h-16 w-16 items-center justify-center rounded-full font-serif text-2xl text-white"
-              style={{ background: vibeColor }}
-            >
-              {profile.user.name.charAt(0)}
-            </div>
+            <ProfileAvatar user={profile.user} vibeColor={vibeColor} />
             <div>
               <h2 className="font-serif text-[26px] font-normal leading-none text-near-black">
                 {profile.user.name}
@@ -154,12 +201,14 @@ export function ProfileScreen() {
 
           {/* Vibe tag + status */}
           <div className="mb-5 flex flex-wrap items-center gap-2">
-            <span
-              className="rounded-full px-3 py-1 font-mono text-[10px] font-medium uppercase tracking-[1px]"
-              style={{ color: vibeColor, background: vibeColor + "15" }}
-            >
-              {profile.user.vibe_tag}
-            </span>
+            {profile.user.vibe_tag && (
+              <span
+                className="rounded-full px-3 py-1 font-mono text-[10px] font-medium uppercase tracking-[1px]"
+                style={{ color: vibeColor, background: vibeColor + "15" }}
+              >
+                {profile.user.vibe_tag}
+              </span>
+            )}
             <span
               className="rounded-full px-3 py-1 font-mono text-[10px] font-medium uppercase tracking-[1px]"
               style={{
@@ -173,6 +222,36 @@ export function ProfileScreen() {
               since {memberSince}
             </span>
           </div>
+
+          {/* Personality pills (area, age, drink) */}
+          {(profile.user.area || profile.user.age_range || profile.user.drink_of_choice) && (
+            <div className="mb-4 flex flex-wrap items-center gap-1.5">
+              {profile.user.drink_of_choice && (
+                <span className="rounded-full bg-cream px-2.5 py-1 font-mono text-[10px] text-muted">
+                  {profile.user.drink_of_choice}
+                </span>
+              )}
+              {profile.user.area && (
+                <span className="rounded-full bg-cream px-2.5 py-1 font-mono text-[10px] text-muted">
+                  {profile.user.area}
+                </span>
+              )}
+              {profile.user.age_range && (
+                <span className="rounded-full bg-cream px-2.5 py-1 font-mono text-[10px] text-muted">
+                  {profile.user.age_range}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Hot take */}
+          {profile.user.hot_take && (
+            <div className="mb-4 rounded-[14px] p-4" style={{ background: "rgba(26,23,21,0.03)" }}>
+              <p className="font-hand text-[15px] text-near-black/70">
+                &ldquo;{profile.user.hot_take}&rdquo;
+              </p>
+            </div>
+          )}
 
           {/* Instagram handle */}
           <div className="rounded-[14px] bg-cream p-4">
@@ -231,10 +310,10 @@ export function ProfileScreen() {
       <section className="animate-fadeSlideUp px-5 pt-5" style={{ animationDelay: "0.1s" }}>
         <div className="grid grid-cols-2 gap-2.5">
           {[
-            { value: profile.stats.events_attended, label: "events attended", emoji: "🎪" },
-            { value: profile.stats.connections_made, label: "connections", emoji: "🤝" },
-            { value: profile.stats.vouch_codes_earned, label: "codes earned", emoji: "✉️" },
-            { value: profile.stats.vouch_codes_used, label: "people vouched", emoji: "⭐" },
+            { value: profile.stats.events_attended, label: "events attended", emoji: "\u{1F3AA}" },
+            { value: profile.stats.connections_made, label: "connections", emoji: "\u{1F91D}" },
+            { value: profile.stats.vouch_codes_earned, label: "codes earned", emoji: "\u2709\uFE0F" },
+            { value: profile.stats.vouch_codes_used, label: "people vouched", emoji: "\u2B50" },
           ].map((stat) => (
             <div
               key={stat.label}
@@ -326,7 +405,7 @@ export function ProfileScreen() {
         </section>
       )}
 
-      {/* Entry path */}
+      {/* How it works link + Entry path */}
       <section className="animate-fadeSlideUp px-5 pt-6" style={{ animationDelay: "0.25s" }}>
         <div className="rounded-[14px] bg-white/50 p-4 text-center">
           <p className="font-mono text-[10px] text-muted">
@@ -339,6 +418,13 @@ export function ProfileScreen() {
                   : "prove yourself"}
             </span>
           </p>
+          <button
+            onClick={() => setStage("app_education")}
+            className="mt-2 border-none bg-transparent font-mono text-[10px] text-caramel"
+            style={{ cursor: "pointer" }}
+          >
+            how it works {"\u2192"}
+          </button>
         </div>
       </section>
     </div>

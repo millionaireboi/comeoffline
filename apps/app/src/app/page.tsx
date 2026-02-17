@@ -24,6 +24,8 @@ import { ReconnectScreen } from "@/components/events/ReconnectScreen";
 import { VouchScreen } from "@/components/events/VouchScreen";
 import { CommunityPoll } from "@/components/events/CommunityPoll";
 import { ProfileScreen } from "@/components/profile/ProfileScreen";
+import { ProfileSetup } from "@/components/onboarding/ProfileSetup";
+import { AppEducation } from "@/components/onboarding/AppEducation";
 import { InAppChat } from "@/components/chat/InAppChat";
 import { BottomNav } from "@/components/shared/BottomNav";
 
@@ -95,7 +97,7 @@ export default function Home() {
   }
 
   // Show bottom nav on authenticated stages
-  const showNav = user && !["gate", "accepted", "install"].includes(stage);
+  const showNav = user && !["gate", "accepted", "install", "profile_setup", "app_education"].includes(stage);
 
   // Route based on stage
   let screen: React.ReactNode;
@@ -105,6 +107,12 @@ export default function Home() {
       break;
     case "accepted":
       screen = <AcceptanceScreen />;
+      break;
+    case "profile_setup":
+      screen = <ProfileSetup />;
+      break;
+    case "app_education":
+      screen = <AppEducation />;
       break;
     case "feed":
       screen = <EventFeed />;

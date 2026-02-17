@@ -84,12 +84,13 @@ export function TheGate() {
       }));
       setConfetti(pieces);
 
-      // Set user + stage in the store immediately so useStage doesn't flicker back to "gate"
-      // while we wait for the Firebase auth listener to catch up
+      // Set user in the store immediately so useStage doesn't flicker back to "gate"
+      // while we wait for the Firebase auth listener to catch up.
+      // useStage will derive the correct stage from the user data.
       if (res.data.user) {
-        const { setUser, setStage } = useAppStore.getState();
+        const { setUser, setOnboardingSource } = useAppStore.getState();
         setUser(res.data.user as unknown as import("@comeoffline/types").User);
-        setStage("accepted");
+        setOnboardingSource("direct_pwa");
       }
 
       // Login with the token from the API — fires onAuthStateChanged in useAuth

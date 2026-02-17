@@ -15,6 +15,7 @@ interface HandoffTokenResult {
   token?: string; // Firebase custom token
   user?: Record<string, unknown>;
   has_seen_welcome?: boolean;
+  source?: "landing" | "chatbot";
   error?: string;
 }
 
@@ -88,6 +89,7 @@ export async function validateHandoffToken(token: string): Promise<HandoffTokenR
     token: firebaseToken,
     user: userData,
     has_seen_welcome: (rawData.has_seen_welcome as boolean) ?? false,
+    source: tokenData.source as "landing" | "chatbot",
   };
 }
 

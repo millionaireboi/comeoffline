@@ -1,10 +1,12 @@
 import { create } from "zustand";
-import type { User, Event, RSVP, Ticket } from "@comeoffline/types";
+import type { User, Event, RSVP, Ticket, OnboardingSource } from "@comeoffline/types";
 
 export type AppStage =
   | "install"
   | "gate"
   | "accepted"
+  | "profile_setup"
+  | "app_education"
   | "feed"
   | "countdown"
   | "reveal"
@@ -25,6 +27,10 @@ interface AppState {
   stage: AppStage;
   setStage: (stage: AppStage) => void;
 
+  // Onboarding source (tracks which entry path the user came from)
+  onboardingSource: OnboardingSource | null;
+  setOnboardingSource: (source: OnboardingSource | null) => void;
+
   // Active event context
   currentEvent: Event | null;
   setCurrentEvent: (event: Event | null) => void;
@@ -44,6 +50,9 @@ export const useAppStore = create<AppState>((set) => ({
 
   stage: "gate",
   setStage: (stage) => set({ stage }),
+
+  onboardingSource: null,
+  setOnboardingSource: (source) => set({ onboardingSource: source }),
 
   currentEvent: null,
   setCurrentEvent: (event) => set({ currentEvent: event }),

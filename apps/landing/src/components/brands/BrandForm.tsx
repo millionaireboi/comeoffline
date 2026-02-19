@@ -277,7 +277,7 @@ export function BrandForm() {
                     onClick={() => setSelectedInterest(isSelected ? "" : interest)}
                     className="cursor-pointer rounded-full font-sans text-[12px] transition-all duration-300"
                     style={{
-                      padding: "8px 16px",
+                      padding: "10px 16px",
                       background: isSelected ? P.caramel + "18" : "#FFFFFF",
                       border: `1px solid ${isSelected ? P.caramel + "50" : P.sand}`,
                       color: isSelected ? P.deepCaramel : P.warmBrown,

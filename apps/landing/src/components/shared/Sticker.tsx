@@ -25,7 +25,7 @@ export function Sticker({
 }) {
   return (
     <div
-      className="pointer-events-none absolute transition-all duration-600"
+      className="pointer-events-none absolute animate-float transition-all duration-600"
       style={{
         top,
         right,

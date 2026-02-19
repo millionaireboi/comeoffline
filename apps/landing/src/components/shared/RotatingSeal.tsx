@@ -5,7 +5,7 @@ import { P } from "./P";
 export function RotatingSeal({ size = 90 }: { size?: number }) {
   const text = "COME OFFLINE \u2022 EST 2026 \u2022 BANGALORE \u2022 INVITE ONLY \u2022 ";
   return (
-    <div className="animate-spin-slow" style={{ width: size, height: size }}>
+    <div aria-hidden="true" className="animate-spin-slow" style={{ width: size, height: size }}>
       <svg viewBox="0 0 100 100" width={size} height={size}>
         <defs>
           <path

@@ -9,7 +9,7 @@ export function MarqueeSection() {
       <div className="flex animate-marquee whitespace-nowrap">
         {[0, 1].map((i) => (
           <span key={i} className="font-mono text-[10px] uppercase tracking-[3px]" style={{ color: P.muted + "70" }}>
-            {items.repeat(5)}
+            {items.repeat(3)}
           </span>
         ))}
       </div>

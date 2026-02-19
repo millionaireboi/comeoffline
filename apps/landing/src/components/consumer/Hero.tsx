@@ -3,11 +3,11 @@
 import { useState, useEffect } from "react";
 import { P, API_URL, APP_URL } from "@/components/shared/P";
 import { HandNote } from "@/components/shared/HandNote";
-import { Sticker } from "@/components/shared/Sticker";
 import { RotatingSeal } from "@/components/shared/RotatingSeal";
 import { SocialTicker } from "@/components/shared/SocialTicker";
 import { ScribbleStar } from "@/components/shared/Scribbles";
 import { FilmGrain } from "@/components/shared/FilmGrain";
+import Image from "next/image";
 import { useChat } from "@/components/chat/ChatProvider";
 
 const REJECTION_LINES = [
@@ -29,6 +29,7 @@ export function Hero() {
   const [codeState, setCodeState] = useState<"idle" | "checking" | "valid" | "invalid">("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [failCount, setFailCount] = useState(0);
+  const [lockedUntil, setLockedUntil] = useState(0);
   const tag = "an invite-only community for people who still go outside.";
 
   useEffect(() => {
@@ -50,6 +51,7 @@ export function Hero() {
   }, [phase]);
 
   const handleCodeSubmit = async () => {
+    if (Date.now() < lockedUntil) return;
     if (!code.trim() || codeState === "checking") return;
     setCodeState("checking");
     try {
@@ -75,6 +77,10 @@ export function Hero() {
           setErrorMsg(REJECTION_LINES[failCount % REJECTION_LINES.length]);
         }
         setFailCount((c) => c + 1);
+        if (failCount >= 4) {
+          setLockedUntil(Date.now() + 30000);
+          setErrorMsg("too many attempts. take a breath, try in 30s.");
+        }
         setTimeout(() => setCodeState("idle"), 3000);
       }
     } catch {
@@ -97,10 +103,10 @@ export function Hero() {
 
       {/* Rotating seal */}
       <div
-        className="pointer-events-none absolute top-[60px] right-3 transition-opacity duration-1000"
+        className="pointer-events-none absolute top-[60px] right-2 transition-opacity duration-1000"
         style={{ opacity: phase >= 2 ? 0.7 : 0, transitionDelay: "0.5s" }}
       >
-        <RotatingSeal size={78} />
+        <RotatingSeal size={65} />
       </div>
 
       {/* Stars */}
@@ -121,10 +127,19 @@ export function Hero() {
           <span className="font-mono text-[9px] uppercase tracking-[2px] sm:text-[10px] sm:tracking-[3px]" style={{ color: P.muted + "40" }}>bangalore</span>
         </div>
 
-        {/* Title */}
+        {/* Title — logo as primary heading */}
         <div style={{ animation: "fadeSlideUp 1s cubic-bezier(0.16,1,0.3,1) 0.3s both" }}>
-          <h1 className="mb-1 font-serif font-normal text-cream" style={{ fontSize: "clamp(44px, 15vw, 80px)", letterSpacing: "-2.5px", lineHeight: 0.9 }}>come</h1>
-          <h1 className="font-serif font-normal italic text-cream" style={{ fontSize: "clamp(44px, 15vw, 80px)", letterSpacing: "-2.5px", lineHeight: 0.9 }}>offline.</h1>
+          <h1>
+            <Image
+              src="/logo.png"
+              alt="come offline"
+              width={0}
+              height={160}
+              sizes="100vw"
+              priority
+              style={{ width: "auto", height: "clamp(90px, 28vw, 160px)" }}
+            />
+          </h1>
         </div>
 
         {/* Divider */}
@@ -140,14 +155,7 @@ export function Hero() {
 
         {phase >= 2 && (
           <div className="animate-fade-slide-up">
-            <p className="mb-1.5 font-sans text-[13px] leading-[1.7]" style={{ color: P.muted + "40" }}>
-              <span style={{ textDecoration: "line-through", textDecorationColor: P.highlight + "50" }}>another networking event in bangalore</span>
-            </p>
-            <p className="mb-7 font-sans text-[13px] leading-[1.7]" style={{ color: P.muted + "60" }}>
-              curated events. curated people. no randos, no algorithms, no startup small talk.
-            </p>
-
-            <div className="flex flex-col gap-3.5">
+            <div className="mt-7 flex flex-col gap-3.5">
               {/* Code path */}
               <div className="rounded-[18px] p-5 backdrop-blur-[10px]" style={{ background: P.cream + "08", border: `1px solid ${P.cream}12`, animation: "fadeSlideUp 0.6s ease 0.1s both" }}>
                 <div className="mb-3.5 flex items-center justify-between">
@@ -156,6 +164,7 @@ export function Hero() {
                 </div>
                 <div className="flex gap-2.5">
                   <input
+                    type="text"
                     value={code}
                     onChange={(e) => { setCode(e.target.value.toUpperCase()); if (codeState === "invalid") setCodeState("idle"); }}
                     onKeyDown={(e) => e.key === "Enter" && handleCodeSubmit()}
@@ -219,8 +228,6 @@ export function Hero() {
         )}
       </div>
 
-      <Sticker text="invite only" rotation={-4} color={P.caramel} top="16%" right="16px" visible={phase >= 2} delay={0.4} />
-      <Sticker text="phones down" rotation={3} color={P.blush} bottom="20%" right="20px" visible={phase >= 2} delay={0.6} />
     </section>
   );
 }

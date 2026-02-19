@@ -19,7 +19,7 @@ export function StatsStripe() {
       className="relative bg-near-black px-5 py-9 sm:px-7"
       style={{ borderTop: `1px solid ${P.muted}10`, borderBottom: `1px solid ${P.muted}10` }}
     >
-      <div className="mx-auto grid max-w-[440px] grid-cols-4 gap-2 text-center">
+      <div className="mx-auto grid max-w-[440px] grid-cols-2 gap-2 text-center sm:grid-cols-4">
         {stats.map((s, i) => (
           <div
             key={i}

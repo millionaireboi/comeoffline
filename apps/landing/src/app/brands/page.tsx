@@ -8,7 +8,12 @@ import { BrandForm } from "@/components/brands/BrandForm";
 import { BrandsFooterCTA } from "@/components/brands/BrandsFooterCTA";
 import { Footer } from "@/components/shared/Footer";
 
-export const dynamic = "force-dynamic";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "for brands — come offline.",
+  description: "Partner with come offline. to create authentic, phone-free brand experiences in Bangalore.",
+};
 
 export default function BrandsPage() {
   return (

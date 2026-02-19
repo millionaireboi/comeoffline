@@ -23,8 +23,14 @@ html {
   color: rgba(155, 142, 130, 0.3);
 }
 
-input:focus,
-textarea:focus {
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid rgba(212, 165, 116, 0.5);
+  outline-offset: 2px;
+}
+
+input:focus:not(:focus-visible),
+textarea:focus:not(:focus-visible) {
   outline: none;
 }
 
@@ -121,4 +127,15 @@ textarea:focus {
 }
 .animate-grain {
   animation: grain 0.5s steps(1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

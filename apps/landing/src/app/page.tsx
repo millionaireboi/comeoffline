@@ -9,8 +9,6 @@ import { Events } from "@/components/consumer/Events";
 import { FinalCTA } from "@/components/consumer/FinalCTA";
 import { Footer } from "@/components/shared/Footer";
 
-export const dynamic = "force-dynamic";
-
 export default function HomePage() {
   return (
     <>

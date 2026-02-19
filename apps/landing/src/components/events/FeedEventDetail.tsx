@@ -90,6 +90,8 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
       style={{
         position: "fixed",
         inset: 0,
@@ -151,6 +153,7 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
             </span>
             <button
               onClick={onClose}
+              aria-label="Close event details"
               style={{
                 background: "none",
                 border: "none",

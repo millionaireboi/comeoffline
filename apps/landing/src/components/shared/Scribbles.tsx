@@ -4,7 +4,7 @@ import { P } from "./P";
 
 export function ScribbleArrow({ className = "" }: { className?: string }) {
   return (
-    <svg width="40" height="24" viewBox="0 0 40 24" fill="none" className={`block ${className}`}>
+    <svg aria-hidden="true" width="40" height="24" viewBox="0 0 40 24" fill="none" className={`block ${className}`}>
       <path
         d="M4 16C8 14 14 8 20 10C26 12 30 6 36 5"
         stroke={P.caramel + "45"}
@@ -33,7 +33,7 @@ export function ScribbleCircle({
   color?: string;
 }) {
   return (
-    <svg width={width} height="30" viewBox={`0 0 ${width} 30`} fill="none" className="block">
+    <svg aria-hidden="true" width={width} height="30" viewBox={`0 0 ${width} 30`} fill="none" className="block">
       <ellipse
         cx={width / 2}
         cy="15"
@@ -57,7 +57,7 @@ export function ScribbleStar({
   size?: number;
 }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" className="block">
+    <svg aria-hidden="true" width={size} height={size} viewBox="0 0 16 16" fill="none" className="block">
       <path
         d="M8 1L9.5 6H14L10.5 9L12 14L8 11L4 14L5.5 9L2 6H6.5L8 1Z"
         fill={color + "20"}

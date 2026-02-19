@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { ClientShell } from "@/components/ClientShell";
 import "./globals.css";
@@ -35,6 +35,7 @@ const caveat = localFont({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://comeoffline.com"),
   title: "come offline. — an invite-only community for people who still go outside.",
   description:
     "Curated, phone-free events in Bangalore. House parties, secret dinners, and creative sessions — where phones stay in a lockbox and real connections happen face to face.",
@@ -48,6 +49,10 @@ export const metadata: Metadata = {
     "curated events",
     "no phone parties",
   ],
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/logo.png",
+  },
   openGraph: {
     title: "come offline.",
     description: "an invite-only community for people who still believe the best connections happen face to face.",
@@ -65,6 +70,16 @@ export const metadata: Metadata = {
     index: true,
     follow: true,
   },
+  alternates: {
+    canonical: "https://comeoffline.com",
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -77,6 +92,24 @@ export default function RootLayout({
       <body
         className={`${dmSans.variable} ${dmMono.variable} ${instrumentSerif.variable} ${caveat.variable} font-sans antialiased`}
       >
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "Organization",
+              name: "come offline.",
+              url: "https://comeoffline.com",
+              description: "An invite-only community for people who still go outside. Curated, phone-free events in Bangalore.",
+              address: {
+                "@type": "PostalAddress",
+                addressLocality: "Bangalore",
+                addressCountry: "IN",
+              },
+              sameAs: ["https://instagram.com/comeoffline.blr"],
+            }),
+          }}
+        />
         <ClientShell>{children}</ClientShell>
       </body>
     </html>

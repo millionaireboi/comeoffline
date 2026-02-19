@@ -9,6 +9,7 @@ export function FloatingChatButton({ visible }: { visible: boolean }) {
   return (
     <button
       onClick={openChat}
+      aria-label="Open chat"
       className="fixed bottom-6 right-5 z-[900] flex h-[52px] w-[52px] cursor-pointer items-center justify-center rounded-full border-none bg-gate-black text-[22px] transition-all duration-300"
       style={{
         border: `1px solid ${P.caramel}30`,

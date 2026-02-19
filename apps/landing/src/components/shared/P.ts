@@ -19,3 +19,8 @@ export const P = {
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 export const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3001";
+
+if (typeof window === "undefined" && process.env.NODE_ENV === "production") {
+  if (!process.env.NEXT_PUBLIC_API_URL) console.warn("[comeoffline] NEXT_PUBLIC_API_URL not set — falling back to localhost");
+  if (!process.env.NEXT_PUBLIC_APP_URL) console.warn("[comeoffline] NEXT_PUBLIC_APP_URL not set — falling back to localhost");
+}

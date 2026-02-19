@@ -41,10 +41,13 @@ export function ChatBot() {
     setInput("");
     setQuickReplies([]);
     setLoading(true);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
     try {
       const res = await fetch(`${API_URL}/api/chat/public`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           messages: newMsgs.map((m) => ({
             role: m.role === "assistant" ? "assistant" : "user",
@@ -104,7 +107,7 @@ export function ChatBot() {
             setHandoffToken(entryData.data.handoff_token);
           }
         } catch {
-          // Account creation failed silently
+          setMessages((prev) => [...prev, { role: "assistant", text: "hmm, something went wrong creating your account. try the code path instead?" }]);
         }
       }
 
@@ -113,8 +116,14 @@ export function ChatBot() {
           setQuickReplies(["let me try again"]);
         }, 1000);
       }
-    } catch {
-      setMessages((prev) => [...prev, { role: "assistant", text: "oops, brain glitch. say that again?" }]);
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        setMessages((prev) => [...prev, { role: "assistant", text: "that took too long. try again?" }]);
+      } else {
+        setMessages((prev) => [...prev, { role: "assistant", text: "oops, brain glitch. say that again?" }]);
+      }
+    } finally {
+      clearTimeout(timeout);
     }
     setLoading(false);
   };
@@ -128,12 +137,20 @@ export function ChatBot() {
   if (!chatOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[1000] flex flex-col justify-end">
+    <div
+      className="fixed inset-0 z-[1000] flex flex-col justify-end"
+      onKeyDown={(e) => {
+        if (e.key === "Escape") closeChat();
+      }}
+    >
       <div
         onClick={closeChat}
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
       />
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Chat with come offline bot"
         className="relative flex max-h-[80vh] flex-col rounded-t-3xl bg-gate-black"
         style={{
           border: `1px solid ${P.muted}15`,
@@ -152,6 +169,7 @@ export function ChatBot() {
           </div>
           <button
             onClick={closeChat}
+            aria-label="Close chat"
             className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-none text-base text-muted"
             style={{ background: P.cream + "10" }}
           >
@@ -254,6 +272,7 @@ export function ChatBot() {
           />
           <button
             onClick={() => send(input)}
+            aria-label="Send message"
             className="cursor-pointer rounded-[14px] border-none bg-cream px-4 py-3 font-sans text-sm font-semibold text-gate-black"
           >
             {"\u2191"}

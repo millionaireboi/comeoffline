@@ -6,7 +6,7 @@ import path from "path";
 loadEnvConfig(path.resolve(__dirname, "../../"));
 
 const nextConfig: NextConfig = {
-  transpilePackages: ["@comeoffline/brand", "@comeoffline/types", "@comeoffline/ui"],
+  transpilePackages: ["@comeoffline/brand", "@comeoffline/types", "@comeoffline/ui", "@comeoffline/firebase"],
   experimental: {
     webpackBuildWorker: false, // Disable webpack workers to prevent hangs
   },

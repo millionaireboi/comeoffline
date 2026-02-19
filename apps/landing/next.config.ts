@@ -1,9 +1,4 @@
-import { loadEnvConfig } from "@next/env";
 import type { NextConfig } from "next";
-import path from "path";
-
-// Load env vars from the monorepo root .env
-loadEnvConfig(path.resolve(__dirname, "../../"));
 
 const nextConfig: NextConfig = {
   transpilePackages: ["@comeoffline/brand", "@comeoffline/types", "@comeoffline/ui"],

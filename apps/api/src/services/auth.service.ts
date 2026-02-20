@@ -1,6 +1,8 @@
 import { getDb, getAuthService } from "../config/firebase-admin";
-import { FieldValue, type DocumentReference, type DocumentData } from "firebase-admin/firestore";
+import { FieldValue } from "firebase-admin/firestore";
 import crypto from "crypto";
+import { isCodeUsable, recordCodeUsage } from "./vouch.service";
+import type { VouchCode, VouchCodeUsage, DiscoverySource } from "@comeoffline/types";
 
 interface ValidateCodeResult {
   valid: boolean;
@@ -99,46 +101,37 @@ export async function validateCode(
   name?: string,
   handle?: string,
   vibeTag?: string,
+  source?: DiscoverySource,
+  utmParams?: { utm_source?: string; utm_medium?: string; utm_campaign?: string },
 ): Promise<ValidateCodeResult> {
   const db = await getDb();
   const auth = await getAuthService();
   const normalizedCode = code.toUpperCase().trim();
 
-  // Step 1: Atomically find and claim the code using a transaction
-  let codeDocRef: DocumentReference;
-  let codeData: DocumentData;
+  // Step 1: Find the code and check if it's usable
+  const codesSnap = await db
+    .collection("vouch_codes")
+    .where("code", "==", normalizedCode)
+    .limit(1)
+    .get();
 
-  try {
-    const result = await db.runTransaction(async (transaction) => {
-      const codesSnap = await transaction.get(
-        db.collection("vouch_codes")
-          .where("code", "==", normalizedCode)
-          .where("status", "==", "unused")
-          .limit(1)
-      );
+  if (codesSnap.empty) {
+    return { valid: false, error: "Invalid code" };
+  }
 
-      if (codesSnap.empty) {
-        throw new Error("INVALID_CODE");
-      }
+  const codeDoc = codesSnap.docs[0];
+  const codeData = { id: codeDoc.id, ...codeDoc.data() } as VouchCode;
 
-      const doc = codesSnap.docs[0];
+  // Migrate legacy codes missing new fields
+  if (!codeData.type) codeData.type = "single";
+  if (!codeData.rules) codeData.rules = { max_uses: 1 };
+  if (codeData.uses === undefined) codeData.uses = 0;
+  if (!codeData.used_by) codeData.used_by = [];
 
-      // Atomically mark as used to prevent double-redemption
-      transaction.update(doc.ref, {
-        status: "used",
-        used_at: FieldValue.serverTimestamp(),
-      });
-
-      return { ref: doc.ref, data: doc.data() };
-    });
-
-    codeDocRef = result.ref;
-    codeData = result.data;
-  } catch (err) {
-    if (err instanceof Error && err.message === "INVALID_CODE") {
-      return { valid: false, error: "Invalid or used code" };
-    }
-    throw err;
+  // Check usability (expiry, max uses, paused, etc.)
+  const check = isCodeUsable(codeData);
+  if (!check.usable) {
+    return { valid: false, error: check.reason || "Code is not valid" };
   }
 
   // Step 2: Create Firebase Auth user
@@ -151,11 +144,6 @@ export async function validateCode(
       displayName,
     });
   } catch {
-    // Rollback: restore the code to unused
-    await codeDocRef.update({
-      status: "unused",
-      used_at: FieldValue.delete(),
-    });
     return { valid: false, error: "Failed to create user" };
   }
 
@@ -172,13 +160,29 @@ export async function validateCode(
     badges: [],
     status: "active",
     has_seen_welcome: false,
+    referral_source: source || undefined,
     created_at: FieldValue.serverTimestamp(),
   };
 
   await db.collection("users").doc(firebaseUser.uid).set(userData);
 
-  // Step 4: Update the vouch code with who used it
-  await codeDocRef.update({ used_by_id: firebaseUser.uid });
+  // Step 4: Record usage on the vouch code
+  const usage: VouchCodeUsage = {
+    user_id: firebaseUser.uid,
+    user_name: displayName,
+    used_at: new Date().toISOString(),
+    ...(source && { source }),
+    ...(utmParams?.utm_source && { utm_source: utmParams.utm_source }),
+    ...(utmParams?.utm_medium && { utm_medium: utmParams.utm_medium }),
+    ...(utmParams?.utm_campaign && { utm_campaign: utmParams.utm_campaign }),
+  };
+
+  try {
+    await recordCodeUsage(codeDoc.id, usage);
+  } catch (err) {
+    // Usage tracking failure shouldn't block user creation
+    console.error("[auth] Failed to record code usage:", err);
+  }
 
   // Step 5: Generate tokens for client sign-in
   const token = await auth.createCustomToken(firebaseUser.uid);

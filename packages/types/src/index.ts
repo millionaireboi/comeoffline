@@ -77,6 +77,8 @@ export interface TicketTier {
   opens_at?: string; // ISO date — when this tier becomes available
   description: string; // e.g. "for the ones who don't hesitate"
   per_person?: number; // defaults to 1. "2" for couples pass, etc.
+  sort_order?: number; // explicit ordering (0, 1, 2, ...)
+  auto_activate?: boolean; // auto-open when previous tier sells out/expires
 }
 
 export interface TimeSlot {
@@ -95,6 +97,91 @@ export interface TicketingConfig {
   time_slots?: TimeSlot[];
   max_per_user: number; // usually 1, but could be 2 for +1 events
   refund_policy?: string; // shown to user at checkout
+}
+
+// ── Checkout Add-ons ──────────────────────────────
+
+export interface CheckoutAddOn {
+  id: string;
+  name: string; // "Stay Booking", "Food Package", "Merch Bundle"
+  description: string;
+  image_url?: string;
+  price: number; // in paise
+  max_quantity: number; // max per order
+  available: number; // remaining inventory
+  required: boolean; // must select at least one
+}
+
+export interface CheckoutStep {
+  id: string;
+  title: string; // "Choose Your Stay", "Add Food Package"
+  description?: string;
+  type: "addon_select" | "info" | "pickup_select" | "seat_select";
+  add_ons?: CheckoutAddOn[]; // for addon_select type
+  image_url?: string;
+}
+
+export interface CheckoutConfig {
+  steps: CheckoutStep[];
+  enabled: boolean;
+}
+
+export interface PostBookingSection {
+  type: "what_to_bring" | "what_to_expect" | "schedule" | "custom";
+  title: string;
+  items: string[]; // bullet points or schedule items
+  icon?: string; // emoji
+}
+
+export interface PostBookingContent {
+  sections: PostBookingSection[];
+  custom_message?: string; // personal note from organizer
+  show_countdown: boolean;
+  show_venue_progress: boolean;
+  show_daily_quote: boolean;
+}
+
+// ── Seating ──────────────────────────────────────
+
+export type SeatingMode = "none" | "sections" | "seats" | "mixed";
+
+/** Section-based seating — capacity pools without individual seats */
+export interface SeatingSection {
+  id: string;
+  name: string; // "VIP Lounge", "General", "Front Row"
+  emoji?: string;
+  description?: string;
+  capacity: number;
+  booked: number;
+  price_override?: number; // if set, overrides tier price for this section
+  color?: string; // hex color for UI
+}
+
+/** Individual seat within a row */
+export interface Seat {
+  id: string; // "A1", "B12", etc.
+  row: string; // "A", "B", etc.
+  number: number; // 1, 2, 3...
+  status: "available" | "held" | "booked";
+  held_by?: string; // user_id when held/booked
+  section_id?: string; // link to parent section if mixed mode
+  price_override?: number;
+}
+
+/** Row definition for individual seating */
+export interface SeatRow {
+  id: string; // "A", "B", "C"...
+  label: string; // display label
+  seats_count: number;
+  section_id?: string; // optional parent section
+}
+
+export interface SeatingConfig {
+  mode: SeatingMode;
+  sections: SeatingSection[];
+  rows: SeatRow[];
+  seats: Seat[]; // populated from rows or manually set
+  allow_choice: boolean; // if false, seats auto-assigned
 }
 
 export interface Event {
@@ -121,6 +208,9 @@ export interface Event {
   status: EventStatus;
   ticketing?: TicketingConfig;
   is_free?: boolean; // shorthand: true if no ticketing or all tiers are price 0
+  post_booking?: PostBookingContent;
+  checkout?: CheckoutConfig;
+  seating?: SeatingConfig;
 }
 
 // ── RSVP ──────────────────────────────────────────
@@ -157,6 +247,10 @@ export interface Ticket {
   qr_code: string;
   pickup_point: string;
   time_slot?: string; // references TimeSlot.id if time slots enabled
+  add_ons?: Array<{ addon_id: string; name: string; quantity: number; price: number }>;
+  seat_id?: string; // e.g. "A5" — individual seat assignment
+  section_id?: string; // e.g. "vip" — section-based assignment
+  section_name?: string; // denormalized for display
   purchased_at: string;
   checked_in_at?: string;
 }
@@ -185,19 +279,45 @@ export interface Connection {
 
 // ── VouchCode ─────────────────────────────────────
 
-export type VouchCodeStatus = "unused" | "used" | "expired";
+export type VouchCodeStatus = "active" | "paused" | "expired" | "depleted";
+export type VouchCodeType = "single" | "multi" | "unlimited";
+export type DiscoverySource = "direct" | "instagram" | "twitter" | "friend" | "event" | "other";
+
+export interface VouchCodeUsage {
+  user_id: string;
+  user_name?: string;
+  used_at: string;
+  source?: DiscoverySource;
+  utm_source?: string;
+  utm_medium?: string;
+  utm_campaign?: string;
+}
+
+export interface VouchCodeRules {
+  max_uses: number | null; // null = unlimited
+  expires_at?: string; // ISO date, optional expiry
+  valid_from?: string; // ISO date, not usable before this
+  allowed_sources?: DiscoverySource[]; // restrict to specific discovery sources
+}
 
 export interface VouchCode {
   id: string;
   code: string;
-  owner_id: string; // "admin" for seed codes, user_id for earned codes
-  used_by_id?: string;
+  owner_id: string; // "admin" for seed/promo codes, user_id for earned codes
+  type: VouchCodeType; // single, multi, or unlimited
   status: VouchCodeStatus;
-  earned_from_event?: string; // undefined for admin-created seed codes
-  created_by_admin?: string; // admin user_id who created this code
+  rules: VouchCodeRules;
+  uses: number; // current usage count
+  used_by: VouchCodeUsage[]; // usage log — who used it and when
+  earned_from_event?: string;
+  created_by_admin?: string;
   created_at: string;
-  label?: string; // optional admin label for tracking batches (e.g., "Press Kit", "Founding 50")
+  label?: string; // batch label (e.g., "Press Kit", "Founding 50")
+  description?: string; // internal note for admins
 }
+
+// Legacy compat — single-use code used_by_id (first user)
+// Access via: code.used_by[0]?.user_id
 
 // ── Application ───────────────────────────────────
 

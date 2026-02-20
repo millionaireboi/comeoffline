@@ -42,7 +42,7 @@ router.get("/dashboard-stats", requireAdmin, async (_req, res) => {
       db.collection("events").where("status", "==", "live").count().get(),
       db.collection("tickets").where("status", "==", "confirmed").count().get(),
       db.collection("tickets").where("status", "==", "checked_in").count().get(),
-      db.collection("vouch_codes").where("status", "==", "used").count().get(),
+      db.collection("vouch_codes").where("status", "==", "depleted").count().get(),
       db.collection("contact_submissions").where("status", "==", "unread").count().get(),
       db.collection("brand_inquiries").where("status", "==", "new").count().get(),
     ]);

@@ -66,7 +66,11 @@ export async function approveApplication(
     await codeRef.set({
       code,
       owner_id: "system",
-      status: "unused",
+      type: "single",
+      status: "active",
+      rules: { max_uses: 1 },
+      uses: 0,
+      used_by: [],
       earned_from_event: "prove_yourself",
       created_at: new Date().toISOString(),
     });

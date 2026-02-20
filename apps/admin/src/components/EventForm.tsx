@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import type { Event, Zone, PickupPoint } from "@comeoffline/types";
+import type { Event, Zone, PickupPoint, TicketTier, TicketingConfig, PostBookingContent, PostBookingSection, CheckoutStep, CheckoutAddOn, SeatingMode, SeatingSection, SeatRow } from "@comeoffline/types";
 import { apiClient } from "@/lib/apiClient";
+import { EventPreview } from "@/components/EventPreview";
 
 // ── Types ────────────────────────────────────────
 
@@ -23,6 +24,18 @@ interface FormPickupPoint {
   name: string;
   time: string;
   capacity: string;
+}
+
+interface FormTier {
+  id: string;
+  name: string;
+  label: string;
+  price: string;
+  capacity: string;
+  deadline: string;
+  opens_at: string;
+  description: string;
+  per_person: string;
 }
 
 // ── Emoji Data ───────────────────────────────────
@@ -258,6 +271,859 @@ function PickupPointsBuilder({ points, onChange }: { points: FormPickupPoint[]; 
   );
 }
 
+function TierBuilder({ tiers, onChange }: { tiers: FormTier[]; onChange: (t: FormTier[]) => void }) {
+  const add = () => {
+    const idx = tiers.length;
+    const defaults: Record<number, { name: string; label: string; desc: string }> = {
+      0: { name: "early_bird", label: "Early Bird", desc: "for the ones who don't hesitate" },
+      1: { name: "regular", label: "Regular", desc: "standard entry" },
+      2: { name: "last_call", label: "Last Call", desc: "final chance to get in" },
+    };
+    const d = defaults[idx] || { name: `tier_${idx + 1}`, label: `Tier ${idx + 1}`, desc: "" };
+    onChange([...tiers, {
+      id: `tier_${Date.now()}`,
+      name: d.name,
+      label: d.label,
+      price: "",
+      capacity: "",
+      deadline: "",
+      opens_at: "",
+      description: d.desc,
+      per_person: "1",
+    }]);
+  };
+  const remove = (i: number) => onChange(tiers.filter((_, idx) => idx !== i));
+  const update = (i: number, field: keyof FormTier, val: string) => {
+    const next = [...tiers];
+    next[i] = { ...next[i], [field]: val };
+    onChange(next);
+  };
+
+  return (
+    <div>
+      <div className="mb-2.5 flex items-center justify-between">
+        <label className="font-mono text-[10px] uppercase tracking-[2px] text-muted">
+          ticket tiers
+        </label>
+        <button
+          type="button"
+          onClick={add}
+          className="rounded-lg bg-white/5 px-3 py-1.5 font-mono text-[10px] text-cream transition-colors hover:bg-white/10"
+        >
+          + add tier
+        </button>
+      </div>
+      <div className="flex flex-col gap-2.5">
+        {tiers.map((t, i) => (
+          <div
+            key={t.id}
+            className="rounded-xl border border-white/5 bg-white/[0.03] p-3.5"
+          >
+            <div className="mb-2.5 flex items-center justify-between">
+              <span className="font-mono text-[10px] text-caramel">
+                phase {i + 1}
+              </span>
+              <button
+                type="button"
+                onClick={() => remove(i)}
+                className="font-mono text-[10px] text-muted/40 transition-colors hover:text-muted"
+              >
+                remove
+              </button>
+            </div>
+            <div className="flex flex-col gap-2">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <span className="mb-1 block font-mono text-[9px] text-muted">internal name</span>
+                  <input
+                    type="text"
+                    placeholder="early_bird"
+                    value={t.name}
+                    onChange={(e) => update(i, "name", e.target.value)}
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-mono text-xs text-cream placeholder:text-muted/30 focus:border-caramel/50 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <span className="mb-1 block font-mono text-[9px] text-muted">display label</span>
+                  <input
+                    type="text"
+                    placeholder="Early Bird"
+                    value={t.label}
+                    onChange={(e) => update(i, "label", e.target.value)}
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-sans text-sm text-cream placeholder:text-muted/30 focus:border-caramel/50 focus:outline-none"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <span className="mb-1 block font-mono text-[9px] text-muted">price (paise)</span>
+                  <input
+                    type="number"
+                    placeholder="0"
+                    value={t.price}
+                    onChange={(e) => update(i, "price", e.target.value)}
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-mono text-xs text-cream placeholder:text-muted/30 focus:border-caramel/50 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <span className="mb-1 block font-mono text-[9px] text-muted">capacity</span>
+                  <input
+                    type="number"
+                    placeholder="20"
+                    value={t.capacity}
+                    onChange={(e) => update(i, "capacity", e.target.value)}
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-mono text-xs text-cream placeholder:text-muted/30 focus:border-caramel/50 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <span className="mb-1 block font-mono text-[9px] text-muted">per person</span>
+                  <input
+                    type="number"
+                    placeholder="1"
+                    value={t.per_person}
+                    onChange={(e) => update(i, "per_person", e.target.value)}
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-mono text-xs text-cream placeholder:text-muted/30 focus:border-caramel/50 focus:outline-none"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <span className="mb-1 block font-mono text-[9px] text-muted">opens at</span>
+                  <input
+                    type="datetime-local"
+                    value={t.opens_at}
+                    onChange={(e) => update(i, "opens_at", e.target.value)}
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-mono text-xs text-cream focus:border-caramel/50 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <span className="mb-1 block font-mono text-[9px] text-muted">deadline</span>
+                  <input
+                    type="datetime-local"
+                    value={t.deadline}
+                    onChange={(e) => update(i, "deadline", e.target.value)}
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-mono text-xs text-cream focus:border-caramel/50 focus:outline-none"
+                  />
+                </div>
+              </div>
+              <div>
+                <span className="mb-1 block font-mono text-[9px] text-muted">description</span>
+                <input
+                  type="text"
+                  placeholder="for the ones who don't hesitate"
+                  value={t.description}
+                  onChange={(e) => update(i, "description", e.target.value)}
+                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-sans text-xs text-cream placeholder:text-muted/30 focus:border-caramel/50 focus:outline-none"
+                />
+              </div>
+            </div>
+          </div>
+        ))}
+        {tiers.length === 0 && (
+          <div className="rounded-xl border-[1.5px] border-dashed border-white/10 p-6 text-center">
+            <p className="text-xs text-muted">no tiers — event will be free RSVP only</p>
+            <p className="mt-1 font-mono text-[10px] text-muted/40">add tiers to enable paid ticketing</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CheckoutStepBuilder({ steps, onChange }: { steps: CheckoutStep[]; onChange: (s: CheckoutStep[]) => void }) {
+  const addStep = (type: CheckoutStep["type"]) => {
+    const id = `step_${Date.now()}`;
+    const defaults: Record<string, { title: string }> = {
+      addon_select: { title: "Choose Add-ons" },
+      info: { title: "Important Info" },
+      pickup_select: { title: "Select Pickup Point" },
+      seat_select: { title: "Choose Your Seat" },
+    };
+    const d = defaults[type] || { title: "Step" };
+    const step: CheckoutStep = {
+      id,
+      title: d.title,
+      type,
+      ...(type === "addon_select" ? { add_ons: [] } : {}),
+    };
+    onChange([...steps, step]);
+  };
+
+  const removeStep = (i: number) => onChange(steps.filter((_, idx) => idx !== i));
+
+  const updateStep = (i: number, updates: Partial<CheckoutStep>) => {
+    const next = [...steps];
+    next[i] = { ...next[i], ...updates };
+    onChange(next);
+  };
+
+  const addAddon = (stepIdx: number) => {
+    const step = steps[stepIdx];
+    const addon: CheckoutAddOn = {
+      id: `addon_${Date.now()}`,
+      name: "",
+      description: "",
+      price: 0,
+      max_quantity: 1,
+      available: 100,
+      required: false,
+    };
+    updateStep(stepIdx, { add_ons: [...(step.add_ons || []), addon] });
+  };
+
+  const updateAddon = (stepIdx: number, addonIdx: number, updates: Partial<CheckoutAddOn>) => {
+    const step = steps[stepIdx];
+    const addons = [...(step.add_ons || [])];
+    addons[addonIdx] = { ...addons[addonIdx], ...updates };
+    updateStep(stepIdx, { add_ons: addons });
+  };
+
+  const removeAddon = (stepIdx: number, addonIdx: number) => {
+    const step = steps[stepIdx];
+    updateStep(stepIdx, { add_ons: (step.add_ons || []).filter((_, j) => j !== addonIdx) });
+  };
+
+  const inputClass = "w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-mono text-xs text-cream placeholder:text-muted/30 focus:border-caramel/50 focus:outline-none";
+
+  return (
+    <div>
+      <div className="mb-2.5 flex items-center justify-between">
+        <label className="font-mono text-[10px] uppercase tracking-[2px] text-muted">
+          checkout steps
+        </label>
+        <div className="flex gap-1">
+          {(["addon_select", "info", "pickup_select", "seat_select"] as const).map((type) => (
+            <button
+              key={type}
+              type="button"
+              onClick={() => addStep(type)}
+              className="rounded-lg bg-white/5 px-2 py-1 font-mono text-[9px] text-cream transition-colors hover:bg-white/10"
+            >
+              + {type.replace(/_/g, " ")}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2.5">
+        {steps.map((step, i) => (
+          <div key={step.id} className="rounded-xl border border-white/5 bg-white/[0.03] p-3.5">
+            <div className="mb-2.5 flex items-center justify-between">
+              <span className="font-mono text-[10px] text-caramel">
+                step {i + 1} — {step.type.replace(/_/g, " ")}
+              </span>
+              <button
+                type="button"
+                onClick={() => removeStep(i)}
+                className="font-mono text-[10px] text-muted/40 transition-colors hover:text-muted"
+              >
+                remove
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <input
+                type="text"
+                placeholder="Step title"
+                value={step.title}
+                onChange={(e) => updateStep(i, { title: e.target.value })}
+                className={inputClass.replace("text-xs", "text-sm")}
+              />
+              <input
+                type="text"
+                placeholder="Step description (optional)"
+                value={step.description || ""}
+                onChange={(e) => updateStep(i, { description: e.target.value })}
+                className={inputClass}
+              />
+            </div>
+
+            {/* Add-ons for addon_select type */}
+            {step.type === "addon_select" && (
+              <div className="mt-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="font-mono text-[9px] text-muted">add-ons</span>
+                  <button
+                    type="button"
+                    onClick={() => addAddon(i)}
+                    className="rounded bg-white/5 px-2 py-0.5 font-mono text-[9px] text-cream hover:bg-white/10"
+                  >
+                    + add option
+                  </button>
+                </div>
+                {(step.add_ons || []).map((addon, j) => (
+                  <div key={addon.id} className="mb-2 rounded-lg border border-white/5 bg-white/[0.02] p-2.5">
+                    <div className="mb-2 flex items-center justify-between">
+                      <span className="font-mono text-[8px] text-muted">option {j + 1}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeAddon(i, j)}
+                        className="font-mono text-[8px] text-muted/40 hover:text-muted"
+                      >
+                        remove
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        type="text"
+                        placeholder="Name (e.g., Stay - Shared Room)"
+                        value={addon.name}
+                        onChange={(e) => updateAddon(i, j, { name: e.target.value })}
+                        className={inputClass}
+                      />
+                      <input
+                        type="text"
+                        placeholder="Description"
+                        value={addon.description}
+                        onChange={(e) => updateAddon(i, j, { description: e.target.value })}
+                        className={inputClass}
+                      />
+                      <input
+                        type="number"
+                        placeholder="Price (paise)"
+                        value={addon.price || ""}
+                        onChange={(e) => updateAddon(i, j, { price: Number(e.target.value) || 0 })}
+                        className={inputClass}
+                      />
+                      <input
+                        type="number"
+                        placeholder="Available"
+                        value={addon.available || ""}
+                        onChange={(e) => updateAddon(i, j, { available: Number(e.target.value) || 0 })}
+                        className={inputClass}
+                      />
+                    </div>
+                    <div className="mt-2 flex items-center gap-3">
+                      <label className="flex cursor-pointer items-center gap-1.5">
+                        <input
+                          type="checkbox"
+                          checked={addon.required}
+                          onChange={(e) => updateAddon(i, j, { required: e.target.checked })}
+                          className="h-3 w-3 accent-caramel"
+                        />
+                        <span className="font-mono text-[9px] text-muted">required</span>
+                      </label>
+                      <div className="flex items-center gap-1">
+                        <span className="font-mono text-[9px] text-muted">max qty:</span>
+                        <input
+                          type="number"
+                          min="1"
+                          value={addon.max_quantity}
+                          onChange={(e) => updateAddon(i, j, { max_quantity: Number(e.target.value) || 1 })}
+                          className="w-12 rounded border border-white/10 bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-cream focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+        {steps.length === 0 && (
+          <div className="rounded-xl border-[1.5px] border-dashed border-white/10 p-6 text-center">
+            <p className="text-xs text-muted">no checkout steps — standard single-page checkout</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const SECTION_PRESETS: Record<string, { title: string; icon: string; items: string[] }> = {
+  what_to_bring: { title: "What to Bring", icon: "🎒", items: ["ID proof", "Comfortable shoes", "Good vibes"] },
+  what_to_expect: { title: "What to Expect", icon: "✨", items: ["Phone-free experience", "Curated music", "Surprise activities"] },
+  schedule: { title: "Schedule", icon: "🕐", items: ["7:00 PM — Doors open", "8:00 PM — Main event", "11:00 PM — Wrap up"] },
+  custom: { title: "Custom Section", icon: "📝", items: [] },
+};
+
+function PostBookingBuilder({
+  sections,
+  customMessage,
+  showCountdown,
+  showVenueProgress,
+  showDailyQuote,
+  onChange,
+}: {
+  sections: PostBookingSection[];
+  customMessage: string;
+  showCountdown: boolean;
+  showVenueProgress: boolean;
+  showDailyQuote: boolean;
+  onChange: (val: {
+    sections: PostBookingSection[];
+    customMessage: string;
+    showCountdown: boolean;
+    showVenueProgress: boolean;
+    showDailyQuote: boolean;
+  }) => void;
+}) {
+  const addSection = (type: PostBookingSection["type"]) => {
+    const preset = SECTION_PRESETS[type];
+    onChange({
+      sections: [...sections, { type, title: preset.title, items: preset.items, icon: preset.icon }],
+      customMessage,
+      showCountdown,
+      showVenueProgress,
+      showDailyQuote,
+    });
+  };
+
+  const removeSection = (i: number) => {
+    onChange({
+      sections: sections.filter((_, idx) => idx !== i),
+      customMessage,
+      showCountdown,
+      showVenueProgress,
+      showDailyQuote,
+    });
+  };
+
+  const updateSection = (i: number, updates: Partial<PostBookingSection>) => {
+    const next = [...sections];
+    next[i] = { ...next[i], ...updates };
+    onChange({ sections: next, customMessage, showCountdown, showVenueProgress, showDailyQuote });
+  };
+
+  return (
+    <div>
+      <div className="mb-2.5 flex items-center justify-between">
+        <label className="font-mono text-[10px] uppercase tracking-[2px] text-muted">
+          post-booking sections
+        </label>
+        <div className="flex gap-1">
+          {(["what_to_bring", "what_to_expect", "schedule", "custom"] as const).map((type) => (
+            <button
+              key={type}
+              type="button"
+              onClick={() => addSection(type)}
+              className="rounded-lg bg-white/5 px-2 py-1 font-mono text-[9px] text-cream transition-colors hover:bg-white/10"
+            >
+              + {type.replace(/_/g, " ")}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2.5">
+        {sections.map((s, i) => (
+          <div key={i} className="rounded-xl border border-white/5 bg-white/[0.03] p-3.5">
+            <div className="mb-2.5 flex items-center justify-between">
+              <span className="font-mono text-[10px] text-caramel">{s.icon} {s.type.replace(/_/g, " ")}</span>
+              <button
+                type="button"
+                onClick={() => removeSection(i)}
+                className="font-mono text-[10px] text-muted/40 transition-colors hover:text-muted"
+              >
+                remove
+              </button>
+            </div>
+            <div className="flex flex-col gap-2">
+              <input
+                type="text"
+                placeholder="Section title"
+                value={s.title}
+                onChange={(e) => updateSection(i, { title: e.target.value })}
+                className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-sans text-sm text-cream placeholder:text-muted/30 focus:border-caramel/50 focus:outline-none"
+              />
+              <textarea
+                placeholder="One item per line"
+                value={s.items.join("\n")}
+                onChange={(e) => updateSection(i, { items: e.target.value.split("\n") })}
+                rows={3}
+                className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-mono text-xs text-cream placeholder:text-muted/30 focus:border-caramel/50 focus:outline-none resize-y"
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Custom message */}
+      <div className="mt-3">
+        <label className="mb-1 block font-mono text-[9px] text-muted">personal message from organizer</label>
+        <textarea
+          placeholder="Hey! Can't wait to see you there..."
+          value={customMessage}
+          onChange={(e) => onChange({ sections, customMessage: e.target.value, showCountdown, showVenueProgress, showDailyQuote })}
+          rows={2}
+          className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-sans text-xs text-cream placeholder:text-muted/30 focus:border-caramel/50 focus:outline-none resize-y"
+        />
+      </div>
+
+      {/* Toggle options */}
+      <div className="mt-3 flex flex-wrap gap-3">
+        {[
+          { label: "countdown", checked: showCountdown, onChange: (v: boolean) => onChange({ sections, customMessage, showCountdown: v, showVenueProgress, showDailyQuote }) },
+          { label: "venue progress", checked: showVenueProgress, onChange: (v: boolean) => onChange({ sections, customMessage, showCountdown, showVenueProgress: v, showDailyQuote }) },
+          { label: "daily quote", checked: showDailyQuote, onChange: (v: boolean) => onChange({ sections, customMessage, showCountdown, showVenueProgress, showDailyQuote: v }) },
+        ].map((opt) => (
+          <label key={opt.label} className="flex cursor-pointer items-center gap-2">
+            <input
+              type="checkbox"
+              checked={opt.checked}
+              onChange={(e) => opt.onChange(e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-white/20 bg-white/5 accent-caramel"
+            />
+            <span className="font-mono text-[10px] text-muted">{opt.label}</span>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const SECTION_COLORS = ["#D4A574", "#D4654A", "#6B8E6B", "#7B68AE", "#5B8DB8", "#C9A84C"];
+
+interface FormSection {
+  id: string;
+  name: string;
+  emoji: string;
+  description: string;
+  capacity: string;
+  price_override: string;
+  color: string;
+}
+
+interface FormSeatRow {
+  id: string;
+  label: string;
+  seats_count: string;
+  section_id: string;
+}
+
+function SeatingBuilder({
+  mode,
+  sections,
+  rows,
+  allowChoice,
+  onModeChange,
+  onSectionsChange,
+  onRowsChange,
+  onAllowChoiceChange,
+}: {
+  mode: SeatingMode;
+  sections: FormSection[];
+  rows: FormSeatRow[];
+  allowChoice: boolean;
+  onModeChange: (m: SeatingMode) => void;
+  onSectionsChange: (s: FormSection[]) => void;
+  onRowsChange: (r: FormSeatRow[]) => void;
+  onAllowChoiceChange: (v: boolean) => void;
+}) {
+  const addSection = () => {
+    const idx = sections.length;
+    onSectionsChange([...sections, {
+      id: `sec_${Date.now()}`,
+      name: "",
+      emoji: "🎯",
+      description: "",
+      capacity: "",
+      price_override: "",
+      color: SECTION_COLORS[idx % SECTION_COLORS.length],
+    }]);
+  };
+
+  const updateSection = (i: number, updates: Partial<FormSection>) => {
+    const next = [...sections];
+    next[i] = { ...next[i], ...updates };
+    onSectionsChange(next);
+  };
+
+  const removeSection = (i: number) => {
+    const removed = sections[i];
+    onSectionsChange(sections.filter((_, idx) => idx !== i));
+    // Clear section_id references in rows
+    onRowsChange(rows.map((r) => r.section_id === removed.id ? { ...r, section_id: "" } : r));
+  };
+
+  const addRow = () => {
+    const nextLabel = String.fromCharCode(65 + rows.length); // A, B, C...
+    onRowsChange([...rows, {
+      id: `row_${Date.now()}`,
+      label: nextLabel,
+      seats_count: "10",
+      section_id: "",
+    }]);
+  };
+
+  const updateRow = (i: number, updates: Partial<FormSeatRow>) => {
+    const next = [...rows];
+    next[i] = { ...next[i], ...updates };
+    onRowsChange(next);
+  };
+
+  const removeRow = (i: number) => onRowsChange(rows.filter((_, idx) => idx !== i));
+
+  const inputClass = "w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-mono text-xs text-cream placeholder:text-muted/30 focus:border-caramel/50 focus:outline-none";
+
+  const totalSectionCap = sections.reduce((s, sec) => s + (Number(sec.capacity) || 0), 0);
+  const totalSeatCount = rows.reduce((s, r) => s + (Number(r.seats_count) || 0), 0);
+
+  return (
+    <div>
+      {/* Mode selector */}
+      <div className="mb-3">
+        <label className="mb-2 block font-mono text-[9px] text-muted">seating mode</label>
+        <div className="flex gap-1.5">
+          {(["none", "sections", "seats", "mixed"] as SeatingMode[]).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => onModeChange(m)}
+              className={`rounded-lg px-3 py-1.5 font-mono text-[10px] transition-colors ${
+                mode === m ? "bg-caramel text-gate-black" : "bg-white/5 text-cream hover:bg-white/10"
+              }`}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Sections (for sections or mixed mode) */}
+      {(mode === "sections" || mode === "mixed") && (
+        <div className="mb-4">
+          <div className="mb-2 flex items-center justify-between">
+            <label className="font-mono text-[10px] uppercase tracking-[2px] text-muted">sections</label>
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[9px] text-muted/60">
+                total: {totalSectionCap}
+              </span>
+              <button
+                type="button"
+                onClick={addSection}
+                className="rounded-lg bg-white/5 px-3 py-1 font-mono text-[10px] text-cream transition-colors hover:bg-white/10"
+              >
+                + add section
+              </button>
+            </div>
+          </div>
+          <div className="flex flex-col gap-2.5">
+            {sections.map((sec, i) => (
+              <div key={sec.id} className="rounded-xl border border-white/5 bg-white/[0.03] p-3.5">
+                <div className="mb-2.5 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="h-3 w-3 rounded-full" style={{ background: sec.color }} />
+                    <span className="font-mono text-[10px] text-caramel">section {i + 1}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeSection(i)}
+                    className="font-mono text-[10px] text-muted/40 transition-colors hover:text-muted"
+                  >
+                    remove
+                  </button>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <div className="grid grid-cols-[auto_1fr] gap-2">
+                    <EmojiPickerMini value={sec.emoji} onChange={(v) => updateSection(i, { emoji: v })} />
+                    <input
+                      type="text"
+                      placeholder="Section name (e.g. VIP Lounge)"
+                      value={sec.name}
+                      onChange={(e) => updateSection(i, { name: e.target.value })}
+                      className={inputClass.replace("text-xs", "text-sm")}
+                    />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Description (optional)"
+                    value={sec.description}
+                    onChange={(e) => updateSection(i, { description: e.target.value })}
+                    className={inputClass}
+                  />
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <span className="mb-1 block font-mono text-[9px] text-muted">capacity</span>
+                      <input
+                        type="number"
+                        placeholder="50"
+                        value={sec.capacity}
+                        onChange={(e) => updateSection(i, { capacity: e.target.value })}
+                        className={inputClass}
+                      />
+                    </div>
+                    <div>
+                      <span className="mb-1 block font-mono text-[9px] text-muted">price override</span>
+                      <input
+                        type="number"
+                        placeholder="—"
+                        value={sec.price_override}
+                        onChange={(e) => updateSection(i, { price_override: e.target.value })}
+                        className={inputClass}
+                      />
+                    </div>
+                    <div>
+                      <span className="mb-1 block font-mono text-[9px] text-muted">color</span>
+                      <input
+                        type="color"
+                        value={sec.color}
+                        onChange={(e) => updateSection(i, { color: e.target.value })}
+                        className="h-[34px] w-full cursor-pointer appearance-none rounded-lg border border-white/10 bg-transparent p-0"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {sections.length === 0 && (
+              <div className="rounded-xl border-[1.5px] border-dashed border-white/10 p-5 text-center">
+                <p className="text-xs text-muted">no sections — add zones like VIP, General, Front Row</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Seat Rows (for seats or mixed mode) */}
+      {(mode === "seats" || mode === "mixed") && (
+        <div className="mb-4">
+          <div className="mb-2 flex items-center justify-between">
+            <label className="font-mono text-[10px] uppercase tracking-[2px] text-muted">seat rows</label>
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[9px] text-muted/60">
+                total: {totalSeatCount} seats
+              </span>
+              <button
+                type="button"
+                onClick={addRow}
+                className="rounded-lg bg-white/5 px-3 py-1 font-mono text-[10px] text-cream transition-colors hover:bg-white/10"
+              >
+                + add row
+              </button>
+            </div>
+          </div>
+          <div className="flex flex-col gap-2">
+            {rows.map((row, i) => (
+              <div key={row.id} className="flex items-center gap-2 rounded-xl border border-white/5 bg-white/[0.03] p-2.5">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/5 font-mono text-sm font-medium text-caramel">
+                  {row.label}
+                </div>
+                <div className="flex flex-1 gap-2">
+                  <div className="flex-1">
+                    <input
+                      type="text"
+                      placeholder="Row label"
+                      value={row.label}
+                      onChange={(e) => updateRow(i, { label: e.target.value })}
+                      className={inputClass}
+                    />
+                  </div>
+                  <div className="w-20">
+                    <input
+                      type="number"
+                      placeholder="Seats"
+                      value={row.seats_count}
+                      onChange={(e) => updateRow(i, { seats_count: e.target.value })}
+                      className={inputClass}
+                    />
+                  </div>
+                  {mode === "mixed" && sections.length > 0 && (
+                    <select
+                      value={row.section_id}
+                      onChange={(e) => updateRow(i, { section_id: e.target.value })}
+                      className="rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 font-mono text-[10px] text-cream focus:border-caramel/50 focus:outline-none"
+                    >
+                      <option value="">no section</option>
+                      {sections.map((s) => (
+                        <option key={s.id} value={s.id}>{s.name || `Section ${sections.indexOf(s) + 1}`}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeRow(i)}
+                  className="shrink-0 p-1 text-sm text-muted/40 transition-colors hover:text-muted"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+            {rows.length === 0 && (
+              <div className="rounded-xl border-[1.5px] border-dashed border-white/10 p-5 text-center">
+                <p className="text-xs text-muted">no rows — add seat rows (A, B, C...)</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Allow choice toggle */}
+      {mode !== "none" && (
+        <label className="flex cursor-pointer items-center gap-2">
+          <input
+            type="checkbox"
+            checked={allowChoice}
+            onChange={(e) => onAllowChoiceChange(e.target.checked)}
+            className="h-3.5 w-3.5 rounded border-white/20 bg-white/5 accent-caramel"
+          />
+          <span className="font-mono text-[10px] text-muted">
+            let users choose their {mode === "sections" ? "section" : mode === "seats" ? "seat" : "section or seat"}
+          </span>
+        </label>
+      )}
+
+      {/* Layout preview */}
+      {mode !== "none" && (sections.length > 0 || rows.length > 0) && (
+        <div className="mt-3 rounded-xl border border-white/5 bg-white/[0.02] p-3.5">
+          <span className="mb-2 block font-mono text-[9px] uppercase tracking-[1px] text-muted/60">preview</span>
+
+          {/* Stage */}
+          <div className="mx-auto mb-3 h-5 w-3/4 rounded-b-[20px] bg-white/5 text-center font-mono text-[8px] leading-5 text-muted/40">
+            STAGE
+          </div>
+
+          {/* Section-based preview */}
+          {(mode === "sections" || mode === "mixed") && sections.length > 0 && (
+            <div className="mb-2 flex flex-wrap justify-center gap-1.5">
+              {sections.map((sec) => (
+                <div
+                  key={sec.id}
+                  className="flex flex-col items-center rounded-lg border border-white/5 px-3 py-2"
+                  style={{ borderColor: sec.color + "40", background: sec.color + "10" }}
+                >
+                  <span className="text-sm">{sec.emoji}</span>
+                  <span className="font-mono text-[8px] text-cream">{sec.name || "—"}</span>
+                  <span className="font-mono text-[7px] text-muted">{sec.capacity || "0"} cap</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Seat-based preview */}
+          {(mode === "seats" || mode === "mixed") && rows.length > 0 && (
+            <div className="flex flex-col items-center gap-1">
+              {rows.map((row) => {
+                const count = Number(row.seats_count) || 0;
+                const section = sections.find((s) => s.id === row.section_id);
+                const seatColor = section?.color || "#D4A574";
+                return (
+                  <div key={row.id} className="flex items-center gap-1.5">
+                    <span className="w-4 text-right font-mono text-[8px] text-muted">{row.label}</span>
+                    <div className="flex gap-0.5">
+                      {Array.from({ length: Math.min(count, 20) }).map((_, j) => (
+                        <div
+                          key={j}
+                          className="h-2.5 w-2.5 rounded-sm"
+                          style={{ background: seatColor + "60" }}
+                        />
+                      ))}
+                      {count > 20 && (
+                        <span className="font-mono text-[7px] text-muted">+{count - 20}</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main EventForm Component ─────────────────────
 
 export function EventForm({ event, onSave, onCancel, serifClassName = "" }: EventFormProps) {
@@ -288,9 +1154,140 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
       capacity: p.capacity?.toString() || "",
     })) || []
   );
+  const [ticketingEnabled, setTicketingEnabled] = useState(event?.ticketing?.enabled || false);
+  const [tiers, setTiers] = useState<FormTier[]>(
+    event?.ticketing?.tiers?.map((t) => ({
+      id: t.id,
+      name: t.name,
+      label: t.label,
+      price: t.price.toString(),
+      capacity: t.capacity.toString(),
+      deadline: t.deadline ? t.deadline.slice(0, 16) : "",
+      opens_at: t.opens_at ? t.opens_at.slice(0, 16) : "",
+      description: t.description,
+      per_person: (t.per_person || 1).toString(),
+    })) || []
+  );
+  const [maxPerUser, setMaxPerUser] = useState((event?.ticketing?.max_per_user || 1).toString());
+  const [refundPolicy, setRefundPolicy] = useState(event?.ticketing?.refund_policy || "");
+  const [checkoutEnabled, setCheckoutEnabled] = useState(event?.checkout?.enabled || false);
+  const [checkoutSteps, setCheckoutSteps] = useState<CheckoutStep[]>(event?.checkout?.steps || []);
+  const [postBookingSections, setPostBookingSections] = useState<PostBookingSection[]>(
+    event?.post_booking?.sections || []
+  );
+  const [postBookingMessage, setPostBookingMessage] = useState(event?.post_booking?.custom_message || "");
+  const [showCountdown, setShowCountdown] = useState(event?.post_booking?.show_countdown ?? true);
+  const [showVenueProgress, setShowVenueProgress] = useState(event?.post_booking?.show_venue_progress ?? true);
+  const [showDailyQuote, setShowDailyQuote] = useState(event?.post_booking?.show_daily_quote ?? true);
+  const [seatingMode, setSeatingMode] = useState<SeatingMode>(event?.seating?.mode || "none");
+  const [seatingSections, setSeatingSections] = useState<FormSection[]>(
+    event?.seating?.sections?.map((s) => ({
+      id: s.id,
+      name: s.name,
+      emoji: s.emoji || "🎯",
+      description: s.description || "",
+      capacity: s.capacity.toString(),
+      price_override: s.price_override?.toString() || "",
+      color: s.color || "#D4A574",
+    })) || []
+  );
+  const [seatRows, setSeatRows] = useState<FormSeatRow[]>(
+    event?.seating?.rows?.map((r) => ({
+      id: r.id,
+      label: r.label,
+      seats_count: r.seats_count.toString(),
+      section_id: r.section_id || "",
+    })) || []
+  );
+  const [allowSeatChoice, setAllowSeatChoice] = useState(event?.seating?.allow_choice ?? true);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [showPreview, setShowPreview] = useState(false);
+
+  function buildPreviewEvent(): Event {
+    return {
+      id: event?.id || "preview",
+      title: title.trim() || "Event Title",
+      tagline: tagline.trim(),
+      description: description.trim(),
+      date: date || "2026-03-01",
+      time: time.trim() || "8:00 PM",
+      total_spots: Number(totalSpots) || 50,
+      spots_taken: event?.spots_taken || 0,
+      tag: tag.trim(),
+      emoji: emoji || "🎯",
+      accent: accent,
+      accent_dark: accentDark,
+      dress_code: dressCode.trim(),
+      includes: includes.split("\n").map((s) => s.trim()).filter(Boolean),
+      zones: zones.map((z) => ({ icon: z.icon, name: z.name.trim(), desc: z.desc.trim() })),
+      venue_name: venueName.trim(),
+      venue_area: venueArea.trim(),
+      venue_address: venueAddress.trim(),
+      venue_reveal_date: venueRevealDate,
+      pickup_points: pickupPoints.map((p) => ({
+        name: p.name.trim(),
+        time: p.time.trim(),
+        capacity: Number(p.capacity) || 0,
+      })),
+      ticketing: ticketingEnabled ? {
+        enabled: true,
+        tiers: tiers.map((t) => ({
+          id: t.id,
+          name: t.name.trim(),
+          label: t.label.trim(),
+          price: Number(t.price) || 0,
+          capacity: Number(t.capacity) || 0,
+          sold: 0,
+          deadline: t.deadline ? new Date(t.deadline).toISOString() : "",
+          opens_at: t.opens_at ? new Date(t.opens_at).toISOString() : undefined,
+          description: t.description.trim(),
+          per_person: Number(t.per_person) || 1,
+        })),
+        time_slots_enabled: false,
+        max_per_user: Number(maxPerUser) || 1,
+        refund_policy: refundPolicy.trim() || undefined,
+      } : { enabled: false, tiers: [], time_slots_enabled: false, max_per_user: 1 },
+      is_free: !ticketingEnabled || tiers.every((t) => Number(t.price) === 0),
+      checkout: checkoutEnabled && checkoutSteps.length > 0 ? {
+        enabled: true,
+        steps: checkoutSteps,
+      } : undefined,
+      post_booking: postBookingSections.length > 0 || postBookingMessage ? {
+        sections: postBookingSections.map((s) => ({
+          ...s,
+          items: s.items.filter((item) => item.trim()),
+        })),
+        custom_message: postBookingMessage.trim() || undefined,
+        show_countdown: showCountdown,
+        show_venue_progress: showVenueProgress,
+        show_daily_quote: showDailyQuote,
+      } : undefined,
+      seating: seatingMode !== "none" ? {
+        mode: seatingMode,
+        sections: seatingSections.map((s) => ({
+          id: s.id,
+          name: s.name.trim(),
+          emoji: s.emoji,
+          description: s.description.trim() || undefined,
+          capacity: Number(s.capacity) || 0,
+          booked: 0,
+          price_override: s.price_override ? Number(s.price_override) : undefined,
+          color: s.color,
+        })),
+        rows: seatRows.map((r) => ({
+          id: r.id,
+          label: r.label.trim(),
+          seats_count: Number(r.seats_count) || 0,
+          section_id: r.section_id || undefined,
+        })),
+        seats: [],
+        allow_choice: allowSeatChoice,
+      } : undefined,
+      status: event?.status || "draft",
+    } as Event;
+  }
 
   async function handleSubmit(status: "draft" | "upcoming") {
     if (!title.trim()) {
@@ -328,6 +1325,69 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
         time: p.time.trim(),
         capacity: Number(p.capacity) || 0,
       })),
+      ticketing: ticketingEnabled ? {
+        enabled: true,
+        tiers: tiers.map((t) => ({
+          id: t.id,
+          name: t.name.trim(),
+          label: t.label.trim(),
+          price: Number(t.price) || 0,
+          capacity: Number(t.capacity) || 0,
+          sold: 0,
+          deadline: t.deadline ? new Date(t.deadline).toISOString() : "",
+          opens_at: t.opens_at ? new Date(t.opens_at).toISOString() : undefined,
+          description: t.description.trim(),
+          per_person: Number(t.per_person) || 1,
+        })),
+        time_slots_enabled: false,
+        max_per_user: Number(maxPerUser) || 1,
+        refund_policy: refundPolicy.trim() || undefined,
+      } : { enabled: false, tiers: [], time_slots_enabled: false, max_per_user: 1 },
+      is_free: !ticketingEnabled || tiers.every((t) => Number(t.price) === 0),
+      checkout: checkoutEnabled && checkoutSteps.length > 0 ? {
+        enabled: true,
+        steps: checkoutSteps,
+      } : undefined,
+      post_booking: postBookingSections.length > 0 || postBookingMessage ? {
+        sections: postBookingSections.map((s) => ({
+          ...s,
+          items: s.items.filter((item) => item.trim()),
+        })),
+        custom_message: postBookingMessage.trim() || undefined,
+        show_countdown: showCountdown,
+        show_venue_progress: showVenueProgress,
+        show_daily_quote: showDailyQuote,
+      } : undefined,
+      seating: seatingMode !== "none" ? {
+        mode: seatingMode,
+        sections: seatingSections.map((s) => ({
+          id: s.id,
+          name: s.name.trim(),
+          emoji: s.emoji,
+          description: s.description.trim() || undefined,
+          capacity: Number(s.capacity) || 0,
+          booked: 0,
+          price_override: s.price_override ? Number(s.price_override) : undefined,
+          color: s.color,
+        })),
+        rows: seatRows.map((r) => ({
+          id: r.id,
+          label: r.label.trim(),
+          seats_count: Number(r.seats_count) || 0,
+          section_id: r.section_id || undefined,
+        })),
+        seats: seatRows.flatMap((r) => {
+          const count = Number(r.seats_count) || 0;
+          return Array.from({ length: count }, (_, i) => ({
+            id: `${r.label}${i + 1}`,
+            row: r.label,
+            number: i + 1,
+            status: "available" as const,
+            section_id: r.section_id || undefined,
+          }));
+        }),
+        allow_choice: allowSeatChoice,
+      } : undefined,
       status,
     };
 
@@ -563,6 +1623,106 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
           <p className="mt-1.5 font-mono text-[10px] text-muted/40">one item per line</p>
         </div>
 
+        {/* Ticketing */}
+        <div className="rounded-xl border border-white/5 bg-white/[0.03] p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <label className="font-mono text-[10px] uppercase tracking-[2px] text-muted">
+                ticketing
+              </label>
+              <p className="mt-0.5 text-[11px] text-muted/60">enable paid tickets with tier phases</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setTicketingEnabled(!ticketingEnabled)}
+              className={`relative h-6 w-11 rounded-full transition-colors ${
+                ticketingEnabled ? "bg-caramel" : "bg-white/10"
+              }`}
+            >
+              <div
+                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
+                  ticketingEnabled ? "translate-x-[22px]" : "translate-x-0.5"
+                }`}
+              />
+            </button>
+          </div>
+
+          {ticketingEnabled && (
+            <div className="space-y-3">
+              <TierBuilder tiers={tiers} onChange={setTiers} />
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <span className="mb-1 block font-mono text-[9px] text-muted">max tickets per user</span>
+                  <input
+                    type="number"
+                    min="1"
+                    value={maxPerUser}
+                    onChange={(e) => setMaxPerUser(e.target.value)}
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-mono text-xs text-cream focus:border-caramel/50 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <span className="mb-1 block font-mono text-[9px] text-muted">refund policy</span>
+                  <input
+                    type="text"
+                    placeholder="No refunds after 24hrs"
+                    value={refundPolicy}
+                    onChange={(e) => setRefundPolicy(e.target.value)}
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-sans text-xs text-cream placeholder:text-muted/30 focus:border-caramel/50 focus:outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Checkout Steps */}
+        <div className="rounded-xl border border-white/5 bg-white/[0.03] p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <label className="font-mono text-[10px] uppercase tracking-[2px] text-muted">
+                checkout flow
+              </label>
+              <p className="mt-0.5 text-[11px] text-muted/60">add-ons, info steps, or pickup selection during purchase</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setCheckoutEnabled(!checkoutEnabled)}
+              className={`relative h-6 w-11 rounded-full transition-colors ${
+                checkoutEnabled ? "bg-caramel" : "bg-white/10"
+              }`}
+            >
+              <div
+                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
+                  checkoutEnabled ? "translate-x-[22px]" : "translate-x-0.5"
+                }`}
+              />
+            </button>
+          </div>
+
+          {checkoutEnabled && (
+            <CheckoutStepBuilder steps={checkoutSteps} onChange={setCheckoutSteps} />
+          )}
+        </div>
+
+        {/* Seating Arrangement */}
+        <div className="rounded-xl border border-white/5 bg-white/[0.03] p-4">
+          <label className="mb-1 block font-mono text-[10px] uppercase tracking-[2px] text-muted">
+            seating arrangement
+          </label>
+          <p className="mb-3 text-[11px] text-muted/60">sections for zones, seats for individual selection, or both</p>
+          <SeatingBuilder
+            mode={seatingMode}
+            sections={seatingSections}
+            rows={seatRows}
+            allowChoice={allowSeatChoice}
+            onModeChange={setSeatingMode}
+            onSectionsChange={setSeatingSections}
+            onRowsChange={setSeatRows}
+            onAllowChoiceChange={setAllowSeatChoice}
+          />
+        </div>
+
         {/* Zones Builder */}
         <ZonesBuilder zones={zones} onChange={setZones} />
 
@@ -620,6 +1780,28 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
         {/* Pickup Points Builder */}
         <PickupPointsBuilder points={pickupPoints} onChange={setPickupPoints} />
 
+        {/* Post-Booking Experience */}
+        <div className="rounded-xl border border-white/5 bg-white/[0.03] p-4">
+          <label className="mb-1 block font-mono text-[10px] uppercase tracking-[2px] text-muted">
+            post-booking experience
+          </label>
+          <p className="mb-3 text-[11px] text-muted/60">what users see after confirming their ticket</p>
+          <PostBookingBuilder
+            sections={postBookingSections}
+            customMessage={postBookingMessage}
+            showCountdown={showCountdown}
+            showVenueProgress={showVenueProgress}
+            showDailyQuote={showDailyQuote}
+            onChange={({ sections, customMessage, showCountdown: sc, showVenueProgress: svp, showDailyQuote: sdq }) => {
+              setPostBookingSections(sections);
+              setPostBookingMessage(customMessage);
+              setShowCountdown(sc);
+              setShowVenueProgress(svp);
+              setShowDailyQuote(sdq);
+            }}
+          />
+        </div>
+
         {/* Action Buttons */}
         <div className="flex gap-2.5 pt-2">
           <button
@@ -629,6 +1811,13 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
             className="flex-1 rounded-xl bg-white/5 py-3 font-mono text-[11px] uppercase tracking-[2px] text-muted transition-colors hover:bg-white/10 disabled:opacity-50"
           >
             cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowPreview(true)}
+            className="flex-1 rounded-xl bg-white/5 py-3 font-mono text-[11px] uppercase tracking-[2px] text-cream transition-colors hover:bg-white/10"
+          >
+            preview
           </button>
           <button
             type="button"
@@ -648,6 +1837,10 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
           </button>
         </div>
       </div>
+
+      {showPreview && (
+        <EventPreview event={buildPreviewEvent()} onClose={() => setShowPreview(false)} />
+      )}
     </div>
   );
 }

@@ -106,7 +106,7 @@ export async function getUserProfile(userId: string): Promise<ProfileData | null
     ? vouchResult.value.docs.map((d) => d.data() as VouchCode)
     : (console.warn("[profile] Vouch codes query failed:", (vouchResult as PromiseRejectedResult).reason), [] as VouchCode[]);
 
-  const vouchUsed = vouchCodes.filter((c) => c.status === "used").length;
+  const vouchUsed = vouchCodes.filter((c) => c.status === "depleted" || c.uses > 0).length;
 
   return {
     user,

@@ -63,7 +63,15 @@ export function EventFeed() {
 
   // Ticket purchase flow for ticketed events
   const handleTicketPurchase = useCallback(
-    async (event: Event, tierId: string, pickupPoint?: string, timeSlotId?: string) => {
+    async (
+      event: Event,
+      tierId: string,
+      pickupPoint?: string,
+      timeSlotId?: string,
+      addOns?: Array<{ addon_id: string; name: string; quantity: number; price: number }>,
+      seatId?: string,
+      sectionId?: string,
+    ) => {
       setActionLoading(true);
       try {
         const token = await getIdToken();
@@ -76,6 +84,9 @@ export function EventFeed() {
             tier_id: tierId,
             pickup_point: pickupPoint,
             time_slot_id: timeSlotId,
+            add_ons: addOns && addOns.length > 0 ? addOns : undefined,
+            seat_id: seatId || undefined,
+            section_id: sectionId || undefined,
           }),
         });
         if (data.data) {
@@ -166,8 +177,8 @@ export function EventFeed() {
           event={detailEvent}
           onClose={() => setDetailEvent(null)}
           onRsvp={() => handleRsvp(detailEvent)}
-          onTicketPurchase={(tierId, pickupPoint, timeSlotId) =>
-            handleTicketPurchase(detailEvent, tierId, pickupPoint, timeSlotId)
+          onTicketPurchase={(tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId) =>
+            handleTicketPurchase(detailEvent, tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId)
           }
           loading={actionLoading}
         />

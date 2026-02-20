@@ -206,8 +206,13 @@ export async function validateUser(
           id: crypto.randomUUID(),
           code,
           owner_id: userId,
-          status: "unused",
+          type: "single",
+          status: "active",
+          rules: { max_uses: 1 },
+          uses: 0,
+          used_by: [],
           earned_from_event: eventId || "validation",
+          created_at: new Date().toISOString(),
         });
       }
       break;

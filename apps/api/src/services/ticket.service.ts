@@ -20,6 +20,9 @@ export async function createTicket(
   tierId: string,
   pickupPoint?: string,
   timeSlotId?: string,
+  addOns?: Array<{ addon_id: string; name: string; quantity: number; price: number }>,
+  seatId?: string,
+  sectionId?: string,
 ): Promise<CreateTicketResult> {
   const db = await getDb();
   return db.runTransaction(async (tx) => {
@@ -100,6 +103,31 @@ export async function createTicket(
       }
     }
 
+    // Validate seating selection
+    const seating = event.seating;
+    let assignedSectionName: string | undefined;
+    if (seating && seating.mode !== "none") {
+      if (sectionId) {
+        const section = seating.sections?.find((s: { id: string }) => s.id === sectionId);
+        if (!section) {
+          return { success: false, error: "Invalid section" };
+        }
+        if (section.booked >= section.capacity) {
+          return { success: false, error: "This section is full" };
+        }
+        assignedSectionName = section.name;
+      }
+      if (seatId) {
+        const seat = seating.seats?.find((s: { id: string }) => s.id === seatId);
+        if (!seat) {
+          return { success: false, error: "Invalid seat" };
+        }
+        if (seat.status !== "available") {
+          return { success: false, error: "This seat is already taken" };
+        }
+      }
+    }
+
     // Check overall capacity
     if (event.spots_taken >= event.total_spots) {
       return { success: false, error: "Event is full" };
@@ -108,8 +136,12 @@ export async function createTicket(
     // Assign pickup point
     const assignedPickup = pickupPoint || event.pickup_points?.[0]?.name || "TBD";
 
+    // Calculate add-on total
+    const addOnTotal = (addOns || []).reduce((sum, a) => sum + a.price * a.quantity, 0);
+
     // Determine price and status
-    const price = selectedTier?.price || 0;
+    const tierPrice = selectedTier?.price || 0;
+    const price = tierPrice + addOnTotal;
     const quantity = selectedTier?.per_person || 1;
     const isFree = price === 0 || event.is_free || !ticketing.enabled;
     const status = isFree ? "confirmed" : "pending_payment";
@@ -135,6 +167,10 @@ export async function createTicket(
       qr_code: qrCode,
       pickup_point: assignedPickup,
       time_slot: timeSlotId || null,
+      add_ons: addOns && addOns.length > 0 ? addOns : null,
+      seat_id: seatId || null,
+      section_id: sectionId || null,
+      section_name: assignedSectionName || null,
       purchased_at: new Date().toISOString(),
       checked_in_at: null,
     };
@@ -160,6 +196,22 @@ export async function createTicket(
           s.id === timeSlotId ? { ...s, booked: s.booked + quantity } : s,
         );
         tx.update(eventRef, { "ticketing.time_slots": updatedSlots });
+      }
+
+      // Update seating: mark seat as booked, increment section booked count
+      if (seating && seating.mode !== "none") {
+        if (seatId && seating.seats) {
+          const updatedSeats = seating.seats.map((s: { id: string }) =>
+            s.id === seatId ? { ...s, status: "booked", held_by: userId } : s,
+          );
+          tx.update(eventRef, { "seating.seats": updatedSeats });
+        }
+        if (sectionId && seating.sections) {
+          const updatedSections = seating.sections.map((s: { id: string; booked: number }) =>
+            s.id === sectionId ? { ...s, booked: s.booked + 1 } : s,
+          );
+          tx.update(eventRef, { "seating.sections": updatedSections });
+        }
       }
     }
 
@@ -211,6 +263,23 @@ export async function confirmPayment(ticketId: string): Promise<{ success: boole
           s.id === ticket.time_slot ? { ...s, booked: s.booked + quantity } : s,
         );
         tx.update(eventRef, { "ticketing.time_slots": updatedSlots });
+      }
+
+      // Update seating on payment confirmation
+      const seating = event.seating;
+      if (seating && seating.mode !== "none") {
+        if (ticket.seat_id && seating.seats) {
+          const updatedSeats = seating.seats.map((s: { id: string }) =>
+            s.id === ticket.seat_id ? { ...s, status: "booked", held_by: ticket.user_id } : s,
+          );
+          tx.update(eventRef, { "seating.seats": updatedSeats });
+        }
+        if (ticket.section_id && seating.sections) {
+          const updatedSections = seating.sections.map((s: { id: string; booked: number }) =>
+            s.id === ticket.section_id ? { ...s, booked: s.booked + 1 } : s,
+          );
+          tx.update(eventRef, { "seating.sections": updatedSections });
+        }
       }
     }
 

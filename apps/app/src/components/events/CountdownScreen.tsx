@@ -49,6 +49,11 @@ export function CountdownScreen() {
 
   if (!currentEvent) return null;
 
+  const postBooking = currentEvent.post_booking;
+  const showCountdown = postBooking?.show_countdown ?? true;
+  const showVenueProgress = postBooking?.show_venue_progress ?? true;
+  const showDailyQuote = postBooking?.show_daily_quote ?? true;
+
   return (
     <div className="animate-fadeIn min-h-screen bg-cream px-5 pb-[120px] pt-[60px]">
       <Noise />
@@ -94,6 +99,35 @@ export function CountdownScreen() {
               )}
             </div>
           </div>
+          {activeTicket.add_ons && activeTicket.add_ons.length > 0 && (
+            <div className="mt-3 border-t border-sand pt-3">
+              <span className="mb-1.5 block font-mono text-[10px] uppercase tracking-[1px] text-muted">add-ons</span>
+              {activeTicket.add_ons.map((a, i) => (
+                <div key={i} className="flex items-center justify-between py-0.5">
+                  <span className="font-sans text-[13px] text-near-black/80">
+                    {a.name}{a.quantity > 1 ? ` x${a.quantity}` : ""}
+                  </span>
+                  <span className="font-mono text-[11px] text-muted">
+                    {a.price === 0 ? "Free" : `\u20B9${a.price * a.quantity}`}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          {(activeTicket.seat_id || activeTicket.section_name) && (
+            <div className="mt-3 border-t border-sand pt-3">
+              {activeTicket.seat_id && (
+                <span className="font-mono text-[10px] text-muted">
+                  seat: <strong className="text-near-black">{activeTicket.seat_id}</strong>
+                </span>
+              )}
+              {activeTicket.section_name && !activeTicket.seat_id && (
+                <span className="font-mono text-[10px] text-muted">
+                  section: {activeTicket.section_name}
+                </span>
+              )}
+            </div>
+          )}
           {activeTicket.pickup_point && activeTicket.pickup_point !== "TBD" && (
             <div className="mt-3 border-t border-sand pt-3">
               <span className="font-mono text-[10px] text-muted">
@@ -104,73 +138,119 @@ export function CountdownScreen() {
         </div>
       )}
 
-      {/* Countdown card */}
-      <div
-        className="animate-fadeSlideUp mb-5 rounded-3xl bg-white p-8 shadow-[0_2px_12px_rgba(26,23,21,0.04),0_8px_32px_rgba(26,23,21,0.06)]"
-        style={{ animationDelay: "0.2s" }}
-      >
-        <span className="mb-5 block text-center font-mono text-[10px] uppercase tracking-[3px] text-muted">
-          countdown
-        </span>
-        <div className="mb-6 flex justify-center gap-2">
-          {[
-            { val: time.d, l: "days" },
-            { val: time.h, l: "hrs" },
-            { val: time.m, l: "min" },
-            { val: time.s, l: "sec" },
-          ].map((u, i) => (
-            <div key={i} className="min-w-[64px] text-center">
-              <div
-                className="mb-1.5 font-mono text-4xl font-medium leading-none text-near-black"
-                style={{ animation: i === 3 ? "tickTock 1s ease infinite" : "none" }}
-              >
-                {String(u.val).padStart(2, "0")}
-              </div>
-              <div className="font-mono text-[10px] uppercase tracking-wider text-muted">
-                {u.l}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="-mx-2 mb-5 h-px bg-sand" />
-
-        <div className="mb-2.5 flex justify-between">
-          <span className="font-mono text-[10px] uppercase tracking-[2px] text-muted">
-            venue reveal
+      {/* Organizer's personal message */}
+      {postBooking?.custom_message && (
+        <div
+          className="animate-fadeSlideUp mb-5 rounded-[20px] border border-caramel/15 bg-caramel/5 p-5"
+          style={{ animationDelay: "0.18s" }}
+        >
+          <span className="mb-2 block font-mono text-[10px] uppercase tracking-[2px] text-caramel/60">
+            from the host
           </span>
-          <span className="font-mono text-[11px] text-caramel">{time.d} days to go</span>
+          <p className="font-serif text-base italic leading-relaxed text-warm-brown">
+            {postBooking.custom_message}
+          </p>
         </div>
-        <div className="h-1.5 overflow-hidden rounded-sm bg-sand">
-          <div
-            className="h-full rounded-sm"
-            style={{
-              width: `${Math.min(venueProgress, 100)}%`,
-              background: "linear-gradient(90deg, #D4A574, #B8845A)",
-            }}
-          />
+      )}
+
+      {/* Countdown card */}
+      {showCountdown && (
+        <div
+          className="animate-fadeSlideUp mb-5 rounded-3xl bg-white p-8 shadow-[0_2px_12px_rgba(26,23,21,0.04),0_8px_32px_rgba(26,23,21,0.06)]"
+          style={{ animationDelay: "0.2s" }}
+        >
+          <span className="mb-5 block text-center font-mono text-[10px] uppercase tracking-[3px] text-muted">
+            countdown
+          </span>
+          <div className="mb-6 flex justify-center gap-2">
+            {[
+              { val: time.d, l: "days" },
+              { val: time.h, l: "hrs" },
+              { val: time.m, l: "min" },
+              { val: time.s, l: "sec" },
+            ].map((u, i) => (
+              <div key={i} className="min-w-[64px] text-center">
+                <div
+                  className="mb-1.5 font-mono text-4xl font-medium leading-none text-near-black"
+                  style={{ animation: i === 3 ? "tickTock 1s ease infinite" : "none" }}
+                >
+                  {String(u.val).padStart(2, "0")}
+                </div>
+                <div className="font-mono text-[10px] uppercase tracking-wider text-muted">
+                  {u.l}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {showVenueProgress && (
+            <>
+              <div className="-mx-2 mb-5 h-px bg-sand" />
+              <div className="mb-2.5 flex justify-between">
+                <span className="font-mono text-[10px] uppercase tracking-[2px] text-muted">
+                  venue reveal
+                </span>
+                <span className="font-mono text-[11px] text-caramel">{time.d} days to go</span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-sm bg-sand">
+                <div
+                  className="h-full rounded-sm"
+                  style={{
+                    width: `${Math.min(venueProgress, 100)}%`,
+                    background: "linear-gradient(90deg, #D4A574, #B8845A)",
+                  }}
+                />
+              </div>
+            </>
+          )}
         </div>
-      </div>
+      )}
+
+      {/* Admin-configured post-booking sections */}
+      {postBooking?.sections?.map((section, i) => (
+        <div
+          key={i}
+          className="animate-fadeSlideUp mb-5 rounded-[20px] bg-white p-6 shadow-[0_1px_4px_rgba(26,23,21,0.03)]"
+          style={{ animationDelay: `${0.25 + i * 0.05}s` }}
+        >
+          <div className="mb-3 flex items-center gap-2">
+            {section.icon && <span className="text-lg">{section.icon}</span>}
+            <span className="font-mono text-[10px] uppercase tracking-[2px] text-muted">
+              {section.title}
+            </span>
+          </div>
+          <ul className="space-y-2">
+            {section.items.filter(Boolean).map((item, j) => (
+              <li key={j} className="flex items-start gap-2.5">
+                <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-caramel/40" />
+                <span className="font-sans text-[13px] text-near-black/80">{item}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
 
       {/* Daily quote */}
-      <div
-        className="animate-fadeSlideUp relative mb-5 overflow-hidden rounded-[20px] bg-white p-7 shadow-[0_1px_4px_rgba(26,23,21,0.03)]"
-        style={{ animationDelay: "0.3s" }}
-      >
-        <div className="absolute -right-2.5 -top-5 text-[80px] opacity-5">&#x1F4AD;</div>
-        <span className="mb-3.5 block font-mono text-[10px] uppercase tracking-[2px] text-muted">
-          daily reminder
-        </span>
-        <p className="mb-2 font-serif text-xl italic leading-snug text-near-black">
-          &ldquo;{quote.text}&rdquo;
-        </p>
-        <p className="font-mono text-[11px] text-muted">{quote.author}</p>
-      </div>
+      {showDailyQuote && (
+        <div
+          className="animate-fadeSlideUp relative mb-5 overflow-hidden rounded-[20px] bg-white p-7 shadow-[0_1px_4px_rgba(26,23,21,0.03)]"
+          style={{ animationDelay: `${0.3 + (postBooking?.sections?.length || 0) * 0.05}s` }}
+        >
+          <div className="absolute -right-2.5 -top-5 text-[80px] opacity-5">&#x1F4AD;</div>
+          <span className="mb-3.5 block font-mono text-[10px] uppercase tracking-[2px] text-muted">
+            daily reminder
+          </span>
+          <p className="mb-2 font-serif text-xl italic leading-snug text-near-black">
+            &ldquo;{quote.text}&rdquo;
+          </p>
+          <p className="font-mono text-[11px] text-muted">{quote.author}</p>
+        </div>
+      )}
 
       {/* Screen time nudge */}
       <div
         className="animate-fadeSlideUp mb-5 rounded-[20px] bg-near-black p-6"
-        style={{ animationDelay: "0.4s" }}
+        style={{ animationDelay: `${0.35 + (postBooking?.sections?.length || 0) * 0.05}s` }}
       >
         <div className="mb-3 flex items-center gap-3">
           <span className="text-xl">&#x1F4F1;</span>
@@ -184,11 +264,11 @@ export function CountdownScreen() {
         </p>
       </div>
 
-      {/* Venue sealed peek (for demo) */}
+      {/* Venue sealed peek */}
       <button
         onClick={() => setStage("reveal")}
         className="animate-fadeSlideUp w-full rounded-[20px] border-[1.5px] border-dashed border-caramel/25 bg-caramel/5 p-5 text-center transition-all hover:bg-caramel/10"
-        style={{ animationDelay: "0.5s" }}
+        style={{ animationDelay: `${0.4 + (postBooking?.sections?.length || 0) * 0.05}s` }}
       >
         <span className="mb-2 block text-2xl">&#x2709;&#xFE0F;</span>
         <p className="mb-1 font-sans text-sm font-medium text-warm-brown">venue sealed</p>

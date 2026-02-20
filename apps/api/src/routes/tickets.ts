@@ -15,14 +15,14 @@ const router = Router();
 /** POST /api/tickets/create — Purchase a ticket */
 router.post("/create", requireAuth, async (req: AuthRequest, res) => {
   try {
-    const { event_id, tier_id, pickup_point, time_slot_id } = req.body;
+    const { event_id, tier_id, pickup_point, time_slot_id, add_ons, seat_id, section_id } = req.body;
 
     if (!event_id) {
       res.status(400).json({ success: false, error: "event_id is required" });
       return;
     }
 
-    const result = await createTicket(req.uid!, event_id, tier_id, pickup_point, time_slot_id);
+    const result = await createTicket(req.uid!, event_id, tier_id, pickup_point, time_slot_id, add_ons, seat_id, section_id);
 
     if (!result.success) {
       res.status(400).json({ success: false, error: result.error });

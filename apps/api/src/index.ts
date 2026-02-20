@@ -50,6 +50,7 @@ import adminNotificationsRouter from "./routes/admin/notifications";
 import adminVouchRouter from "./routes/admin/vouch";
 import contactRouter from "./routes/contact";
 import brandsRouter from "./routes/brands";
+import adminUploadRouter from "./routes/admin/upload";
 console.log('[startup] All routes imported');
 
 console.log('[startup] Creating Express app...');
@@ -59,7 +60,7 @@ console.log('[startup] Express app created');
 // Middleware
 console.log('[startup] Setting up middleware...');
 app.use(cors({ origin: env.allowedOrigins, credentials: true }));
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 console.log('[startup] Middleware configured');
 
 // Apply general rate limiting to all routes
@@ -93,6 +94,7 @@ app.use("/api/contact", contactRouter);
 app.use("/api/brands", brandsRouter);
 app.use("/api/admin/contact", adminLimiter, contactRouter);
 app.use("/api/admin/brands", adminLimiter, brandsRouter);
+app.use("/api/admin", adminLimiter, adminUploadRouter);
 console.log('[startup] Routes registered');
 
 // Error handling

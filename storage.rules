@@ -1,0 +1,11 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Public read access for all uploaded content
+    match /{allPaths=**} {
+      allow read: if true;
+      // Only authenticated admin users can write (enforced server-side via Admin SDK)
+      allow write: if false;
+    }
+  }
+}

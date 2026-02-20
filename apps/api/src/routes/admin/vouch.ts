@@ -1,49 +1,103 @@
 import { Router } from "express";
 import { requireAdmin, type AuthRequest } from "../../middleware/auth";
-import { createSeedCodes, getSeedCodes } from "../../services/vouch.service";
+import { asyncHandler } from "../../middleware/errorHandler";
+import {
+  createAdminCodes,
+  getAdminCodes,
+  updateCode,
+  deleteCode,
+  createSeedCodes,
+} from "../../services/vouch.service";
+import type { VouchCodeType, VouchCodeRules } from "@comeoffline/types";
 
 const router = Router();
 
-/** POST /api/admin/vouch-codes/create — Create seed invite codes */
-router.post("/vouch-codes/create", requireAdmin, async (req: AuthRequest, res) => {
-  try {
-    const { count, label } = req.body;
+/** POST /api/admin/vouch-codes/create — Create codes with full rule support */
+router.post("/vouch-codes/create", requireAdmin, asyncHandler(async (req: AuthRequest, res) => {
+  const {
+    count = 1,
+    label,
+    description,
+    type = "single",
+    custom_code,
+    rules,
+  } = req.body;
 
-    if (!count || count < 1 || count > 100) {
-      res.status(400).json({ success: false, error: "count must be between 1 and 100" });
-      return;
-    }
-
-    const codes = await createSeedCodes(req.uid!, count, label);
-    res.json({ success: true, data: codes });
-  } catch (err) {
-    console.error("[admin/vouch] create seed codes error:", err);
-    res.status(500).json({ success: false, error: "Internal server error" });
+  if (count < 1 || count > 100) {
+    res.status(400).json({ success: false, error: "count must be between 1 and 100" });
+    return;
   }
-});
 
-/** GET /api/admin/vouch-codes — Get all seed codes with usage tracking */
-router.get("/vouch-codes", requireAdmin, async (_req, res) => {
+  // Build rules from request
+  const codeRules: VouchCodeRules = {
+    max_uses: type === "unlimited" ? null : (rules?.max_uses || (type === "single" ? 1 : 10)),
+    ...(rules?.expires_at && { expires_at: rules.expires_at }),
+    ...(rules?.valid_from && { valid_from: rules.valid_from }),
+  };
+
+  // Custom code only allowed for single-code creation
+  if (custom_code && count > 1) {
+    res.status(400).json({ success: false, error: "Custom code only works when count is 1" });
+    return;
+  }
+
+  const codes = await createAdminCodes({
+    adminId: req.uid!,
+    type: type as VouchCodeType,
+    rules: codeRules,
+    label: label?.trim() || undefined,
+    description: description?.trim() || undefined,
+    customCode: custom_code?.trim() || undefined,
+    count,
+  });
+
+  res.json({ success: true, data: codes });
+}));
+
+/** GET /api/admin/vouch-codes — Get all admin codes */
+router.get("/vouch-codes", requireAdmin, asyncHandler(async (_req, res) => {
   try {
-    const codes = await getSeedCodes();
+    const codes = await getAdminCodes();
     res.json({ success: true, data: codes });
   } catch (err) {
-    console.error("[admin/vouch] get seed codes error:", err);
-
     const error = err as Error;
-
-    // Check if it's a quota error
     if (error.message && error.message.includes('quota')) {
       res.status(429).json({
         success: false,
         error: "Firestore quota exceeded. Data may be cached. Try again in a few minutes.",
-        cached: true
+        cached: true,
       });
       return;
     }
-
-    res.status(500).json({ success: false, error: "Internal server error" });
+    throw err;
   }
-});
+}));
+
+/** PUT /api/admin/vouch-codes/:id — Update code rules/status */
+router.put("/vouch-codes/:id", requireAdmin, asyncHandler(async (req: AuthRequest, res) => {
+  const codeId = req.params.id as string;
+  const { status, rules, label, description } = req.body;
+
+  const updates: Record<string, unknown> = {};
+  if (status) updates.status = status;
+  if (rules) updates.rules = rules;
+  if (label !== undefined) updates.label = label || null;
+  if (description !== undefined) updates.description = description || null;
+
+  if (Object.keys(updates).length === 0) {
+    res.status(400).json({ success: false, error: "No updates provided" });
+    return;
+  }
+
+  await updateCode(codeId, updates as Parameters<typeof updateCode>[1]);
+  res.json({ success: true });
+}));
+
+/** DELETE /api/admin/vouch-codes/:id — Delete a code */
+router.delete("/vouch-codes/:id", requireAdmin, asyncHandler(async (req: AuthRequest, res) => {
+  const codeId = req.params.id as string;
+  await deleteCode(codeId);
+  res.json({ success: true });
+}));
 
 export default router;

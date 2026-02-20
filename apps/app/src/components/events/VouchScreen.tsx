@@ -238,7 +238,7 @@ function VouchCodeCard({
   onReveal: () => void;
   onCopy: () => void;
 }) {
-  const isUsed = code.status === "used";
+  const isUsed = code.status === "depleted" || (code.uses !== undefined && code.uses > 0 && code.type === "single");
 
   return (
     <div

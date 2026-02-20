@@ -6,11 +6,11 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "turbo dev",
-    "dev:app": "turbo dev --filter=@comeoffline/app",
-    "dev:api": "turbo dev --filter=@comeoffline/api",
-    "dev:admin": "turbo dev --filter=@comeoffline/admin",
-    "dev:landing": "turbo dev --filter=@comeoffline/landing",
+    "dev": "turbo dev --no-daemon",
+    "dev:app": "turbo dev --filter=@comeoffline/app --no-daemon",
+    "dev:api": "turbo dev --filter=@comeoffline/api --no-daemon",
+    "dev:admin": "turbo dev --filter=@comeoffline/admin --no-daemon",
+    "dev:landing": "turbo dev --filter=@comeoffline/landing --no-daemon",
     "build": "turbo build --no-daemon",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",

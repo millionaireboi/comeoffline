@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useApi } from "@/hooks/useApi";
 import { apiClient } from "@/lib/apiClient";
+import { TableRowSkeleton } from "@/components/Skeleton";
 
 interface VouchCodeUsage {
   user_id: string;
@@ -406,7 +407,7 @@ export function InviteCodesTab() {
 
       {/* Codes List */}
       {loading ? (
-        <p className="py-8 text-center font-mono text-sm text-muted">loading...</p>
+        <div className="space-y-1">{Array.from({ length: 5 }).map((_, i) => <TableRowSkeleton key={i} columns={4} />)}</div>
       ) : !codes || codes.length === 0 ? (
         <div className="rounded-xl border border-white/10 bg-white/[0.02] p-8 text-center">
           <p className="font-mono text-sm text-muted">no codes created yet</p>

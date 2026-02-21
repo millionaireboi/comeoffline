@@ -51,6 +51,8 @@ import adminVouchRouter from "./routes/admin/vouch";
 import contactRouter from "./routes/contact";
 import brandsRouter from "./routes/brands";
 import adminUploadRouter from "./routes/admin/upload";
+import adminFloorplanRouter from "./routes/admin/floorplan";
+import adminBookingsRouter from "./routes/admin/bookings";
 console.log('[startup] All routes imported');
 
 console.log('[startup] Creating Express app...');
@@ -95,6 +97,8 @@ app.use("/api/brands", brandsRouter);
 app.use("/api/admin/contact", adminLimiter, contactRouter);
 app.use("/api/admin/brands", adminLimiter, brandsRouter);
 app.use("/api/admin", adminLimiter, adminUploadRouter);
+app.use("/api/admin", adminLimiter, adminFloorplanRouter);
+app.use("/api/admin/bookings", adminLimiter, adminBookingsRouter);
 console.log('[startup] Routes registered');
 
 // Error handling

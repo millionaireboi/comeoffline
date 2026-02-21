@@ -71,6 +71,7 @@ export function EventFeed() {
       addOns?: Array<{ addon_id: string; name: string; quantity: number; price: number }>,
       seatId?: string,
       sectionId?: string,
+      spotSeatId?: string,
     ) => {
       setActionLoading(true);
       try {
@@ -87,6 +88,7 @@ export function EventFeed() {
             add_ons: addOns && addOns.length > 0 ? addOns : undefined,
             seat_id: seatId || undefined,
             section_id: sectionId || undefined,
+            spot_seat_id: spotSeatId || undefined,
           }),
         });
         if (data.data) {
@@ -177,8 +179,8 @@ export function EventFeed() {
           event={detailEvent}
           onClose={() => setDetailEvent(null)}
           onRsvp={() => handleRsvp(detailEvent)}
-          onTicketPurchase={(tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId) =>
-            handleTicketPurchase(detailEvent, tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId)
+          onTicketPurchase={(tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId) =>
+            handleTicketPurchase(detailEvent, tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId)
           }
           loading={actionLoading}
         />

@@ -16,10 +16,12 @@ import { InviteCodesTab } from "@/components/tabs/InviteCodesTab";
 import { ContactTab } from "@/components/tabs/ContactTab";
 import { BrandsTab } from "@/components/tabs/BrandsTab";
 import { SettingsTab } from "@/components/tabs/SettingsTab";
+import { BookingsTab } from "@/components/tabs/BookingsTab";
 import { LoginScreen } from "@/components/tabs/LoginScreen";
+import { TabErrorBoundary } from "@/components/TabErrorBoundary";
 
 const TABS: Tab[] = [
-  "dashboard", "events", "check-in", "validation", "content",
+  "dashboard", "events", "bookings", "check-in", "validation", "content",
   "applications", "members", "invite-codes", "contact", "brands", "settings",
 ];
 
@@ -44,7 +46,10 @@ function AdminDashboard() {
   }
 
   if (!user) {
-    return <LoginScreen onLogin={login} />;
+    if (typeof window !== "undefined") {
+      window.location.href = "/login";
+    }
+    return null;
   }
 
   if (!isAdmin) {
@@ -110,17 +115,18 @@ function AdminDashboard() {
 
       {/* Content */}
       <main className="p-4 sm:p-6">
-        {tab === "dashboard" && <DashboardTab />}
-        {tab === "events" && <EventsTab />}
-        {tab === "check-in" && <CheckInTab />}
-        {tab === "validation" && <ValidationTab />}
-        {tab === "content" && <ContentTab />}
-        {tab === "applications" && <ApplicationsTab />}
-        {tab === "members" && <MembersTab />}
-        {tab === "invite-codes" && <InviteCodesTab />}
-        {tab === "contact" && <ContactTab />}
-        {tab === "brands" && <BrandsTab />}
-        {tab === "settings" && <SettingsTab />}
+        {tab === "dashboard" && <TabErrorBoundary tabName="dashboard" key="dashboard"><DashboardTab /></TabErrorBoundary>}
+        {tab === "events" && <TabErrorBoundary tabName="events" key="events"><EventsTab /></TabErrorBoundary>}
+        {tab === "bookings" && <TabErrorBoundary tabName="bookings" key="bookings"><BookingsTab /></TabErrorBoundary>}
+        {tab === "check-in" && <TabErrorBoundary tabName="check-in" key="check-in"><CheckInTab /></TabErrorBoundary>}
+        {tab === "validation" && <TabErrorBoundary tabName="validation" key="validation"><ValidationTab /></TabErrorBoundary>}
+        {tab === "content" && <TabErrorBoundary tabName="content" key="content"><ContentTab /></TabErrorBoundary>}
+        {tab === "applications" && <TabErrorBoundary tabName="applications" key="applications"><ApplicationsTab /></TabErrorBoundary>}
+        {tab === "members" && <TabErrorBoundary tabName="members" key="members"><MembersTab /></TabErrorBoundary>}
+        {tab === "invite-codes" && <TabErrorBoundary tabName="invite-codes" key="invite-codes"><InviteCodesTab /></TabErrorBoundary>}
+        {tab === "contact" && <TabErrorBoundary tabName="contact" key="contact"><ContactTab /></TabErrorBoundary>}
+        {tab === "brands" && <TabErrorBoundary tabName="brands" key="brands"><BrandsTab /></TabErrorBoundary>}
+        {tab === "settings" && <TabErrorBoundary tabName="settings" key="settings"><SettingsTab /></TabErrorBoundary>}
       </main>
     </div>
   );

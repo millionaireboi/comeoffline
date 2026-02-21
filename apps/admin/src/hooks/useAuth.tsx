@@ -27,7 +27,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (firebaseUser) {
         try {
           const tokenResult = await firebaseUser.getIdTokenResult(false);
-          setIsAdmin(!!tokenResult.claims.admin);
+          const admin = !!tokenResult.claims.admin;
+          setIsAdmin(admin);
+          if (admin) {
+            const token = await firebaseUser.getIdToken();
+            document.cookie = `admin_session=${token}; path=/; samesite=strict; max-age=3600`;
+          }
         } catch (error) {
           console.error('Failed to get token:', error);
           setIsAdmin(false);
@@ -51,6 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
+    document.cookie = "admin_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
     await signOut(auth);
   };
 

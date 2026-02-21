@@ -23,6 +23,7 @@ export async function createTicket(
   addOns?: Array<{ addon_id: string; name: string; quantity: number; price: number }>,
   seatId?: string,
   sectionId?: string,
+  spotSeatId?: string,
 ): Promise<CreateTicketResult> {
   const db = await getDb();
   return db.runTransaction(async (tx) => {
@@ -106,7 +107,42 @@ export async function createTicket(
     // Validate seating selection
     const seating = event.seating;
     let assignedSectionName: string | undefined;
+    let assignedSpotName: string | undefined;
+    let assignedSpotSeatLabel: string | undefined;
     if (seating && seating.mode !== "none") {
+      // Custom spot validation
+      if (seating.mode === "custom" && seatId) {
+        const spot = seating.spots?.find((s: { id: string }) => s.id === seatId);
+        if (!spot) {
+          return { success: false, error: "Invalid spot" };
+        }
+
+        // Individual seat selection (tables with seats array)
+        if (spot.seats && spot.seats.length > 0) {
+          if (!spotSeatId) {
+            return { success: false, error: "Please select a specific seat at this table" };
+          }
+          const spotSeat = spot.seats.find((s: { id: string }) => s.id === spotSeatId);
+          if (!spotSeat) {
+            return { success: false, error: "Invalid seat selection" };
+          }
+          if (spotSeat.status !== "available") {
+            return { success: false, error: "This seat is already taken" };
+          }
+          assignedSpotSeatLabel = spotSeat.label;
+        } else {
+          // Legacy capacity-based booking
+          if (spot.booked >= spot.capacity) {
+            return { success: false, error: "This spot is full" };
+          }
+        }
+
+        assignedSpotName = spot.name;
+        if (spot.section_id) {
+          sectionId = spot.section_id;
+        }
+      }
+
       if (sectionId) {
         const section = seating.sections?.find((s: { id: string }) => s.id === sectionId);
         if (!section) {
@@ -117,7 +153,7 @@ export async function createTicket(
         }
         assignedSectionName = section.name;
       }
-      if (seatId) {
+      if (seatId && seating.mode !== "custom") {
         const seat = seating.seats?.find((s: { id: string }) => s.id === seatId);
         if (!seat) {
           return { success: false, error: "Invalid seat" };
@@ -168,9 +204,13 @@ export async function createTicket(
       pickup_point: assignedPickup,
       time_slot: timeSlotId || null,
       add_ons: addOns && addOns.length > 0 ? addOns : null,
-      seat_id: seatId || null,
+      seat_id: seating?.mode === "custom" ? null : (seatId || null),
       section_id: sectionId || null,
       section_name: assignedSectionName || null,
+      spot_id: seating?.mode === "custom" ? (seatId || null) : null,
+      spot_name: assignedSpotName || null,
+      spot_seat_id: spotSeatId || null,
+      spot_seat_label: assignedSpotSeatLabel || null,
       purchased_at: new Date().toISOString(),
       checked_in_at: null,
     };
@@ -198,9 +238,23 @@ export async function createTicket(
         tx.update(eventRef, { "ticketing.time_slots": updatedSlots });
       }
 
-      // Update seating: mark seat as booked, increment section booked count
+      // Update seating: mark seat as booked, increment section/spot booked count
       if (seating && seating.mode !== "none") {
-        if (seatId && seating.seats) {
+        if (seating.mode === "custom" && seatId && seating.spots) {
+          const updatedSpots = seating.spots.map((s: { id: string; booked: number; seats?: Array<{ id: string; status: string }> }) => {
+            if (s.id !== seatId) return s;
+            if (spotSeatId && s.seats) {
+              // Mark individual seat as booked
+              const updatedSeats = s.seats.map((seat) =>
+                seat.id === spotSeatId ? { ...seat, status: "booked", held_by: userId } : seat,
+              );
+              return { ...s, seats: updatedSeats, booked: s.booked + 1 };
+            }
+            return { ...s, booked: s.booked + 1 };
+          });
+          tx.update(eventRef, { "seating.spots": updatedSpots });
+        }
+        if (seatId && seating.mode !== "custom" && seating.seats) {
           const updatedSeats = seating.seats.map((s: { id: string }) =>
             s.id === seatId ? { ...s, status: "booked", held_by: userId } : s,
           );
@@ -268,7 +322,20 @@ export async function confirmPayment(ticketId: string): Promise<{ success: boole
       // Update seating on payment confirmation
       const seating = event.seating;
       if (seating && seating.mode !== "none") {
-        if (ticket.seat_id && seating.seats) {
+        if (seating.mode === "custom" && ticket.spot_id && seating.spots) {
+          const updatedSpots = seating.spots.map((s: { id: string; booked: number; seats?: Array<{ id: string; status: string }> }) => {
+            if (s.id !== ticket.spot_id) return s;
+            if (ticket.spot_seat_id && s.seats) {
+              const updatedSeats = s.seats.map((seat) =>
+                seat.id === ticket.spot_seat_id ? { ...seat, status: "booked", held_by: ticket.user_id } : seat,
+              );
+              return { ...s, seats: updatedSeats, booked: s.booked + 1 };
+            }
+            return { ...s, booked: s.booked + 1 };
+          });
+          tx.update(eventRef, { "seating.spots": updatedSpots });
+        }
+        if (ticket.seat_id && seating.mode !== "custom" && seating.seats) {
           const updatedSeats = seating.seats.map((s: { id: string }) =>
             s.id === ticket.seat_id ? { ...s, status: "booked", held_by: ticket.user_id } : s,
           );
@@ -320,6 +387,27 @@ export async function cancelTicket(
     if (wasConfirmed) {
       const eventRef = db.collection("events").doc(ticket.event_id);
       tx.update(eventRef, { spots_taken: FieldValue.increment(-quantity) });
+
+      // Release custom spot booking
+      if (ticket.spot_id) {
+        const eventDoc = await tx.get(eventRef);
+        if (eventDoc.exists) {
+          const event = eventDoc.data()!;
+          if (event.seating?.mode === "custom" && event.seating.spots) {
+            const updatedSpots = event.seating.spots.map((s: { id: string; booked: number; seats?: Array<{ id: string; status: string }> }) => {
+              if (s.id !== ticket.spot_id) return s;
+              if (ticket.spot_seat_id && s.seats) {
+                const updatedSeats = s.seats.map((seat) =>
+                  seat.id === ticket.spot_seat_id ? { ...seat, status: "available", held_by: undefined } : seat,
+                );
+                return { ...s, seats: updatedSeats, booked: Math.max(0, s.booked - 1) };
+              }
+              return { ...s, booked: Math.max(0, s.booked - 1) };
+            });
+            tx.update(eventRef, { "seating.spots": updatedSpots });
+          }
+        }
+      }
     }
 
     return { success: true };

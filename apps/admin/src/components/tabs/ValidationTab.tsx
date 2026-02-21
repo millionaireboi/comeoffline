@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { instrumentSerif, API_URL } from "@/lib/constants";
+import { TableRowSkeleton } from "@/components/Skeleton";
 import type { Event } from "@comeoffline/types";
 
 interface ValidationQueueItem {
@@ -151,7 +152,7 @@ export function ValidationTab() {
       </p>
 
       {loading ? (
-        <p className="py-8 text-center font-mono text-sm text-muted">loading...</p>
+        <div className="space-y-1">{Array.from({ length: 5 }).map((_, i) => <TableRowSkeleton key={i} columns={3} />)}</div>
       ) : queue.length === 0 ? (
         <p className="py-8 text-center font-mono text-sm text-muted">
           no provisional users in queue

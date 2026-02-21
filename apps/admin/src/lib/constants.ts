@@ -3,7 +3,7 @@ export const instrumentSerif = {
   variable: "--font-instrument-serif",
 };
 
-export type Tab = "dashboard" | "events" | "check-in" | "validation" | "content" | "applications" | "members" | "invite-codes" | "contact" | "brands" | "settings";
+export type Tab = "dashboard" | "events" | "bookings" | "check-in" | "validation" | "content" | "applications" | "members" | "invite-codes" | "contact" | "brands" | "settings";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
@@ -19,4 +19,12 @@ export const MEMBER_STATUS_COLORS: Record<string, string> = {
   active: "#6B7A63",
   provisional: "#8B7EC8",
   inactive: "#D4836B",
+};
+
+export const TICKET_STATUS_COLORS: Record<string, string> = {
+  pending_payment: "#D4A03C",
+  confirmed: "#A8B5A0",
+  cancelled: "#C75050",
+  checked_in: "#6B7A63",
+  no_show: "#D4836B",
 };

@@ -1,4 +1,5 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+const DEFAULT_TIMEOUT = 15_000;
 
 interface RetryOptions {
   maxRetries?: number;
@@ -82,21 +83,46 @@ export class ApiClient {
       headers.Authorization = `Bearer ${token}`;
     }
 
-    const response = await fetch(`${API_URL}${endpoint}`, {
-      ...options,
-      headers,
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT);
 
-    const data = await response.json();
+    try {
+      const response = await fetch(`${API_URL}${endpoint}`, {
+        ...options,
+        headers,
+        signal: controller.signal,
+      });
 
-    if (!response.ok) {
-      const error = new Error(data.error || `HTTP ${response.status}`) as Error & { status?: number; data?: unknown };
-      error.status = response.status;
-      error.data = data;
+      const text = await response.text();
+      let data: Record<string, unknown>;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw Object.assign(
+          new Error(`Invalid JSON response from ${endpoint}`),
+          { status: response.status }
+        );
+      }
+
+      if (!response.ok) {
+        const error = new Error((data.error as string) || `HTTP ${response.status}`) as Error & { status?: number; data?: unknown };
+        error.status = response.status;
+        error.data = data;
+        throw error;
+      }
+
+      return data as T;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw Object.assign(
+          new Error(`Request to ${endpoint} timed out after ${DEFAULT_TIMEOUT / 1000}s`),
+          { status: 408 }
+        );
+      }
       throw error;
+    } finally {
+      clearTimeout(timeoutId);
     }
-
-    return data;
   }
 
   async get<T>(endpoint: string, options?: RequestInit): Promise<T> {

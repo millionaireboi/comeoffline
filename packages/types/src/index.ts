@@ -143,7 +143,7 @@ export interface PostBookingContent {
 
 // ── Seating ──────────────────────────────────────
 
-export type SeatingMode = "none" | "sections" | "seats" | "mixed";
+export type SeatingMode = "none" | "sections" | "seats" | "mixed" | "custom";
 
 /** Section-based seating — capacity pools without individual seats */
 export interface SeatingSection {
@@ -176,11 +176,39 @@ export interface SeatRow {
   section_id?: string; // optional parent section
 }
 
+/** Individual seat within a spot/table for custom seating */
+export interface SpotSeat {
+  id: string; // e.g. "spot_123_seat_1"
+  label: string; // "Seat 1", "1", etc.
+  status: "available" | "held" | "booked";
+  held_by?: string; // user_id when held/booked
+  angle?: number; // degrees around table center (0=top, clockwise) for circular placement
+}
+
+/** Freeform named spot for custom seating layouts */
+export interface Spot {
+  id: string; // e.g. "spot_1708000000"
+  name: string; // "Bean Bag Corner", "Pod Table A", "Table 1"
+  emoji?: string; // "🛋️", "🪑"
+  capacity: number; // how many people fit (1 for single, 4 for table)
+  booked: number; // current booking count
+  section_id?: string; // optional link to a SeatingSection
+  price_override?: number;
+  description?: string; // "Cozy corner with floor cushions"
+  x?: number; // percentage position on floor plan (0-100)
+  y?: number; // percentage position on floor plan (0-100)
+  shape?: "circle" | "rectangle" | "square"; // table shape for visual rendering
+  seats?: SpotSeat[]; // individual seats — if present, users pick a seat; if absent, legacy capacity counter
+  spot_type?: "table" | "fixture" | "zone"; // table=bookable, fixture=landmark (DJ booth, bar), zone=open area
+}
+
 export interface SeatingConfig {
   mode: SeatingMode;
   sections: SeatingSection[];
   rows: SeatRow[];
   seats: Seat[]; // populated from rows or manually set
+  spots?: Spot[]; // for "custom" mode — freeform named spots
+  floor_plan_url?: string; // uploaded floor plan image
   allow_choice: boolean; // if false, seats auto-assigned
 }
 
@@ -251,6 +279,10 @@ export interface Ticket {
   seat_id?: string; // e.g. "A5" — individual seat assignment
   section_id?: string; // e.g. "vip" — section-based assignment
   section_name?: string; // denormalized for display
+  spot_id?: string; // for custom seating — e.g. "spot_123"
+  spot_name?: string; // denormalized — e.g. "Pod Table A"
+  spot_seat_id?: string; // individual seat within spot — e.g. "spot_123_seat_1"
+  spot_seat_label?: string; // denormalized — e.g. "Seat 3"
   purchased_at: string;
   checked_in_at?: string;
 }

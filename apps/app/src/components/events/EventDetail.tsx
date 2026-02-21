@@ -21,6 +21,7 @@ interface EventDetailProps {
     addOns?: Array<{ addon_id: string; name: string; quantity: number; price: number }>,
     seatId?: string,
     sectionId?: string,
+    spotSeatId?: string,
   ) => void;
   loading?: boolean;
 }
@@ -178,9 +179,9 @@ export function EventDetail({ event, onClose, onRsvp, onTicketPurchase, loading 
         <CheckoutWizard
           event={event}
           onClose={() => setShowWizard(false)}
-          onComplete={(tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId) => {
+          onComplete={(tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId) => {
             setShowWizard(false);
-            onTicketPurchase?.(tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId);
+            onTicketPurchase?.(tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId);
           }}
           loading={loading}
         />

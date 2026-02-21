@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import type { Event, Zone, PickupPoint, TicketTier, TicketingConfig, PostBookingContent, PostBookingSection, CheckoutStep, CheckoutAddOn, SeatingMode, SeatingSection, SeatRow } from "@comeoffline/types";
+import type { Event, Zone, PickupPoint, TicketTier, TicketingConfig, PostBookingContent, PostBookingSection, CheckoutStep, CheckoutAddOn, SeatingMode, SeatingSection, SeatRow, Spot } from "@comeoffline/types";
 import { apiClient } from "@/lib/apiClient";
 import { EventPreview } from "@/components/EventPreview";
+import { ImageUpload } from "@/components/ImageUpload";
 
 // ── Types ────────────────────────────────────────
 
@@ -791,24 +792,57 @@ interface FormSeatRow {
   section_id: string;
 }
 
+interface FormSpotSeat {
+  id: string;
+  label: string;
+  angle: string;
+}
+
+interface FormSpot {
+  id: string;
+  name: string;
+  emoji: string;
+  capacity: string;
+  description: string;
+  section_id: string;
+  price_override: string;
+  x: string;
+  y: string;
+  shape: "circle" | "rectangle" | "square";
+  seats: FormSpotSeat[];
+  spot_type: "table" | "fixture" | "zone";
+}
+
 function SeatingBuilder({
   mode,
   sections,
   rows,
   allowChoice,
+  spots,
+  floorPlanUrl,
+  analyzingFloorPlan,
   onModeChange,
   onSectionsChange,
   onRowsChange,
   onAllowChoiceChange,
+  onSpotsChange,
+  onFloorPlanChange,
+  onAnalyzeFloorPlan,
 }: {
   mode: SeatingMode;
   sections: FormSection[];
   rows: FormSeatRow[];
   allowChoice: boolean;
+  spots: FormSpot[];
+  floorPlanUrl: string;
+  analyzingFloorPlan: boolean;
   onModeChange: (m: SeatingMode) => void;
   onSectionsChange: (s: FormSection[]) => void;
   onRowsChange: (r: FormSeatRow[]) => void;
   onAllowChoiceChange: (v: boolean) => void;
+  onSpotsChange: (s: FormSpot[]) => void;
+  onFloorPlanChange: (url: string) => void;
+  onAnalyzeFloorPlan: () => void;
 }) {
   const addSection = () => {
     const idx = sections.length;
@@ -854,10 +888,45 @@ function SeatingBuilder({
 
   const removeRow = (i: number) => onRowsChange(rows.filter((_, idx) => idx !== i));
 
+  const addSpot = () => {
+    onSpotsChange([...spots, {
+      id: `spot_${Date.now()}`,
+      name: "",
+      emoji: "🪑",
+      capacity: "1",
+      description: "",
+      section_id: "",
+      price_override: "",
+      x: "",
+      y: "",
+      shape: "circle",
+      seats: [],
+      spot_type: "table",
+    }]);
+  };
+
+  const generateSeatsForSpot = (capacity: number, spotId: string): FormSpotSeat[] => {
+    const cap = Math.max(1, capacity);
+    return Array.from({ length: cap }, (_, i) => ({
+      id: `${spotId}_seat_${i}`,
+      label: `Seat ${i + 1}`,
+      angle: String(Math.round((360 / cap) * i)),
+    }));
+  };
+
+  const updateSpot = (i: number, updates: Partial<FormSpot>) => {
+    const next = [...spots];
+    next[i] = { ...next[i], ...updates };
+    onSpotsChange(next);
+  };
+
+  const removeSpot = (i: number) => onSpotsChange(spots.filter((_, idx) => idx !== i));
+
   const inputClass = "w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-mono text-xs text-cream placeholder:text-muted/30 focus:border-caramel/50 focus:outline-none";
 
   const totalSectionCap = sections.reduce((s, sec) => s + (Number(sec.capacity) || 0), 0);
   const totalSeatCount = rows.reduce((s, r) => s + (Number(r.seats_count) || 0), 0);
+  const totalSpotCap = spots.reduce((s, sp) => (sp.spot_type || "table") === "table" ? s + (Number(sp.capacity) || 0) : s, 0);
 
   return (
     <div>
@@ -865,7 +934,7 @@ function SeatingBuilder({
       <div className="mb-3">
         <label className="mb-2 block font-mono text-[9px] text-muted">seating mode</label>
         <div className="flex gap-1.5">
-          {(["none", "sections", "seats", "mixed"] as SeatingMode[]).map((m) => (
+          {(["none", "sections", "seats", "mixed", "custom"] as SeatingMode[]).map((m) => (
             <button
               key={m}
               type="button"
@@ -1049,6 +1118,192 @@ function SeatingBuilder({
         </div>
       )}
 
+      {/* Custom spots (for custom mode) */}
+      {mode === "custom" && (
+        <div className="mb-4">
+          {/* Floor plan upload */}
+          <div className="mb-4">
+            <label className="mb-2 block font-mono text-[10px] uppercase tracking-[2px] text-muted">
+              floor plan
+            </label>
+            <ImageUpload
+              value={floorPlanUrl}
+              onChange={onFloorPlanChange}
+              pathPrefix="events/floorplans"
+              label="upload floor plan image"
+              maxWidth={2000}
+            />
+            {floorPlanUrl && (
+              <button
+                type="button"
+                onClick={onAnalyzeFloorPlan}
+                disabled={analyzingFloorPlan}
+                className="mt-2 w-full rounded-lg bg-caramel/20 px-3 py-2.5 font-mono text-[11px] text-caramel transition-colors hover:bg-caramel/30 disabled:opacity-50"
+              >
+                {analyzingFloorPlan ? "analyzing with AI..." : "✨ generate spots from floor plan"}
+              </button>
+            )}
+          </div>
+
+          {/* Spots list */}
+          <div className="mb-2 flex items-center justify-between">
+            <label className="font-mono text-[10px] uppercase tracking-[2px] text-muted">spots</label>
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[9px] text-muted/60">
+                total: {totalSpotCap} capacity
+              </span>
+              <button
+                type="button"
+                onClick={addSpot}
+                className="rounded-lg bg-white/5 px-3 py-1 font-mono text-[10px] text-cream transition-colors hover:bg-white/10"
+              >
+                + add spot
+              </button>
+            </div>
+          </div>
+          <div className="flex flex-col gap-2.5">
+            {spots.map((spot, i) => {
+              const isTable = spot.spot_type === "table" || !spot.spot_type;
+              return (
+              <div key={spot.id} className="rounded-xl border border-white/5 bg-white/[0.03] p-3.5">
+                <div className="mb-2.5 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[10px] text-caramel">spot {i + 1}</span>
+                    {/* Type selector pills */}
+                    <div className="flex gap-1">
+                      {(["table", "fixture", "zone"] as const).map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => {
+                            const updates: Partial<FormSpot> = { spot_type: t };
+                            if (t !== "table") {
+                              updates.seats = [];
+                              updates.capacity = "0";
+                            }
+                            updateSpot(i, updates);
+                          }}
+                          className={`rounded-md px-1.5 py-0.5 font-mono text-[8px] transition-colors ${(spot.spot_type || "table") === t ? "bg-caramel/30 text-caramel" : "bg-white/5 text-muted/50 hover:bg-white/10"}`}
+                        >
+                          {t === "table" ? "🪑 table" : t === "fixture" ? "🎧 fixture" : "📍 zone"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeSpot(i)}
+                    className="font-mono text-[10px] text-muted/40 transition-colors hover:text-muted"
+                  >
+                    remove
+                  </button>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <div className="grid grid-cols-[auto_1fr] gap-2">
+                    <EmojiPickerMini value={spot.emoji} onChange={(v) => updateSpot(i, { emoji: v })} />
+                    <input
+                      type="text"
+                      placeholder={isTable ? "Spot name (e.g. Pod Table A)" : spot.spot_type === "fixture" ? "Fixture name (e.g. DJ Console)" : "Zone name (e.g. Villa Entrance)"}
+                      value={spot.name}
+                      onChange={(e) => updateSpot(i, { name: e.target.value })}
+                      className={inputClass.replace("text-xs", "text-sm")}
+                    />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Description (optional)"
+                    value={spot.description}
+                    onChange={(e) => updateSpot(i, { description: e.target.value })}
+                    className={inputClass}
+                  />
+                  {isTable && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <span className="mb-1 block font-mono text-[9px] text-muted">capacity</span>
+                        <input
+                          type="number"
+                          min="1"
+                          placeholder="1"
+                          value={spot.capacity}
+                          onChange={(e) => {
+                            const cap = Number(e.target.value) || 1;
+                            const updates: Partial<FormSpot> = { capacity: e.target.value };
+                            if (spot.seats.length > 0) {
+                              updates.seats = generateSeatsForSpot(cap, spot.id);
+                            }
+                            updateSpot(i, updates);
+                          }}
+                          className={inputClass}
+                        />
+                      </div>
+                      <div>
+                        <span className="mb-1 block font-mono text-[9px] text-muted">price override</span>
+                        <input
+                          type="number"
+                          placeholder="—"
+                          value={spot.price_override}
+                          onChange={(e) => updateSpot(i, { price_override: e.target.value })}
+                          className={inputClass}
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {/* Shape + individual seats — only for tables */}
+                  {isTable && (
+                    <div>
+                      <div className="mb-1.5 flex items-center gap-2">
+                        <span className="font-mono text-[9px] text-muted">shape</span>
+                        <div className="flex gap-1">
+                          {(["circle", "rectangle", "square"] as const).map((sh) => (
+                            <button
+                              key={sh}
+                              type="button"
+                              onClick={() => updateSpot(i, { shape: sh })}
+                              className={`rounded-md px-2 py-0.5 font-mono text-[9px] transition-colors ${spot.shape === sh ? "bg-caramel/30 text-caramel" : "bg-white/5 text-muted hover:bg-white/10"}`}
+                            >
+                              {sh}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (spot.seats.length > 0) {
+                            updateSpot(i, { seats: [] });
+                          } else {
+                            updateSpot(i, { seats: generateSeatsForSpot(Number(spot.capacity) || 1, spot.id) });
+                          }
+                        }}
+                        className={`w-full rounded-lg px-3 py-1.5 font-mono text-[10px] transition-colors ${spot.seats.length > 0 ? "bg-caramel/20 text-caramel" : "bg-white/5 text-muted hover:bg-white/10"}`}
+                      >
+                        {spot.seats.length > 0 ? `✓ ${spot.seats.length} individual seats` : "enable individual seats"}
+                      </button>
+                      {spot.seats.length > 0 && (
+                        <div className="mt-1.5 flex flex-wrap gap-1">
+                          {spot.seats.map((seat) => (
+                            <span key={seat.id} className="rounded-md bg-white/5 px-1.5 py-0.5 font-mono text-[8px] text-cream">
+                              {seat.label}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+              );
+            })}
+            {spots.length === 0 && (
+              <div className="rounded-xl border-[1.5px] border-dashed border-white/10 p-5 text-center">
+                <span className="mb-1.5 block text-xl">🪑</span>
+                <p className="text-xs text-muted">no spots yet — upload a floor plan or add manually</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Allow choice toggle */}
       {mode !== "none" && (
         <label className="flex cursor-pointer items-center gap-2">
@@ -1059,20 +1314,15 @@ function SeatingBuilder({
             className="h-3.5 w-3.5 rounded border-white/20 bg-white/5 accent-caramel"
           />
           <span className="font-mono text-[10px] text-muted">
-            let users choose their {mode === "sections" ? "section" : mode === "seats" ? "seat" : "section or seat"}
+            let users choose their {mode === "sections" ? "section" : mode === "seats" ? "seat" : mode === "custom" ? "spot" : "section or seat"}
           </span>
         </label>
       )}
 
       {/* Layout preview */}
-      {mode !== "none" && (sections.length > 0 || rows.length > 0) && (
+      {mode !== "none" && (sections.length > 0 || rows.length > 0 || spots.length > 0) && (
         <div className="mt-3 rounded-xl border border-white/5 bg-white/[0.02] p-3.5">
           <span className="mb-2 block font-mono text-[9px] uppercase tracking-[1px] text-muted/60">preview</span>
-
-          {/* Stage */}
-          <div className="mx-auto mb-3 h-5 w-3/4 rounded-b-[20px] bg-white/5 text-center font-mono text-[8px] leading-5 text-muted/40">
-            STAGE
-          </div>
 
           {/* Section-based preview */}
           {(mode === "sections" || mode === "mixed") && sections.length > 0 && (
@@ -1118,6 +1368,122 @@ function SeatingBuilder({
               })}
             </div>
           )}
+
+          {/* Custom spots preview — spatial floor plan */}
+          {mode === "custom" && spots.length > 0 && (() => {
+            const hasCoords = spots.some((s) => s.x && s.y);
+            if (!hasCoords) return null;
+
+            // Remap coordinates to add padding so edge elements don't clip.
+            // Raw x/y are 0-100. We remap to 8%-92% so there's ~8% padding on all sides.
+            const xValues = spots.map((s) => Number(s.x) || 50);
+            const yValues = spots.map((s) => Number(s.y) || 50);
+            const xMin = Math.min(...xValues);
+            const xMax = Math.max(...xValues);
+            const yMin = Math.min(...yValues);
+            const yMax = Math.max(...yValues);
+            const xRange = Math.max(xMax - xMin, 1);
+            const yRange = Math.max(yMax - yMin, 1);
+            const pad = 8; // percent padding on each side
+            const usable = 100 - pad * 2;
+            const remapX = (x: number) => pad + ((x - xMin) / xRange) * usable;
+            const remapY = (y: number) => pad + ((y - yMin) / yRange) * usable;
+
+            // Use aspect ratio so height scales with width — no fixed px
+            const ySpread = yMax - yMin;
+            const xSpread = xMax - xMin;
+            // Taller layouts get a taller aspect ratio
+            const ratio = xSpread > 0 ? Math.max(0.7, Math.min(1.4, ySpread / xSpread)) : 1;
+
+            return (
+              <div
+                className="relative w-full rounded-lg bg-white/[0.02] border border-white/5"
+                style={{ aspectRatio: `1 / ${ratio}` }}
+              >
+                {spots.map((spot) => {
+                  const xVal = remapX(Number(spot.x) || 50);
+                  const yVal = remapY(Number(spot.y) || 50);
+                  const cap = Number(spot.capacity) || 1;
+                  const sType = spot.spot_type || "table";
+
+                  // Fixtures: dashed pill with emoji + name
+                  if (sType === "fixture") {
+                    return (
+                      <div
+                        key={spot.id}
+                        className="absolute -translate-x-1/2 -translate-y-1/2"
+                        style={{ left: `${xVal}%`, top: `${yVal}%` }}
+                      >
+                        <div className="flex items-center gap-1 rounded-full border border-dashed border-white/25 bg-white/[0.06] px-2.5 py-1 whitespace-nowrap">
+                          <span className="text-sm">{spot.emoji}</span>
+                          <span className="font-mono text-[11px] text-muted">{spot.name}</span>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // Zones: semi-transparent label
+                  if (sType === "zone") {
+                    return (
+                      <div
+                        key={spot.id}
+                        className="absolute -translate-x-1/2 -translate-y-1/2"
+                        style={{ left: `${xVal}%`, top: `${yVal}%` }}
+                      >
+                        <div className="rounded-lg bg-white/[0.04] px-3 py-1 whitespace-nowrap">
+                          <span className="text-sm">{spot.emoji}</span>
+                          <span className="ml-1 font-mono text-[11px] text-muted/60">{spot.name}</span>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // Tables: shape with seat dots around it + name label
+                  return (
+                    <div
+                      key={spot.id}
+                      className="absolute -translate-x-1/2 -translate-y-1/2"
+                      style={{ left: `${xVal}%`, top: `${yVal}%` }}
+                    >
+                      <div className="flex flex-col items-center">
+                        <div className="relative flex items-center justify-center">
+                          {/* Table shape */}
+                          <div
+                            className={`flex items-center justify-center border border-white/25 bg-white/[0.08] text-sm ${
+                              spot.shape === "rectangle" ? "h-7 w-12 rounded-md" : spot.shape === "square" ? "h-8 w-8 rounded-md" : "h-8 w-8 rounded-full"
+                            }`}
+                          >
+                            {spot.emoji}
+                          </div>
+                          {/* Seat dots around the table */}
+                          {spot.seats.length > 0 && spot.seats.map((seat, si) => {
+                            const angle = (Number(seat.angle) || (360 / cap) * si) * (Math.PI / 180);
+                            const r = spot.shape === "rectangle" ? 26 : 22;
+                            const sx = Math.sin(angle) * r;
+                            const sy = -Math.cos(angle) * r;
+                            return (
+                              <div
+                                key={seat.id}
+                                className="absolute h-2.5 w-2.5 rounded-full"
+                                style={{
+                                  transform: `translate(${sx}px, ${sy}px)`,
+                                  background: "rgba(212,165,116,0.5)",
+                                  border: "1px solid rgba(212,165,116,0.7)",
+                                }}
+                                title={seat.label}
+                              />
+                            );
+                          })}
+                        </div>
+                        {/* Name below table */}
+                        <span className="mt-1 max-w-[80px] truncate text-center font-mono text-[10px] text-cream/70">{spot.name}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>
@@ -1200,10 +1566,76 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
     })) || []
   );
   const [allowSeatChoice, setAllowSeatChoice] = useState(event?.seating?.allow_choice ?? true);
+  const [customSpots, setCustomSpots] = useState<FormSpot[]>(
+    event?.seating?.spots?.map((s) => ({
+      id: s.id,
+      name: s.name,
+      emoji: s.emoji || "🪑",
+      capacity: s.capacity.toString(),
+      description: s.description || "",
+      section_id: s.section_id || "",
+      price_override: s.price_override?.toString() || "",
+      x: s.x?.toString() || "",
+      y: s.y?.toString() || "",
+      shape: s.shape || "circle",
+      spot_type: s.spot_type || "table",
+      seats: s.seats?.map((seat) => ({
+        id: seat.id,
+        label: seat.label,
+        angle: seat.angle?.toString() || "0",
+      })) || [],
+    })) || []
+  );
+  const [floorPlanUrl, setFloorPlanUrl] = useState(event?.seating?.floor_plan_url || "");
+  const [analyzingFloorPlan, setAnalyzingFloorPlan] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [showPreview, setShowPreview] = useState(false);
+
+  async function handleAnalyzeFloorPlan() {
+    if (!floorPlanUrl) return;
+    setAnalyzingFloorPlan(true);
+    setError("");
+    try {
+      // Download the floor plan image and convert to base64 data URI
+      const response = await fetch(floorPlanUrl);
+      const blob = await response.blob();
+      const dataUri = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.readAsDataURL(blob);
+      });
+
+      const res = await apiClient.post<{ success: boolean; data: { spots: Array<{ id: string; name: string; emoji: string; capacity: number; description: string; x?: number; y?: number; shape?: string; spot_type?: string; seats?: Array<{ id: string; label: string; status: string; angle?: number }> }> }; error?: string }>(
+        "/api/admin/floorplan/analyze",
+        { image: dataUri },
+      );
+
+      setCustomSpots(res.data.spots.map((s) => ({
+        id: s.id,
+        name: s.name,
+        emoji: s.emoji || "🪑",
+        capacity: s.capacity.toString(),
+        description: s.description || "",
+        section_id: "",
+        price_override: "",
+        x: s.x?.toString() || "",
+        y: s.y?.toString() || "",
+        shape: (s.shape as "circle" | "rectangle" | "square") || "circle",
+        spot_type: (s.spot_type as "table" | "fixture" | "zone") || "table",
+        seats: s.seats?.map((seat) => ({
+          id: seat.id,
+          label: seat.label,
+          angle: seat.angle?.toString() || "0",
+        })) || [],
+      })));
+    } catch (err) {
+      setError((err as Error).message || "Failed to analyze floor plan");
+    } finally {
+      setAnalyzingFloorPlan(false);
+    }
+  }
 
   function buildPreviewEvent(): Event {
     return {
@@ -1266,7 +1698,7 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
       } : undefined,
       seating: seatingMode !== "none" ? {
         mode: seatingMode,
-        sections: seatingSections.map((s) => ({
+        sections: seatingMode !== "custom" ? seatingSections.map((s) => ({
           id: s.id,
           name: s.name.trim(),
           emoji: s.emoji,
@@ -1275,14 +1707,35 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
           booked: 0,
           price_override: s.price_override ? Number(s.price_override) : undefined,
           color: s.color,
-        })),
-        rows: seatRows.map((r) => ({
+        })) : [],
+        rows: seatingMode !== "custom" ? seatRows.map((r) => ({
           id: r.id,
           label: r.label.trim(),
           seats_count: Number(r.seats_count) || 0,
           section_id: r.section_id || undefined,
-        })),
+        })) : [],
         seats: [],
+        spots: seatingMode === "custom" ? customSpots.map((s) => ({
+          id: s.id,
+          name: s.name.trim(),
+          emoji: s.emoji,
+          capacity: (s.spot_type || "table") === "table" ? (Number(s.capacity) || 1) : 0,
+          booked: 0,
+          section_id: s.section_id || undefined,
+          price_override: s.price_override ? Number(s.price_override) : undefined,
+          description: s.description.trim() || undefined,
+          x: s.x ? Number(s.x) : undefined,
+          y: s.y ? Number(s.y) : undefined,
+          shape: s.shape || "circle",
+          spot_type: s.spot_type || "table",
+          seats: s.seats.length > 0 ? s.seats.map((seat) => ({
+            id: seat.id,
+            label: seat.label,
+            status: "available" as const,
+            angle: Number(seat.angle) || 0,
+          })) : undefined,
+        })) : undefined,
+        floor_plan_url: seatingMode === "custom" ? (floorPlanUrl || undefined) : undefined,
         allow_choice: allowSeatChoice,
       } : undefined,
       status: event?.status || "draft",
@@ -1360,7 +1813,7 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
       } : undefined,
       seating: seatingMode !== "none" ? {
         mode: seatingMode,
-        sections: seatingSections.map((s) => ({
+        sections: seatingMode !== "custom" ? seatingSections.map((s) => ({
           id: s.id,
           name: s.name.trim(),
           emoji: s.emoji,
@@ -1369,14 +1822,14 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
           booked: 0,
           price_override: s.price_override ? Number(s.price_override) : undefined,
           color: s.color,
-        })),
-        rows: seatRows.map((r) => ({
+        })) : [],
+        rows: seatingMode !== "custom" ? seatRows.map((r) => ({
           id: r.id,
           label: r.label.trim(),
           seats_count: Number(r.seats_count) || 0,
           section_id: r.section_id || undefined,
-        })),
-        seats: seatRows.flatMap((r) => {
+        })) : [],
+        seats: seatingMode !== "custom" ? seatRows.flatMap((r) => {
           const count = Number(r.seats_count) || 0;
           return Array.from({ length: count }, (_, i) => ({
             id: `${r.label}${i + 1}`,
@@ -1385,7 +1838,28 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
             status: "available" as const,
             section_id: r.section_id || undefined,
           }));
-        }),
+        }) : [],
+        spots: seatingMode === "custom" ? customSpots.map((s) => ({
+          id: s.id,
+          name: s.name.trim(),
+          emoji: s.emoji,
+          capacity: (s.spot_type || "table") === "table" ? (Number(s.capacity) || 1) : 0,
+          booked: 0,
+          section_id: s.section_id || undefined,
+          price_override: s.price_override ? Number(s.price_override) : undefined,
+          description: s.description.trim() || undefined,
+          x: s.x ? Number(s.x) : undefined,
+          y: s.y ? Number(s.y) : undefined,
+          shape: s.shape || "circle",
+          spot_type: s.spot_type || "table",
+          seats: s.seats.length > 0 ? s.seats.map((seat) => ({
+            id: seat.id,
+            label: seat.label,
+            status: "available" as const,
+            angle: Number(seat.angle) || 0,
+          })) : undefined,
+        })) : undefined,
+        floor_plan_url: seatingMode === "custom" ? (floorPlanUrl || undefined) : undefined,
         allow_choice: allowSeatChoice,
       } : undefined,
       status,
@@ -1710,16 +2184,22 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
           <label className="mb-1 block font-mono text-[10px] uppercase tracking-[2px] text-muted">
             seating arrangement
           </label>
-          <p className="mb-3 text-[11px] text-muted/60">sections for zones, seats for individual selection, or both</p>
+          <p className="mb-3 text-[11px] text-muted/60">sections, seats, custom spots from a floor plan, or a mix</p>
           <SeatingBuilder
             mode={seatingMode}
             sections={seatingSections}
             rows={seatRows}
             allowChoice={allowSeatChoice}
+            spots={customSpots}
+            floorPlanUrl={floorPlanUrl}
+            analyzingFloorPlan={analyzingFloorPlan}
             onModeChange={setSeatingMode}
             onSectionsChange={setSeatingSections}
             onRowsChange={setSeatRows}
             onAllowChoiceChange={setAllowSeatChoice}
+            onSpotsChange={setCustomSpots}
+            onFloorPlanChange={setFloorPlanUrl}
+            onAnalyzeFloorPlan={handleAnalyzeFloorPlan}
           />
         </div>
 

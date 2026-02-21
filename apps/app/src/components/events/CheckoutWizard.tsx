@@ -19,6 +19,7 @@ interface CheckoutWizardProps {
     addOns: SelectedAddon[],
     seatId?: string,
     sectionId?: string,
+    spotSeatId?: string,
   ) => void;
   onClose: () => void;
   loading?: boolean;
@@ -220,19 +221,309 @@ function SeatSelectStep({
   event,
   selectedSeatId,
   selectedSectionId,
+  selectedSpotSeatId,
   onSelectSeat,
   onSelectSection,
+  onSelectSpotSeat,
 }: {
   event: Event;
   selectedSeatId: string | null;
   selectedSectionId: string | null;
+  selectedSpotSeatId: string | null;
   onSelectSeat: (id: string | null) => void;
   onSelectSection: (id: string | null) => void;
+  onSelectSpotSeat: (id: string | null) => void;
 }) {
+  const [expandedSpotId, setExpandedSpotId] = useState<string | null>(null);
   const seating = event.seating;
   if (!seating) return null;
 
   const mode = seating.mode;
+  const accent = event.accent || "#D4A574";
+
+  // Custom spot selection — Hybrid: mini map + card list + drill-in
+  if (mode === "custom") {
+    const spots = seating.spots || [];
+    const tables = spots.filter((s) => (s.spot_type || "table") === "table");
+    const fixtures = spots.filter((s) => s.spot_type === "fixture");
+    const zones = spots.filter((s) => s.spot_type === "zone");
+    const hasCoordinates = spots.some((s) => s.x != null && s.y != null);
+    const expandedSpot = tables.find((s) => s.id === expandedSpotId);
+
+    // Seat picker drill-in — expanded into a specific table
+    if (expandedSpot && expandedSpot.seats && expandedSpot.seats.length > 0) {
+      const tableShape = expandedSpot.shape || "circle";
+      return (
+        <div>
+          <button
+            onClick={() => {
+              // If a seat was picked, auto-close drill-in
+              setExpandedSpotId(null);
+            }}
+            className="mb-3 flex items-center gap-1.5 font-mono text-[11px] text-muted transition-colors hover:text-near-black"
+          >
+            ← back to tables
+          </button>
+          <div className="mb-3 text-center">
+            <span className="text-2xl">{expandedSpot.emoji || "\u{1FA91}"}</span>
+            <p className="mt-1 font-sans text-base font-medium text-near-black">{expandedSpot.name}</p>
+            {expandedSpot.description && (
+              <p className="mt-0.5 font-mono text-[11px] text-muted">{expandedSpot.description}</p>
+            )}
+          </div>
+          {/* Visual seat picker */}
+          <div className="relative mx-auto flex h-[220px] w-[220px] items-center justify-center">
+            <div
+              className={`flex items-center justify-center border-2 bg-sand/20 text-2xl ${tableShape === "rectangle" ? "h-16 w-28 rounded-2xl" : tableShape === "square" ? "h-20 w-20 rounded-2xl" : "h-20 w-20 rounded-full"}`}
+              style={{ borderColor: accent + "40" }}
+            >
+              {expandedSpot.emoji || "\u{1FA91}"}
+            </div>
+            {expandedSpot.seats.map((seat, si) => {
+              const angle = (seat.angle ?? (360 / expandedSpot.seats!.length) * si) * (Math.PI / 180);
+              const r = tableShape === "rectangle" ? 85 : 75;
+              const sx = Math.sin(angle) * r;
+              const sy = -Math.cos(angle) * r;
+              const isBooked = seat.status !== "available";
+              const isSelected = selectedSpotSeatId === seat.id;
+              return (
+                <button
+                  key={seat.id}
+                  onClick={() => {
+                    if (!isBooked) {
+                      onSelectSeat(expandedSpot.id);
+                      onSelectSection(expandedSpot.section_id || null);
+                      onSelectSpotSeat(isSelected ? null : seat.id);
+                      // Auto-return to card list after picking
+                      if (!isSelected) {
+                        setTimeout(() => setExpandedSpotId(null), 400);
+                      }
+                    }
+                  }}
+                  disabled={isBooked}
+                  className={`absolute flex h-9 w-9 items-center justify-center rounded-full border-2 font-mono text-[10px] font-medium transition-all ${
+                    isSelected
+                      ? "scale-110 border-near-black bg-near-black text-white shadow-lg"
+                      : isBooked
+                        ? "border-sand/40 bg-sand/20 text-muted/40"
+                        : "border-sand bg-white text-near-black shadow-sm hover:scale-105 hover:shadow-md"
+                  }`}
+                  style={{ transform: `translate(${sx}px, ${sy}px)` }}
+                >
+                  {si + 1}
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-4 flex justify-center gap-4">
+            <div className="flex items-center gap-1.5">
+              <div className="h-3 w-3 rounded-full border border-sand bg-white" />
+              <span className="font-mono text-[9px] text-muted">available</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="h-3 w-3 rounded-full border-2 border-near-black bg-near-black" />
+              <span className="font-mono text-[9px] text-muted">selected</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="h-3 w-3 rounded-full border border-sand/40 bg-sand/20" />
+              <span className="font-mono text-[9px] text-muted">taken</span>
+            </div>
+          </div>
+          {selectedSpotSeatId && (
+            <div className="mt-3 rounded-xl bg-sand/20 px-4 py-2.5 text-center">
+              <span className="font-mono text-[11px] text-near-black">
+                <strong>{expandedSpot.name}</strong> — {expandedSpot.seats.find((s) => s.id === selectedSpotSeatId)?.label || "Seat"} selected
+              </span>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Hybrid layout: mini map + scrollable card list
+    return (
+      <div>
+        <span className="mb-2.5 block font-mono text-[10px] uppercase tracking-[2px] text-muted">
+          {tables.some((s) => s.seats && s.seats.length > 0) ? "pick a table, then choose your seat" : "tap a spot to select"}
+        </span>
+
+        {/* Mini venue map — compact orientation */}
+        {hasCoordinates && (
+          <div className="relative mb-4 h-[160px] overflow-hidden rounded-2xl border border-sand bg-sand/5">
+            {/* Fixtures as landmarks */}
+            {fixtures.map((f) => (
+              <div
+                key={f.id}
+                className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                style={{ left: `${f.x ?? 50}%`, top: `${f.y ?? 50}%` }}
+              >
+                <div className="flex items-center gap-0.5 rounded-full bg-sand/20 px-1.5 py-0.5">
+                  <span className="text-[8px]">{f.emoji}</span>
+                  <span className="font-mono text-[6px] text-muted/70">{f.name}</span>
+                </div>
+              </div>
+            ))}
+            {/* Zones as labels */}
+            {zones.map((z) => (
+              <div
+                key={z.id}
+                className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                style={{ left: `${z.x ?? 50}%`, top: `${z.y ?? 50}%` }}
+              >
+                <span className="font-mono text-[6px] text-muted/50">{z.emoji} {z.name}</span>
+              </div>
+            ))}
+            {/* Table dots — tappable */}
+            {tables.map((spot) => {
+              const availableSeats = spot.seats ? spot.seats.filter((s) => s.status === "available").length : 0;
+              const remaining = spot.seats && spot.seats.length > 0 ? availableSeats : spot.capacity - spot.booked;
+              const full = remaining <= 0;
+              const selected = selectedSeatId === spot.id;
+              return (
+                <button
+                  key={spot.id}
+                  onClick={() => {
+                    if (full) return;
+                    // Scroll to matching card
+                    const el = document.getElementById(`spot-card-${spot.id}`);
+                    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+                    if (spot.seats && spot.seats.length > 0) {
+                      setExpandedSpotId(spot.id);
+                    } else {
+                      onSelectSeat(selected ? null : spot.id);
+                      onSelectSection(spot.section_id || null);
+                      onSelectSpotSeat(null);
+                    }
+                  }}
+                  disabled={full}
+                  className={`absolute -translate-x-1/2 -translate-y-1/2 transition-all ${full ? "opacity-30" : selected ? "z-10 scale-125" : ""}`}
+                  style={{ left: `${spot.x ?? 50}%`, top: `${spot.y ?? 50}%` }}
+                >
+                  <div
+                    className={`flex h-5 w-5 items-center justify-center rounded-full border text-[8px]`}
+                    style={{
+                      borderColor: selected ? "#0E0D0B" : accent + "80",
+                      background: selected ? accent + "30" : "white",
+                    }}
+                  >
+                    {spot.emoji || "\u{1FA91}"}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Scrollable card list — primary selection UI */}
+        <div className="flex flex-col gap-2">
+          {/* Fixture info cards (non-interactive) */}
+          {fixtures.length > 0 && (
+            <div className="mb-1 flex flex-wrap gap-1.5">
+              {fixtures.map((f) => (
+                <div key={f.id} className="flex items-center gap-1 rounded-full bg-sand/15 px-2.5 py-1">
+                  <span className="text-xs">{f.emoji}</span>
+                  <span className="font-mono text-[9px] text-muted/60">{f.name}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Zone info cards (non-interactive) */}
+          {zones.length > 0 && (
+            <div className="mb-1 flex flex-wrap gap-1.5">
+              {zones.map((z) => (
+                <div key={z.id} className="flex items-center gap-1 rounded-lg bg-sand/10 px-2.5 py-1">
+                  <span className="text-xs">{z.emoji}</span>
+                  <span className="font-mono text-[9px] text-muted/50">{z.name}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Table cards — bookable */}
+          {tables.map((spot) => {
+            const availableSeats = spot.seats ? spot.seats.filter((s) => s.status === "available").length : 0;
+            const remaining = spot.seats && spot.seats.length > 0 ? availableSeats : spot.capacity - spot.booked;
+            const full = remaining <= 0;
+            const selected = selectedSeatId === spot.id;
+            const selectedSeatLabel = selectedSpotSeatId ? spot.seats?.find((s) => s.id === selectedSpotSeatId)?.label : null;
+
+            return (
+              <button
+                key={spot.id}
+                id={`spot-card-${spot.id}`}
+                onClick={() => {
+                  if (full) return;
+                  if (spot.seats && spot.seats.length > 0) {
+                    setExpandedSpotId(spot.id);
+                  } else {
+                    onSelectSeat(selected ? null : spot.id);
+                    onSelectSection(spot.section_id || null);
+                    onSelectSpotSeat(null);
+                  }
+                }}
+                disabled={full}
+                className={`flex w-full items-center gap-3 rounded-2xl border-2 p-3.5 text-left transition-all ${
+                  selected
+                    ? "border-near-black bg-near-black/[0.03]"
+                    : full
+                      ? "border-sand/30 opacity-40"
+                      : "border-sand bg-white hover:border-near-black/30"
+                }`}
+              >
+                {/* Emoji */}
+                <div
+                  className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-lg`}
+                  style={{ background: accent + "10" }}
+                >
+                  {spot.emoji || "\u{1FA91}"}
+                </div>
+
+                {/* Info */}
+                <div className="min-w-0 flex-1">
+                  <p className="font-sans text-sm font-medium text-near-black">{spot.name}</p>
+                  {spot.description && (
+                    <p className="truncate font-mono text-[10px] text-muted">{spot.description}</p>
+                  )}
+                  {/* Seat availability dots */}
+                  {spot.seats && spot.seats.length > 0 && (
+                    <div className="mt-1 flex items-center gap-0.5">
+                      {spot.seats.map((seat) => (
+                        <div
+                          key={seat.id}
+                          className="h-2 w-2 rounded-full"
+                          style={{
+                            background: seat.status === "available" ? accent : "#E8E0D4",
+                          }}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Right side — availability or selection */}
+                <div className="shrink-0 text-right">
+                  {selected && selectedSeatLabel ? (
+                    <p className="font-mono text-[10px] font-medium text-near-black">{selectedSeatLabel}</p>
+                  ) : (
+                    <>
+                      <p className={`font-mono text-xs font-medium ${full ? "text-terracotta" : "text-near-black"}`}>
+                        {full ? "full" : remaining}
+                      </p>
+                      <p className="font-mono text-[8px] text-muted">
+                        {full ? "" : spot.seats && spot.seats.length > 0 ? "seats left" : "left"}
+                      </p>
+                    </>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
   const sections = seating.sections || [];
   const rows = seating.rows || [];
   const seats = seating.seats || [];
@@ -479,6 +770,7 @@ function SummaryStep({
   checkoutSteps,
   seatId,
   sectionId,
+  spotSeatId,
 }: {
   event: Event;
   selectedTier: TicketTier | undefined;
@@ -488,6 +780,7 @@ function SummaryStep({
   checkoutSteps: CheckoutStep[];
   seatId: string | null;
   sectionId: string | null;
+  spotSeatId: string | null;
 }) {
   const tierPrice = selectedTier?.price || 0;
 
@@ -544,7 +837,17 @@ function SummaryStep({
       {/* Pickup, time, seat */}
       {(pickupPoint || timeSlot || seatId || sectionId) && (
         <div className="mt-2 border-t border-sand/50 pt-3">
-          {seatId && (
+          {seatId && event.seating?.mode === "custom" && (
+            <p className="font-mono text-[10px] text-muted">
+              spot: {event.seating.spots?.find((s) => s.id === seatId)?.name || seatId}
+              {spotSeatId && (() => {
+                const spot = event.seating?.spots?.find((s) => s.id === seatId);
+                const seat = spot?.seats?.find((s) => s.id === spotSeatId);
+                return seat ? `, ${seat.label}` : "";
+              })()}
+            </p>
+          )}
+          {seatId && event.seating?.mode !== "custom" && (
             <p className="font-mono text-[10px] text-muted">seat: {seatId}</p>
           )}
           {sectionId && !seatId && (
@@ -614,6 +917,7 @@ export function CheckoutWizard({ event, onComplete, onClose, loading }: Checkout
   const [addonSelections, setAddonSelections] = useState<Record<string, Record<string, number>>>({});
   const [selectedSeatId, setSelectedSeatId] = useState<string | null>(null);
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
+  const [selectedSpotSeatId, setSelectedSpotSeatId] = useState<string | null>(null);
 
   const selectedTier = tiers.find((t) => t.id === selectedTierId);
   const step = steps[currentStep];
@@ -642,6 +946,14 @@ export function CheckoutWizard({ event, onComplete, onClose, loading }: Checkout
           const seating = event.seating;
           if (!seating || seating.mode === "none") return true;
           if (!seating.allow_choice) return true; // auto-assigned
+          if (seating.mode === "custom" && selectedSeatId) {
+            // If selected spot has individual seats, require a seat pick
+            const spot = seating.spots?.find((s) => s.id === selectedSeatId);
+            if (spot?.seats && spot.seats.length > 0) {
+              return !!selectedSpotSeatId;
+            }
+            return true;
+          }
           // Need at least a seat or section selected
           return !!selectedSeatId || !!selectedSectionId;
         }
@@ -680,6 +992,7 @@ export function CheckoutWizard({ event, onComplete, onClose, loading }: Checkout
         allAddons,
         selectedSeatId || undefined,
         selectedSectionId || undefined,
+        selectedSpotSeatId || undefined,
       );
     } else {
       setCurrentStep((prev) => Math.min(prev + 1, steps.length - 1));
@@ -821,8 +1134,10 @@ export function CheckoutWizard({ event, onComplete, onClose, loading }: Checkout
               event={event}
               selectedSeatId={selectedSeatId}
               selectedSectionId={selectedSectionId}
+              selectedSpotSeatId={selectedSpotSeatId}
               onSelectSeat={setSelectedSeatId}
               onSelectSection={setSelectedSectionId}
+              onSelectSpotSeat={setSelectedSpotSeatId}
             />
           )}
 
@@ -836,6 +1151,7 @@ export function CheckoutWizard({ event, onComplete, onClose, loading }: Checkout
               checkoutSteps={checkoutSteps}
               seatId={selectedSeatId}
               sectionId={selectedSectionId}
+              spotSeatId={selectedSpotSeatId}
             />
           )}
         </div>

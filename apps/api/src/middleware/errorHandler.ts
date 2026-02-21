@@ -7,12 +7,44 @@ export function asyncHandler(fn: RequestHandler): RequestHandler {
   };
 }
 
+interface AppError extends Error {
+  statusCode?: number;
+}
+
+const SAFE_PREFIXES = [
+  "Missing required",
+  "Invalid",
+  "Not found",
+  "Already",
+  "Unauthorized",
+  "Forbidden",
+  "Admin access required",
+  "Image exceeds",
+  "Unsupported image",
+  "Maximum",
+];
+
 export function errorHandler(
-  err: Error,
+  err: AppError,
   _req: Request,
   res: Response,
   _next: NextFunction,
 ) {
-  console.error("[Error]", err.message);
-  res.status(500).json({ success: false, error: err.message });
+  console.error("[Error]", err.message, err.stack);
+
+  const statusCode = err.statusCode || 500;
+  const isProduction = process.env.NODE_ENV === "production";
+
+  let clientMessage: string;
+  if (!isProduction) {
+    clientMessage = err.message;
+  } else if (statusCode >= 500) {
+    clientMessage = "An internal error occurred";
+  } else if (SAFE_PREFIXES.some((p) => err.message.startsWith(p))) {
+    clientMessage = err.message;
+  } else {
+    clientMessage = "An error occurred";
+  }
+
+  res.status(statusCode).json({ success: false, error: clientMessage });
 }

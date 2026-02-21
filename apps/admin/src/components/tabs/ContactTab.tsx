@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { API_URL } from "@/lib/constants";
+import { TableRowSkeleton } from "@/components/Skeleton";
 import type { ContactSubmission, ContactSubmissionStatus } from "@comeoffline/types";
 
 export function ContactTab() {
@@ -80,7 +81,7 @@ export function ContactTab() {
       )}
 
       {loading ? (
-        <p className="py-8 text-center font-mono text-sm text-muted">loading...</p>
+        <div className="space-y-1">{Array.from({ length: 5 }).map((_, i) => <TableRowSkeleton key={i} columns={3} />)}</div>
       ) : submissions.length === 0 ? (
         <p className="py-8 text-center font-mono text-sm text-muted">no {filter === "all" ? "" : filter + " "}submissions</p>
       ) : (

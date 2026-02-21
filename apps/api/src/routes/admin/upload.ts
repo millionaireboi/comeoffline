@@ -6,6 +6,30 @@ import crypto from "crypto";
 
 const router = Router();
 
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
+const MAX_BATCH_SIZE = 10;
+const ALLOWED_TYPES = ["png", "jpeg", "jpg", "gif", "webp"];
+
+function validateDataUri(dataUri: string): void {
+  const matches = dataUri.match(/^data:image\/(\w+);base64,(.+)$/);
+  if (!matches) {
+    const err = new Error("Invalid image data URI") as Error & { statusCode?: number };
+    err.statusCode = 400;
+    throw err;
+  }
+  if (!ALLOWED_TYPES.includes(matches[1].toLowerCase())) {
+    const err = new Error("Unsupported image type. Allowed: png, jpeg, gif, webp") as Error & { statusCode?: number };
+    err.statusCode = 400;
+    throw err;
+  }
+  const estimatedSize = Math.ceil(matches[2].length * 3 / 4);
+  if (estimatedSize > MAX_IMAGE_SIZE) {
+    const err = new Error(`Image exceeds maximum size of ${MAX_IMAGE_SIZE / (1024 * 1024)}MB`) as Error & { statusCode?: number };
+    err.statusCode = 413;
+    throw err;
+  }
+}
+
 /** Upload a single image to Firebase Storage */
 async function uploadSingle(dataUri: string, prefix: string): Promise<string> {
   const matches = dataUri.match(/^data:image\/(\w+);base64,(.+)$/);
@@ -38,6 +62,18 @@ router.post(
     if (!image && (!images || !Array.isArray(images))) {
       res.status(400).json({ success: false, error: "image or images required" });
       return;
+    }
+
+    if (images && (images as string[]).length > MAX_BATCH_SIZE) {
+      res.status(400).json({ success: false, error: `Maximum ${MAX_BATCH_SIZE} images per upload` });
+      return;
+    }
+
+    // Validate all images before uploading any
+    if (image) {
+      validateDataUri(image);
+    } else {
+      (images as string[]).forEach(validateDataUri);
     }
 
     const prefix = path_prefix || "admin/uploads";

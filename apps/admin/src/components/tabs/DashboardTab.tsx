@@ -2,6 +2,7 @@
 
 import { useApi } from "@/hooks/useApi";
 import { instrumentSerif } from "@/lib/constants";
+import { TabLoadingSkeleton } from "@/components/Skeleton";
 import type { Event } from "@comeoffline/types";
 
 export function DashboardTab() {
@@ -23,7 +24,7 @@ export function DashboardTab() {
   const upcomingEvents = events?.filter((e) => ["upcoming", "live", "draft"].includes(e.status)) || [];
 
   if (statsLoading && !stats) {
-    return <p className="py-8 text-center font-mono text-sm text-muted">loading stats...</p>;
+    return <TabLoadingSkeleton />;
   }
 
   return (

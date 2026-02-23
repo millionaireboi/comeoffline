@@ -7,6 +7,7 @@ export type AppStage =
   | "accepted"
   | "profile_setup"
   | "app_education"
+  | "sign_quiz"
   | "feed"
   | "countdown"
   | "reveal"

@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import type { Badge } from "@comeoffline/types";
+import type { Badge, Ticket } from "@comeoffline/types";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppStore } from "@/store/useAppStore";
 import { apiFetch } from "@/lib/api";
+import { SignQuiz } from "@/components/onboarding/SignQuiz";
 import { Noise } from "@/components/shared/Noise";
 
 const AVATAR_GRADIENTS = [
@@ -32,6 +33,10 @@ interface ProfileData {
     status: string;
     vibe_check_answers?: Array<{ question: string; answer: string }>;
     created_at: string;
+    sign?: string;
+    sign_emoji?: string;
+    sign_label?: string;
+    sign_color?: string;
   };
   stats: {
     events_attended: number;
@@ -49,15 +54,7 @@ interface ProfileData {
   badges: Badge[];
 }
 
-const VIBE_COLORS: Record<string, string> = {
-  "the connector": "#6B7A63",
-  "the creative": "#D4A574",
-  "the deep talker": "#8B7EC8",
-  "the wildcard": "#D4836B",
-  "the observer": "#7A8B9C",
-};
-
-function ProfileAvatar({ user, vibeColor }: { user: ProfileData["user"]; vibeColor: string }) {
+function ProfileAvatar({ user, signColor }: { user: ProfileData["user"]; signColor: string }) {
   // Uploaded avatar
   if (user.avatar_type === "uploaded" && user.avatar_url && !user.avatar_url.startsWith("gradient:")) {
     return (
@@ -82,38 +79,66 @@ function ProfileAvatar({ user, vibeColor }: { user: ProfileData["user"]; vibeCol
     );
   }
 
-  // Fallback: first letter of name
+  // Fallback: sign emoji or first letter of name
+  if (user.sign_emoji) {
+    return (
+      <div
+        className="flex h-16 w-16 items-center justify-center rounded-full text-2xl"
+        style={{ background: signColor + "20" }}
+      >
+        {user.sign_emoji}
+      </div>
+    );
+  }
+
   return (
     <div
       className="flex h-16 w-16 items-center justify-center rounded-full font-serif text-2xl text-white"
-      style={{ background: vibeColor }}
+      style={{ background: signColor }}
     >
       {user.name.charAt(0)}
     </div>
   );
 }
 
+type EnrichedTicket = Ticket & { event_title: string; event_emoji: string; event_date: string };
+
+const STATUS_STYLES: Record<string, { color: string; bg: string; label: string }> = {
+  confirmed: { color: "#6B7A63", bg: "#6B7A6315", label: "confirmed" },
+  pending_payment: { color: "#D4A574", bg: "#D4A57415", label: "pending" },
+  checked_in: { color: "#5B8CB8", bg: "#5B8CB815", label: "checked in" },
+  cancelled: { color: "#9B8E82", bg: "#9B8E8215", label: "cancelled" },
+  no_show: { color: "#9B8E82", bg: "#9B8E8215", label: "no show" },
+};
+
 export function ProfileScreen() {
   const { getIdToken, logout } = useAuth();
-  const { setStage } = useAppStore();
+  const { setStage, activeTicket, setActiveTicket } = useAppStore();
   const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [tickets, setTickets] = useState<EnrichedTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [igHandle, setIgHandle] = useState("");
   const [saving, setSaving] = useState(false);
+  const [showQuizRetake, setShowQuizRetake] = useState(false);
+  const [expandedTicketId, setExpandedTicketId] = useState<string | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
 
   useEffect(() => {
-    async function fetchProfile() {
+    async function fetchData() {
       try {
         const token = await getIdToken();
         if (!token) return;
-        const data = await apiFetch<{ success: boolean; data: ProfileData }>(
-          "/api/users/me",
-          { token },
-        );
-        if (data.data) {
-          setProfile(data.data);
-          setIgHandle(data.data.user.instagram_handle || "");
+        const [profileRes, ticketsRes] = await Promise.all([
+          apiFetch<{ success: boolean; data: ProfileData }>("/api/users/me", { token }),
+          apiFetch<{ success: boolean; data: EnrichedTicket[] }>("/api/tickets/mine", { token }),
+        ]);
+        if (profileRes.data) {
+          setProfile(profileRes.data);
+          setIgHandle(profileRes.data.user.instagram_handle || "");
+        }
+        if (ticketsRes.data) {
+          setTickets(ticketsRes.data);
         }
       } catch (err) {
         console.error("Failed to load profile:", err);
@@ -121,8 +146,32 @@ export function ProfileScreen() {
         setLoading(false);
       }
     }
-    fetchProfile();
+    fetchData();
   }, [getIdToken]);
+
+  const handleCancelTicket = async (ticketId: string) => {
+    if (!confirm("Cancel this ticket? This can\u2019t be undone.")) return;
+    setCancellingId(ticketId);
+    try {
+      const token = await getIdToken();
+      if (!token) return;
+      await apiFetch(`/api/tickets/${ticketId}`, { method: "DELETE", token });
+      // Update local state
+      setTickets((prev) =>
+        prev.map((t) => t.id === ticketId ? { ...t, status: "cancelled" as const } : t),
+      );
+      // If this was the active ticket, clear it and go back to feed
+      if (activeTicket?.id === ticketId) {
+        setActiveTicket(null);
+        setStage("feed");
+      }
+    } catch (err) {
+      console.error("Failed to cancel ticket:", err);
+      alert("Failed to cancel ticket. Please try again.");
+    } finally {
+      setCancellingId(null);
+    }
+  };
 
   const handleSaveIg = async () => {
     setSaving(true);
@@ -155,15 +204,27 @@ export function ProfileScreen() {
     );
   }
 
-  if (!profile) return null;
+  if (!profile) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-cream px-8 text-center">
+        <span className="mb-4 text-4xl">{"\u{1F614}"}</span>
+        <p className="mb-2 font-serif text-xl text-near-black">couldn&apos;t load profile</p>
+        <p className="mb-6 font-sans text-sm text-muted">check your connection and try again.</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="rounded-full bg-near-black px-6 py-2.5 font-mono text-[11px] text-white"
+        >
+          retry
+        </button>
+      </div>
+    );
+  }
 
-  const vibeColor = VIBE_COLORS[profile.user.vibe_tag.toLowerCase()] || "#D4A574";
+  const signColor = profile.user.sign_color || "#D4A574";
   const memberSince = new Date(profile.user.created_at).toLocaleDateString("en-US", {
     month: "short",
     year: "numeric",
   });
-
-  const hasPersonalityData = profile.user.hot_take || profile.user.area || profile.user.age_range || profile.user.drink_of_choice;
 
   return (
     <div className="min-h-screen bg-cream pb-[120px]">
@@ -190,7 +251,7 @@ export function ProfileScreen() {
         <div className="rounded-[24px] bg-white p-6 shadow-[0_2px_12px_rgba(26,23,21,0.06)]">
           {/* Avatar */}
           <div className="mb-5 flex items-center gap-4">
-            <ProfileAvatar user={profile.user} vibeColor={vibeColor} />
+            <ProfileAvatar user={profile.user} signColor={signColor} />
             <div>
               <h2 className="font-serif text-[26px] font-normal leading-none text-near-black">
                 {profile.user.name}
@@ -199,14 +260,14 @@ export function ProfileScreen() {
             </div>
           </div>
 
-          {/* Vibe tag + status */}
+          {/* Sign badge + status */}
           <div className="mb-5 flex flex-wrap items-center gap-2">
-            {profile.user.vibe_tag && (
+            {profile.user.sign_label && (
               <span
-                className="rounded-full px-3 py-1 font-mono text-[10px] font-medium uppercase tracking-[1px]"
-                style={{ color: vibeColor, background: vibeColor + "15" }}
+                className="rounded-full px-3 py-1 font-serif text-[11px] italic"
+                style={{ color: signColor, background: signColor + "15" }}
               >
-                {profile.user.vibe_tag}
+                {profile.user.sign_emoji} {profile.user.sign_label}
               </span>
             )}
             <span
@@ -303,6 +364,18 @@ export function ProfileScreen() {
               )}
             </div>
           </div>
+
+          {/* Retake quiz button */}
+          <button
+            onClick={() => setShowQuizRetake(true)}
+            className="mt-4 w-full rounded-[14px] border border-dashed py-3 text-center font-mono text-[11px] transition-colors"
+            style={{
+              borderColor: signColor + "30",
+              color: signColor,
+            }}
+          >
+            {profile.user.sign ? "retake sign quiz \u2192" : "take the sign quiz \u2192"}
+          </button>
         </div>
       </section>
 
@@ -345,6 +418,152 @@ export function ProfileScreen() {
                 <span className="font-mono text-[10px] text-near-black">{badge.name}</span>
               </div>
             ))}
+          </div>
+        </section>
+      )}
+
+      {/* Your tickets */}
+      {tickets.length > 0 && (
+        <section className="animate-fadeSlideUp px-5 pt-5" style={{ animationDelay: "0.17s" }}>
+          <span className="mb-3 block font-mono text-[10px] uppercase tracking-[2px] text-muted">
+            your tickets
+          </span>
+          <div className="flex flex-col gap-2">
+            {tickets.map((ticket) => {
+              const style = STATUS_STYLES[ticket.status] || STATUS_STYLES.cancelled;
+              const isCancellable = ["confirmed", "pending_payment"].includes(ticket.status);
+              const isExpanded = expandedTicketId === ticket.id;
+              const isCancelling = cancellingId === ticket.id;
+
+              return (
+                <div
+                  key={ticket.id}
+                  className="rounded-[14px] bg-white shadow-[0_1px_3px_rgba(26,23,21,0.04)] transition-all"
+                  style={{ opacity: ticket.status === "cancelled" ? 0.55 : 1 }}
+                >
+                  {/* Summary row */}
+                  <button
+                    onClick={() => setExpandedTicketId(isExpanded ? null : ticket.id)}
+                    className="flex w-full items-center justify-between p-4 text-left"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-xl">{ticket.event_emoji}</span>
+                      <div>
+                        <p className="font-sans text-[14px] font-medium text-near-black">
+                          {ticket.event_title}
+                        </p>
+                        <p className="font-mono text-[10px] text-muted">
+                          {ticket.tier_name}{ticket.event_date ? ` \u00B7 ${ticket.event_date}` : ""}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="rounded-full px-2.5 py-1 font-mono text-[9px] uppercase"
+                        style={{ color: style.color, background: style.bg }}
+                      >
+                        {style.label}
+                      </span>
+                      <span className="font-mono text-[10px] text-muted">
+                        {isExpanded ? "\u2212" : "+"}
+                      </span>
+                    </div>
+                  </button>
+
+                  {/* Expanded details */}
+                  {isExpanded && (
+                    <div className="border-t border-sand px-4 pb-4 pt-3">
+                      {/* Price */}
+                      <div className="mb-3 flex items-center justify-between">
+                        <span className="font-mono text-[10px] text-muted">price</span>
+                        <span className="font-sans text-[14px] font-semibold text-near-black">
+                          {ticket.price === 0 ? "Free" : `\u20B9${ticket.price}`}
+                        </span>
+                      </div>
+
+                      {/* Quantity */}
+                      {ticket.quantity > 1 && (
+                        <div className="mb-3 flex items-center justify-between">
+                          <span className="font-mono text-[10px] text-muted">guests</span>
+                          <span className="font-sans text-[13px] text-near-black">{ticket.quantity}</span>
+                        </div>
+                      )}
+
+                      {/* Seat info */}
+                      {(ticket.spot_name || ticket.seat_id || ticket.section_name) && (
+                        <div className="mb-3 flex items-center justify-between">
+                          <span className="font-mono text-[10px] text-muted">seat</span>
+                          <span className="font-sans text-[13px] text-near-black">
+                            {ticket.spot_name && (
+                              <>
+                                {ticket.spot_name}
+                                {ticket.spot_seat_label && `, ${ticket.spot_seat_label}`}
+                              </>
+                            )}
+                            {ticket.seat_id && !ticket.spot_name && ticket.seat_id}
+                            {ticket.section_name && !ticket.seat_id && !ticket.spot_name && ticket.section_name}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Pickup */}
+                      {ticket.pickup_point && ticket.pickup_point !== "TBD" && (
+                        <div className="mb-3 flex items-center justify-between">
+                          <span className="font-mono text-[10px] text-muted">pickup</span>
+                          <span className="font-sans text-[13px] text-near-black">{ticket.pickup_point}</span>
+                        </div>
+                      )}
+
+                      {/* Add-ons */}
+                      {ticket.add_ons && ticket.add_ons.length > 0 && (
+                        <div className="mb-3">
+                          <span className="mb-1 block font-mono text-[10px] text-muted">add-ons</span>
+                          {ticket.add_ons.map((a, i) => (
+                            <p key={i} className="font-sans text-[13px] text-near-black">
+                              {a.name} x{a.quantity} — \u20B9{a.price * a.quantity}
+                            </p>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* QR Code */}
+                      {ticket.qr_code && ["confirmed", "checked_in"].includes(ticket.status) && (
+                        <div className="mb-3 flex justify-center">
+                          <img
+                            src={ticket.qr_code}
+                            alt="Ticket QR"
+                            className="h-[140px] w-[140px] rounded-xl"
+                          />
+                        </div>
+                      )}
+
+                      {/* Purchased date */}
+                      <div className="mb-3 flex items-center justify-between">
+                        <span className="font-mono text-[10px] text-muted">purchased</span>
+                        <span className="font-mono text-[10px] text-muted">
+                          {new Date(ticket.purchased_at).toLocaleDateString("en-US", {
+                            day: "numeric",
+                            month: "short",
+                            year: "numeric",
+                          })}
+                        </span>
+                      </div>
+
+                      {/* Cancel button */}
+                      {isCancellable && (
+                        <button
+                          onClick={() => handleCancelTicket(ticket.id)}
+                          disabled={isCancelling}
+                          className="mt-1 w-full rounded-xl border border-terracotta/20 bg-terracotta/5 py-2.5 font-mono text-[11px] text-terracotta transition-colors hover:bg-terracotta/10 disabled:opacity-50"
+                        >
+                          {isCancelling ? "cancelling..." : "cancel ticket"}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </section>
       )}
@@ -427,6 +646,30 @@ export function ProfileScreen() {
           </button>
         </div>
       </section>
+
+      {/* Quiz retake overlay */}
+      {showQuizRetake && (
+        <div className="fixed inset-0 z-[600]">
+          <SignQuiz
+            onComplete={() => {
+              setShowQuizRetake(false);
+              // Refresh profile to show updated sign
+              (async () => {
+                try {
+                  const token = await getIdToken();
+                  if (!token) return;
+                  const data = await apiFetch<{ success: boolean; data: ProfileData }>(
+                    "/api/users/me",
+                    { token },
+                  );
+                  if (data.data) setProfile(data.data);
+                } catch { /* ignore */ }
+              })();
+            }}
+            mode="onboarding"
+          />
+        </div>
+      )}
     </div>
   );
 }

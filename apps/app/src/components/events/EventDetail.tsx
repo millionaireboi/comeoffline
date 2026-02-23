@@ -18,7 +18,7 @@ interface EventDetailProps {
     tierId: string,
     pickupPoint?: string,
     timeSlotId?: string,
-    addOns?: Array<{ addon_id: string; name: string; quantity: number; price: number }>,
+    addOns?: Array<{ addon_id: string; name: string; quantity: number; price: number; spot_id?: string; spot_name?: string; spot_seat_id?: string; spot_seat_label?: string }>,
     seatId?: string,
     sectionId?: string,
     spotSeatId?: string,

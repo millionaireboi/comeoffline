@@ -56,7 +56,14 @@ export function useAuth() {
             console.warn("[useAuth] Firestore read failed, falling back to API:", firestoreErr);
             try {
               const token = await firebaseUser.getIdToken();
-              const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002"}/api/users/me`, {
+              const apiBase = (() => {
+                const val = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+                if (typeof window !== "undefined" && val.includes("localhost") && window.location.hostname !== "localhost") {
+                  return val.replace("localhost", window.location.hostname);
+                }
+                return val;
+              })();
+              const res = await fetch(`${apiBase}/api/users/me`, {
                 headers: { Authorization: `Bearer ${token}` },
               });
               if (res.ok) {

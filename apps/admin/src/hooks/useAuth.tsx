@@ -31,7 +31,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setIsAdmin(admin);
           if (admin) {
             const token = await firebaseUser.getIdToken();
-            document.cookie = `admin_session=${token}; path=/; samesite=strict; max-age=3600`;
+            document.cookie = `admin_session=${token}; path=/; samesite=strict; secure; max-age=3600`;
           }
         } catch (error) {
           console.error('Failed to get token:', error);

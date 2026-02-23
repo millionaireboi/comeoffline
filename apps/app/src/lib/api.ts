@@ -1,4 +1,13 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+function resolveUrl(envValue: string | undefined, fallbackPort: number): string {
+  if (typeof window === "undefined") return envValue || `http://localhost:${fallbackPort}`;
+  const base = envValue || `http://localhost:${fallbackPort}`;
+  if (base.includes("localhost") && window.location.hostname !== "localhost") {
+    return base.replace("localhost", window.location.hostname);
+  }
+  return base;
+}
+
+const API_URL = resolveUrl(process.env.NEXT_PUBLIC_API_URL, 8080);
 
 interface FetchOptions extends RequestInit {
   token?: string;

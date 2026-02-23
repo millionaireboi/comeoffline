@@ -31,9 +31,9 @@ service cloud.firestore {
       allow read: if isAuth();
       allow write: if isAdmin();
 
-      // RSVPs — users can read own, create own, admins read all
+      // RSVPs — users can read own, create own, admins manage
       match /rsvps/{rsvpId} {
-        allow read: if isAuth();
+        allow read: if isAdmin() || (isAuth() && resource.data.user_id == request.auth.uid);
         allow create: if isAuth();
         allow update, delete: if isAdmin();
       }
@@ -51,9 +51,9 @@ service cloud.firestore {
       }
     }
 
-    // Connections — users can read/create own, admins read all
+    // Connections — users can read own, create own, admins manage
     match /connections/{connectionId} {
-      allow read: if isAuth();
+      allow read: if isAdmin() || (isAuth() && (resource.data.from_user_id == request.auth.uid || resource.data.to_user_id == request.auth.uid));
       allow create: if isAuth();
       allow update: if isAdmin();
       allow delete: if isAdmin();
@@ -65,9 +65,9 @@ service cloud.firestore {
       allow read, update, delete: if isAdmin();
     }
 
-    // Vouch codes — authenticated users read own, admins manage
+    // Vouch codes — users can read own, admins manage
     match /vouch_codes/{codeId} {
-      allow read: if isAuth();
+      allow read: if isAdmin() || (isAuth() && resource.data.owner_id == request.auth.uid);
       allow write: if isAdmin();
     }
 
@@ -82,9 +82,31 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Rate limits — backend manages, users can read own
+    // ── Server-only collections (Admin SDK bypasses rules) ──
+    // Explicit deny for clarity — managed exclusively via the API
+
     match /rate_limits/{limitId} {
-      allow read, write: if isAuth();
+      allow read, write: if false;
+    }
+
+    match /tickets/{ticketId} {
+      allow read, write: if false;
+    }
+
+    match /community_polls/{pollId} {
+      allow read, write: if false;
+    }
+
+    match /contact_submissions/{submissionId} {
+      allow read, write: if false;
+    }
+
+    match /brand_inquiries/{inquiryId} {
+      allow read, write: if false;
+    }
+
+    match /chat_sessions/{sessionId} {
+      allow read, write: if false;
     }
 
     // Deny everything else

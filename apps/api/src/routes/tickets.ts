@@ -8,12 +8,16 @@ import {
   getUserEventTicket,
   checkInTicket,
   getEventTickets,
+  attachPaymentLink,
 } from "../services/ticket.service";
+import { createPaymentLink } from "../services/razorpay.service";
+import { getDb } from "../config/firebase-admin";
+import { strictLimiter } from "../middleware/rateLimit";
 
 const router = Router();
 
 /** POST /api/tickets/create — Purchase a ticket */
-router.post("/create", requireAuth, async (req: AuthRequest, res) => {
+router.post("/create", requireAuth, strictLimiter, async (req: AuthRequest, res) => {
   try {
     const { event_id, tier_id, pickup_point, time_slot_id, add_ons, seat_id, section_id, spot_seat_id } = req.body;
 
@@ -29,13 +33,46 @@ router.post("/create", requireAuth, async (req: AuthRequest, res) => {
       return;
     }
 
-    // For free events or mock payments, auto-confirm
+    // For paid events, create a Razorpay Payment Link
     if (result.ticket?.status === "pending_payment") {
-      // Mock payment: immediately confirm
-      const confirmResult = await confirmPayment(result.ticket.id as string);
-      if (confirmResult.success) {
-        result.ticket.status = "confirmed";
+      const db = await getDb();
+      const [userDoc, eventDoc] = await Promise.all([
+        db.collection("users").doc(req.uid!).get(),
+        db.collection("events").doc(event_id).get(),
+      ]);
+      const userName = userDoc.exists ? (userDoc.data()!.name as string) : "Customer";
+      const eventTitle = eventDoc.exists ? (eventDoc.data()!.title as string) : "Event";
+
+      console.log("[tickets] Creating payment link:", {
+        amount: result.ticket.price,
+        ticketId: result.ticket.id,
+        eventTitle,
+        customerName: userName,
+      });
+
+      const linkResult = await createPaymentLink({
+        amount: result.ticket.price as number,
+        ticketId: result.ticket.id as string,
+        eventTitle,
+        customerName: userName,
+      });
+
+      if (!linkResult.success) {
+        // Payment link failed — cancel the ticket so user can retry
+        console.error("[tickets] Payment link failed:", linkResult.error);
+        await cancelTicket(result.ticket.id as string, req.uid!);
+        res.status(502).json({ success: false, error: "Could not create payment link. Please try again." });
+        return;
       }
+
+      await attachPaymentLink(
+        result.ticket.id as string,
+        linkResult.payment_link_id!,
+        linkResult.payment_url!,
+      );
+
+      result.ticket.payment_url = linkResult.payment_url;
+      result.ticket.payment_link_id = linkResult.payment_link_id;
     }
 
     res.json({ success: true, data: result.ticket });
@@ -45,8 +82,8 @@ router.post("/create", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
-/** POST /api/tickets/confirm-payment — Confirm payment (webhook-ready) */
-router.post("/confirm-payment", async (req, res) => {
+/** POST /api/tickets/confirm-payment — Confirm payment (admin only) */
+router.post("/confirm-payment", requireAdmin, async (req: AuthRequest, res) => {
   try {
     const { ticket_id } = req.body;
 
@@ -87,6 +124,34 @@ router.get("/event/:eventId", requireAuth, async (req: AuthRequest, res) => {
     res.json({ success: true, data: ticket });
   } catch (err) {
     console.error("[tickets] event ticket error:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+});
+
+/** GET /api/tickets/:id/status — Check ticket payment status (for polling after payment) */
+router.get("/:id/status", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const db = await getDb();
+    const ticketDoc = await db.collection("tickets").doc(req.params.id as string).get();
+
+    if (!ticketDoc.exists) {
+      res.status(404).json({ success: false, error: "Ticket not found" });
+      return;
+    }
+
+    const ticket = ticketDoc.data()!;
+
+    if (ticket.user_id !== req.uid) {
+      res.status(403).json({ success: false, error: "Not your ticket" });
+      return;
+    }
+
+    res.json({
+      success: true,
+      data: { id: ticketDoc.id, status: ticket.status, event_id: ticket.event_id },
+    });
+  } catch (err) {
+    console.error("[tickets] status check error:", err);
     res.status(500).json({ success: false, error: "Internal server error" });
   }
 });

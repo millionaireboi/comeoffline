@@ -12,6 +12,18 @@ router.post("/", async (req, res) => {
       res.status(400).json({ success: false, error: "name, email, and message are required" });
       return;
     }
+    if (typeof name !== "string" || name.length > 100) {
+      res.status(400).json({ success: false, error: "name must be a string, max 100 characters" });
+      return;
+    }
+    if (typeof email !== "string" || email.length > 254) {
+      res.status(400).json({ success: false, error: "email must be a string, max 254 characters" });
+      return;
+    }
+    if (typeof message !== "string" || message.length > 5000) {
+      res.status(400).json({ success: false, error: "message must be a string, max 5000 characters" });
+      return;
+    }
     // Basic email validation
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       res.status(400).json({ success: false, error: "invalid email format" });

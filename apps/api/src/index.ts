@@ -1,33 +1,9 @@
-import { config } from "dotenv";
-import { join, resolve } from "path";
-import { existsSync } from "fs";
-
-console.log('[startup] Starting API server...');
-console.log('[startup] Current working directory:', process.cwd());
-
-// Load .env from monorepo root - handle both turbo dev and direct execution
-const possibleEnvPaths = [
-  join(process.cwd(), ".env"),           // When run from monorepo root via turbo
-  join(process.cwd(), "..", "..", ".env"), // When run from apps/api directory
-];
-
-console.log('[startup] Checking env paths:', possibleEnvPaths);
-const envPath = possibleEnvPaths.find(p => existsSync(p)) || possibleEnvPaths[0];
-console.log('[startup] Loading .env from:', envPath);
-config({ path: envPath });
-console.log('[startup] Environment loaded');
-console.log('[startup] Importing express...');
 import express from "express";
-console.log('[startup] Importing cors...');
 import cors from "cors";
-console.log('[startup] Importing env config...');
+import helmet from "helmet";
 import { env } from "./config/env";
-console.log('[startup] Env config loaded:', { port: env.port, origins: env.allowedOrigins });
-console.log('[startup] Importing middleware...');
 import { errorHandler } from "./middleware/errorHandler";
-import { generalLimiter, authLimiter, adminLimiter } from "./middleware/rateLimit";
-console.log('[startup] Middleware imported');
-console.log('[startup] Importing routes...');
+import { generalLimiter, authLimiter, adminLimiter, formLimiter } from "./middleware/rateLimit";
 import healthRouter from "./routes/health";
 import authRouter from "./routes/auth";
 import eventsRouter from "./routes/events";
@@ -53,24 +29,27 @@ import brandsRouter from "./routes/brands";
 import adminUploadRouter from "./routes/admin/upload";
 import adminFloorplanRouter from "./routes/admin/floorplan";
 import adminBookingsRouter from "./routes/admin/bookings";
-console.log('[startup] All routes imported');
+import webhooksRouter from "./routes/webhooks";
 
-console.log('[startup] Creating Express app...');
 const app = express();
-console.log('[startup] Express app created');
+
+// Trust proxy (required for correct IP in rate limiting behind reverse proxy)
+app.set("trust proxy", 1);
 
 // Middleware
-console.log('[startup] Setting up middleware...');
+app.use(helmet());
 app.use(cors({ origin: env.allowedOrigins, credentials: true }));
-app.use(express.json({ limit: "10mb" }));
-console.log('[startup] Middleware configured');
+app.use(express.json({
+  limit: "10mb",
+  verify: (req: any, _res, buf) => {
+    req.rawBody = buf.toString();
+  },
+}));
 
 // Apply general rate limiting to all routes
-console.log('[startup] Applying rate limiting...');
 app.use("/api", generalLimiter);
 
 // Routes
-console.log('[startup] Registering routes...');
 app.use("/api/health", healthRouter);
 app.use("/api/auth", authLimiter, authRouter);
 app.use("/api/events", eventsRouter);
@@ -80,7 +59,7 @@ app.use("/api/events", connectionsRouter);
 app.use("/api/vouch-codes", vouchRouter);
 app.use("/api/users", profileRouter);
 app.use("/api/chat", chatRouter);
-app.use("/api/applications", applicationsRouter);
+app.use("/api/applications", formLimiter, applicationsRouter);
 app.use("/api/admin/events", adminLimiter, adminEventsRouter);
 app.use("/api/admin/events", adminLimiter, adminContentRouter);
 app.use("/api/admin/applications", adminLimiter, applicationsRouter);
@@ -92,24 +71,57 @@ app.use("/api/admin", adminLimiter, adminValidationRouter);
 app.use("/api/admin", adminLimiter, adminDashboardRouter);
 app.use("/api/admin", adminLimiter, adminNotificationsRouter);
 app.use("/api/admin", adminLimiter, adminVouchRouter);
-app.use("/api/contact", contactRouter);
-app.use("/api/brands", brandsRouter);
+app.use("/api/contact", formLimiter, contactRouter);
+app.use("/api/brands", formLimiter, brandsRouter);
 app.use("/api/admin/contact", adminLimiter, contactRouter);
 app.use("/api/admin/brands", adminLimiter, brandsRouter);
 app.use("/api/admin", adminLimiter, adminUploadRouter);
 app.use("/api/admin", adminLimiter, adminFloorplanRouter);
 app.use("/api/admin/bookings", adminLimiter, adminBookingsRouter);
-console.log('[startup] Routes registered');
+app.use("/api/webhooks", webhooksRouter);
 
 // Error handling
-console.log('[startup] Setting up error handler...');
 app.use(errorHandler);
-console.log('[startup] Error handler configured');
 
-console.log('[startup] Starting server on port', env.port);
 app.listen(env.port, () => {
-  console.log(`[api] ✓ comeoffline API running on port ${env.port}`);
-  console.log(`[api] ✓ http://localhost:${env.port}/api/health`);
+  console.log(`[api] comeoffline API running on port ${env.port}`);
+
+  // Proactive cleanup of stale seat holds every 2 minutes
+  const HOLD_CLEANUP_INTERVAL_MS = 2 * 60 * 1000;
+  const HOLD_MAX_AGE_MS = 10 * 60 * 1000;
+
+  setInterval(async () => {
+    try {
+      const { getDb } = await import("./config/firebase-admin");
+      const { cancelTicket } = await import("./services/ticket.service");
+      const db = await getDb();
+
+      const cutoff = new Date(Date.now() - HOLD_MAX_AGE_MS).toISOString();
+      const staleSnap = await db
+        .collection("tickets")
+        .where("status", "==", "pending_payment")
+        .where("purchased_at", "<", cutoff)
+        .get();
+
+      if (staleSnap.empty) return;
+
+      console.log(`[cleanup] Found ${staleSnap.size} stale pending_payment tickets`);
+
+      for (const doc of staleSnap.docs) {
+        const ticket = doc.data();
+        try {
+          await cancelTicket(doc.id, ticket.user_id);
+          console.log(`[cleanup] Cancelled stale ticket ${doc.id}`);
+        } catch (err) {
+          console.error(`[cleanup] Failed to cancel ticket ${doc.id}:`, err);
+        }
+      }
+    } catch (err) {
+      console.error("[cleanup] Hold cleanup error:", err);
+    }
+  }, HOLD_CLEANUP_INTERVAL_MS);
+
+  console.log("[api] Seat hold cleanup interval started (every 2 min)");
 });
 
 export default app;

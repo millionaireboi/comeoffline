@@ -2,6 +2,7 @@ import { getDb, getAuthService } from "../config/firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import crypto from "crypto";
 import { isCodeUsable, recordCodeUsage } from "./vouch.service";
+import { evaluateVibeCheck } from "./vibe-check.service";
 import type { VouchCode, VouchCodeUsage, DiscoverySource } from "@comeoffline/types";
 
 interface ValidateCodeResult {
@@ -108,7 +109,7 @@ export async function validateCode(
   const auth = await getAuthService();
   const normalizedCode = code.toUpperCase().trim();
 
-  // Step 1: Find the code and check if it's usable
+  // Step 1: Find the code
   const codesSnap = await db
     .collection("vouch_codes")
     .where("code", "==", normalizedCode)
@@ -128,7 +129,28 @@ export async function validateCode(
   if (codeData.uses === undefined) codeData.uses = 0;
   if (!codeData.used_by) codeData.used_by = [];
 
-  // Check usability (expiry, max uses, paused, etc.)
+  // Step 1b: Check if a returning user is signing back in with their original code
+  const existingUserSnap = await db
+    .collection("users")
+    .where("invite_code_used", "==", normalizedCode)
+    .limit(1)
+    .get();
+
+  if (!existingUserSnap.empty) {
+    // Returning user — issue a new custom token to sign them back in
+    const existingUserDoc = existingUserSnap.docs[0];
+    const rawData = existingUserDoc.data();
+    const existingUserData = { id: existingUserDoc.id, ...rawData };
+    const token = await auth.createCustomToken(existingUserDoc.id);
+    const handoffToken = await generateHandoffToken(
+      existingUserDoc.id,
+      "landing",
+      rawData.status === "active" ? "active" : "provisional",
+    );
+    return { valid: true, token, handoff_token: handoffToken, user: existingUserData };
+  }
+
+  // New user — check if code is still usable
   const check = isCodeUsable(codeData);
   if (!check.usable) {
     return { valid: false, error: check.reason || "Code is not valid" };
@@ -197,6 +219,104 @@ export async function chatbotEntry(
   instagramHandle?: string,
   vibeAnswers?: { question: string; answer: string }[],
 ): Promise<ChatbotEntryResult> {
+  // Structured scoring: evaluate the vibe check before creating the user
+  if (vibeAnswers && vibeAnswers.length > 0) {
+    const vibeScore = await evaluateVibeCheck({
+      answers: vibeAnswers,
+      name,
+      instagram_handle: instagramHandle,
+    });
+
+    if (!vibeScore.passed) {
+      console.log(`[auth] Vibe check failed for "${name}": ${vibeScore.reasoning} (overall: ${vibeScore.overall})`);
+      return { success: false, error: "vibe_check_failed" };
+    }
+
+    // Score passed — proceed to create user with score data
+    return createChatbotUser(name, instagramHandle, vibeAnswers, vibeScore);
+  }
+
+  // No answers (shouldn't happen, but handle gracefully)
+  return createChatbotUser(name, instagramHandle, vibeAnswers);
+}
+
+/** Signs in a returning user by their Instagram handle */
+export async function signInByHandle(
+  handle: string,
+): Promise<HandoffTokenResult> {
+  const db = await getDb();
+  const auth = await getAuthService();
+
+  // Normalize: strip leading @ if present, lowercase
+  const normalized = handle.replace(/^@/, "").toLowerCase().trim();
+  if (!normalized) {
+    return { valid: false, error: "Handle is required" };
+  }
+
+  // Search by instagram_handle first (most users have this)
+  let userDoc = null;
+  const igSnap = await db
+    .collection("users")
+    .where("instagram_handle", "==", normalized)
+    .limit(1)
+    .get();
+
+  if (!igSnap.empty) {
+    userDoc = igSnap.docs[0];
+  } else {
+    // Also try with @ prefix in case it was stored that way
+    const igSnapAt = await db
+      .collection("users")
+      .where("instagram_handle", "==", `@${normalized}`)
+      .limit(1)
+      .get();
+
+    if (!igSnapAt.empty) {
+      userDoc = igSnapAt.docs[0];
+    }
+  }
+
+  // Fallback: search by handle (the app-internal @handle)
+  if (!userDoc) {
+    const handleSnap = await db
+      .collection("users")
+      .where("handle", "==", `@${normalized}`)
+      .limit(1)
+      .get();
+
+    if (!handleSnap.empty) {
+      userDoc = handleSnap.docs[0];
+    }
+  }
+
+  if (!userDoc) {
+    return { valid: false, error: "No account found with that handle" };
+  }
+
+  const rawData = userDoc.data()!;
+
+  // Don't allow inactive users to sign back in
+  if (rawData.status === "inactive") {
+    return { valid: false, error: "Account is no longer active" };
+  }
+
+  const userData = { id: userDoc.id, ...rawData };
+  const firebaseToken = await auth.createCustomToken(userDoc.id);
+
+  return {
+    valid: true,
+    token: firebaseToken,
+    user: userData,
+    has_seen_welcome: (rawData.has_seen_welcome as boolean) ?? false,
+  };
+}
+
+async function createChatbotUser(
+  name: string,
+  instagramHandle?: string,
+  vibeAnswers?: { question: string; answer: string }[],
+  vibeScore?: { engagement: number; creativity: number; authenticity: number; effort: number; overall: number; reasoning: string; passed: boolean },
+): Promise<ChatbotEntryResult> {
   const db = await getDb();
   const auth = await getAuthService();
   const userHandle = `@${name.toLowerCase().replace(/\s+/g, "_")}`;
@@ -210,7 +330,7 @@ export async function chatbotEntry(
     return { success: false, error: "Failed to create user" };
   }
 
-  const userData = {
+  const userData: Record<string, unknown> = {
     id: firebaseUser.uid,
     name,
     handle: userHandle,
@@ -225,6 +345,19 @@ export async function chatbotEntry(
     has_seen_welcome: false,
     created_at: FieldValue.serverTimestamp(),
   };
+
+  if (vibeScore) {
+    userData.vibe_check_score = {
+      engagement: vibeScore.engagement,
+      creativity: vibeScore.creativity,
+      authenticity: vibeScore.authenticity,
+      effort: vibeScore.effort,
+      overall: vibeScore.overall,
+      reasoning: vibeScore.reasoning,
+      passed: vibeScore.passed,
+      scored_at: new Date().toISOString(),
+    };
+  }
 
   await db.collection("users").doc(firebaseUser.uid).set(userData);
 

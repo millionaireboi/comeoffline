@@ -1,13 +1,19 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import type { Event, TicketTier, CheckoutStep, CheckoutAddOn, TimeSlot, SeatingSection, Seat } from "@comeoffline/types";
+import { useState, useMemo, useEffect, useRef } from "react";
+import type { Event, TicketTier, CheckoutStep, CheckoutAddOn, TimeSlot, SeatingSection, Seat, SeatingConfig, AddonSeatingConfig, Spot } from "@comeoffline/types";
+import { useAuth } from "@/hooks/useAuth";
+import { apiFetch } from "@/lib/api";
 
 interface SelectedAddon {
   addon_id: string;
   name: string;
   quantity: number;
   price: number;
+  spot_id?: string;
+  spot_name?: string;
+  spot_seat_id?: string;
+  spot_seat_label?: string;
 }
 
 interface CheckoutWizardProps {
@@ -104,11 +110,17 @@ function AddonSelectStep({
   selections,
   onChange,
   accent,
+  addonSeatSelections,
+  onAddonSeatChange,
+  liveAddonSeating,
 }: {
   step: CheckoutStep;
   selections: Record<string, number>;
   onChange: (selections: Record<string, number>) => void;
   accent: string;
+  addonSeatSelections: Record<string, { spotId: string | null; spotSeatId: string | null }>;
+  onAddonSeatChange: (addonId: string, sel: { spotId: string | null; spotSeatId: string | null } | ((prev: { spotId: string | null; spotSeatId: string | null }) => { spotId: string | null; spotSeatId: string | null })) => void;
+  liveAddonSeating: Record<string, AddonSeatingConfig> | null;
 }) {
   const addons = step.add_ons || [];
 
@@ -120,6 +132,9 @@ function AddonSelectStep({
       {addons.map((addon) => {
         const qty = selections[addon.id] || 0;
         const selected = qty > 0;
+        const addonSeating = liveAddonSeating?.[addon.id] || addon.seating;
+        const hasSeating = addonSeating?.enabled && addonSeating.spots?.length > 0;
+        const seatSel = addonSeatSelections[addon.id];
 
         return (
           <div
@@ -149,7 +164,10 @@ function AddonSelectStep({
             <div className="mt-3 flex items-center justify-between">
               {addon.max_quantity === 1 ? (
                 <button
-                  onClick={() => onChange({ ...selections, [addon.id]: selected ? 0 : 1 })}
+                  onClick={() => {
+                    onChange({ ...selections, [addon.id]: selected ? 0 : 1 });
+                    if (selected) onAddonSeatChange(addon.id, { spotId: null, spotSeatId: null });
+                  }}
                   className={`rounded-xl px-4 py-2 font-mono text-[11px] transition-all ${
                     selected
                       ? "bg-near-black text-cream"
@@ -161,9 +179,11 @@ function AddonSelectStep({
               ) : (
                 <div className="flex items-center gap-3">
                   <button
-                    onClick={() =>
-                      onChange({ ...selections, [addon.id]: Math.max(0, qty - 1) })
-                    }
+                    onClick={() => {
+                      const newQty = Math.max(0, qty - 1);
+                      onChange({ ...selections, [addon.id]: newQty });
+                      if (newQty === 0) onAddonSeatChange(addon.id, { spotId: null, spotSeatId: null });
+                    }}
                     disabled={qty === 0}
                     className="flex h-8 w-8 items-center justify-center rounded-full bg-sand/50 font-sans text-base text-near-black transition-colors hover:bg-sand disabled:opacity-30"
                   >
@@ -189,6 +209,26 @@ function AddonSelectStep({
                 <span className="font-mono text-[9px] text-terracotta">required</span>
               )}
             </div>
+
+            {/* Inline spot picker for add-ons with seating */}
+            {selected && hasSeating && addonSeating.allow_choice && (
+              <div className="mt-3 rounded-xl border border-sand/50 bg-sand/5 p-3">
+                <span className="mb-2 block font-mono text-[10px] text-muted">
+                  pick your spot for {addon.name.toLowerCase()}
+                </span>
+                <CustomSpotPicker
+                  spots={addonSeating.spots}
+                  accent={accent}
+                  selectedSpotId={seatSel?.spotId || null}
+                  selectedSpotSeatId={seatSel?.spotSeatId || null}
+                  onSelectSpot={(id) => onAddonSeatChange(addon.id, { spotId: id, spotSeatId: null })}
+                  onSelectSpotSeat={(id) => {
+                    // Use functional updater — onSelectSpot may have fired in the same tick
+                    onAddonSeatChange(addon.id, (prev) => ({ ...prev, spotSeatId: id }));
+                  }}
+                />
+              </div>
+            )}
           </div>
         );
       })}
@@ -215,6 +255,284 @@ function InfoStep({ step }: { step: CheckoutStep }) {
   );
 }
 
+/* ── Reusable custom spot picker (used by SeatSelectStep + add-on seating) ── */
+
+function CustomSpotPicker({
+  spots: allSpots,
+  accent,
+  selectedSpotId,
+  selectedSpotSeatId,
+  onSelectSpot,
+  onSelectSpotSeat,
+}: {
+  spots: Spot[];
+  accent: string;
+  selectedSpotId: string | null;
+  selectedSpotSeatId: string | null;
+  onSelectSpot: (id: string | null) => void;
+  onSelectSpotSeat: (id: string | null) => void;
+}) {
+  const [expandedSpotId, setExpandedSpotId] = useState<string | null>(null);
+
+  const tables = allSpots.filter((s) => (s.spot_type || "table") === "table");
+  const fixtures = allSpots.filter((s) => s.spot_type === "fixture");
+  const zones = allSpots.filter((s) => s.spot_type === "zone");
+  const hasCoordinates = allSpots.some((s) => s.x != null && s.y != null);
+  const expandedSpot = tables.find((s) => s.id === expandedSpotId);
+
+  // Seat picker drill-in
+  if (expandedSpot && expandedSpot.seats && expandedSpot.seats.length > 0) {
+    const tableShape = expandedSpot.shape || "circle";
+    return (
+      <div>
+        <button
+          onClick={() => setExpandedSpotId(null)}
+          className="mb-3 flex items-center gap-1.5 font-mono text-[11px] text-muted transition-colors hover:text-near-black"
+        >
+          &larr; back to tables
+        </button>
+        <div className="mb-3 text-center">
+          <span className="text-2xl">{expandedSpot.emoji || "\u{1FA91}"}</span>
+          <p className="mt-1 font-sans text-base font-medium text-near-black">{expandedSpot.name}</p>
+          {expandedSpot.description && (
+            <p className="mt-0.5 font-mono text-[11px] text-muted">{expandedSpot.description}</p>
+          )}
+        </div>
+        <div className="relative mx-auto flex h-[220px] w-[220px] items-center justify-center">
+          <div
+            className={`flex items-center justify-center border-2 bg-sand/20 text-2xl ${tableShape === "rectangle" ? "h-16 w-28 rounded-2xl" : tableShape === "square" ? "h-20 w-20 rounded-2xl" : "h-20 w-20 rounded-full"}`}
+            style={{ borderColor: accent + "40" }}
+          >
+            {expandedSpot.emoji || "\u{1FA91}"}
+          </div>
+          {expandedSpot.seats.map((seat, si) => {
+            const angle = (seat.angle ?? (360 / expandedSpot.seats!.length) * si) * (Math.PI / 180);
+            const r = tableShape === "rectangle" ? 85 : 75;
+            const sx = Math.sin(angle) * r;
+            const sy = -Math.cos(angle) * r;
+            const isBooked = seat.status !== "available";
+            const isSelected = selectedSpotSeatId === seat.id;
+            return (
+              <button
+                key={seat.id}
+                onClick={() => {
+                  if (!isBooked) {
+                    onSelectSpot(expandedSpot.id);
+                    onSelectSpotSeat(isSelected ? null : seat.id);
+                    if (!isSelected) {
+                      setTimeout(() => setExpandedSpotId(null), 400);
+                    }
+                  }
+                }}
+                disabled={isBooked}
+                className={`absolute flex h-9 w-9 items-center justify-center rounded-full border-2 font-mono text-[10px] font-medium transition-all ${
+                  isSelected
+                    ? "scale-110 border-near-black bg-near-black text-white shadow-lg"
+                    : isBooked
+                      ? "border-sand/40 bg-sand/20 text-muted/40"
+                      : "border-sand bg-white text-near-black shadow-sm hover:scale-105 hover:shadow-md"
+                }`}
+                style={{ transform: `translate(${sx}px, ${sy}px)` }}
+              >
+                {si + 1}
+              </button>
+            );
+          })}
+        </div>
+        <div className="mt-4 flex justify-center gap-4">
+          <div className="flex items-center gap-1.5">
+            <div className="h-3 w-3 rounded-full border border-sand bg-white" />
+            <span className="font-mono text-[9px] text-muted">available</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="h-3 w-3 rounded-full border-2 border-near-black bg-near-black" />
+            <span className="font-mono text-[9px] text-muted">selected</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="h-3 w-3 rounded-full border border-sand/40 bg-sand/20" />
+            <span className="font-mono text-[9px] text-muted">taken</span>
+          </div>
+        </div>
+        {selectedSpotSeatId && (
+          <div className="mt-3 rounded-xl bg-sand/20 px-4 py-2.5 text-center">
+            <span className="font-mono text-[11px] text-near-black">
+              <strong>{expandedSpot.name}</strong> &mdash; {expandedSpot.seats.find((s) => s.id === selectedSpotSeatId)?.label || "Seat"} selected
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Hybrid layout: mini map + scrollable card list
+  return (
+    <div>
+      <span className="mb-2.5 block font-mono text-[10px] uppercase tracking-[2px] text-muted">
+        {tables.some((s) => s.seats && s.seats.length > 0) ? "pick a table, then choose your seat" : "tap a spot to select"}
+      </span>
+
+      {/* Mini venue map */}
+      {hasCoordinates && (
+        <div className="relative mb-4 h-[160px] overflow-hidden rounded-2xl border border-sand bg-sand/5">
+          {fixtures.map((f) => (
+            <div
+              key={f.id}
+              className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+              style={{ left: `${f.x ?? 50}%`, top: `${f.y ?? 50}%` }}
+            >
+              <div className="flex items-center gap-0.5 rounded-full bg-sand/20 px-1.5 py-0.5">
+                <span className="text-[8px]">{f.emoji}</span>
+                <span className="font-mono text-[6px] text-muted/70">{f.name}</span>
+              </div>
+            </div>
+          ))}
+          {zones.map((z) => (
+            <div
+              key={z.id}
+              className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+              style={{ left: `${z.x ?? 50}%`, top: `${z.y ?? 50}%` }}
+            >
+              <span className="font-mono text-[6px] text-muted/50">{z.emoji} {z.name}</span>
+            </div>
+          ))}
+          {tables.map((spot) => {
+            const availableSeats = spot.seats ? spot.seats.filter((s) => s.status === "available").length : 0;
+            const remaining = spot.seats && spot.seats.length > 0 ? availableSeats : spot.capacity - spot.booked;
+            const full = remaining <= 0;
+            const selected = selectedSpotId === spot.id;
+            return (
+              <button
+                key={spot.id}
+                onClick={() => {
+                  if (full) return;
+                  const el = document.getElementById(`spot-card-${spot.id}`);
+                  el?.scrollIntoView({ behavior: "smooth", block: "center" });
+                  if (spot.seats && spot.seats.length > 0) {
+                    setExpandedSpotId(spot.id);
+                  } else {
+                    onSelectSpot(selected ? null : spot.id);
+                    onSelectSpotSeat(null);
+                  }
+                }}
+                disabled={full}
+                className={`absolute -translate-x-1/2 -translate-y-1/2 transition-all ${full ? "opacity-30" : selected ? "z-10 scale-125" : ""}`}
+                style={{ left: `${spot.x ?? 50}%`, top: `${spot.y ?? 50}%` }}
+              >
+                <div
+                  className="flex h-5 w-5 items-center justify-center rounded-full border text-[8px]"
+                  style={{
+                    borderColor: selected ? "#0E0D0B" : accent + "80",
+                    background: selected ? accent + "30" : "white",
+                  }}
+                >
+                  {spot.emoji || "\u{1FA91}"}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Scrollable card list */}
+      <div className="flex flex-col gap-2">
+        {fixtures.length > 0 && (
+          <div className="mb-1 flex flex-wrap gap-1.5">
+            {fixtures.map((f) => (
+              <div key={f.id} className="flex items-center gap-1 rounded-full bg-sand/15 px-2.5 py-1">
+                <span className="text-xs">{f.emoji}</span>
+                <span className="font-mono text-[9px] text-muted/60">{f.name}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {zones.length > 0 && (
+          <div className="mb-1 flex flex-wrap gap-1.5">
+            {zones.map((z) => (
+              <div key={z.id} className="flex items-center gap-1 rounded-lg bg-sand/10 px-2.5 py-1">
+                <span className="text-xs">{z.emoji}</span>
+                <span className="font-mono text-[9px] text-muted/50">{z.name}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {tables.map((spot) => {
+          const availableSeats = spot.seats ? spot.seats.filter((s) => s.status === "available").length : 0;
+          const remaining = spot.seats && spot.seats.length > 0 ? availableSeats : spot.capacity - spot.booked;
+          const full = remaining <= 0;
+          const selected = selectedSpotId === spot.id;
+          const selectedSeatLabel = selectedSpotSeatId ? spot.seats?.find((s) => s.id === selectedSpotSeatId)?.label : null;
+
+          return (
+            <button
+              key={spot.id}
+              id={`spot-card-${spot.id}`}
+              onClick={() => {
+                if (full) return;
+                if (spot.seats && spot.seats.length > 0) {
+                  setExpandedSpotId(spot.id);
+                } else {
+                  onSelectSpot(selected ? null : spot.id);
+                  onSelectSpotSeat(null);
+                }
+              }}
+              disabled={full}
+              className={`flex w-full items-center gap-3 rounded-2xl border-2 p-3.5 text-left transition-all ${
+                selected
+                  ? "border-near-black bg-near-black/[0.03]"
+                  : full
+                    ? "border-sand/30 opacity-40"
+                    : "border-sand bg-white hover:border-near-black/30"
+              }`}
+            >
+              <div
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-lg"
+                style={{ background: accent + "10" }}
+              >
+                {spot.emoji || "\u{1FA91}"}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="font-sans text-sm font-medium text-near-black">{spot.name}</p>
+                {spot.description && (
+                  <p className="truncate font-mono text-[10px] text-muted">{spot.description}</p>
+                )}
+                {spot.seats && spot.seats.length > 0 && (
+                  <div className="mt-1 flex items-center gap-0.5">
+                    {spot.seats.map((seat) => (
+                      <div
+                        key={seat.id}
+                        className="h-2 w-2 rounded-full"
+                        style={{
+                          background: seat.status === "available" ? accent : "#E8E0D4",
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="shrink-0 text-right">
+                {selected && selectedSeatLabel ? (
+                  <p className="font-mono text-[10px] font-medium text-near-black">{selectedSeatLabel}</p>
+                ) : (
+                  <>
+                    <p className={`font-mono text-xs font-medium ${full ? "text-terracotta" : "text-near-black"}`}>
+                      {full ? "full" : remaining}
+                    </p>
+                    <p className="font-mono text-[8px] text-muted">
+                      {full ? "" : spot.seats && spot.seats.length > 0 ? "seats left" : "left"}
+                    </p>
+                  </>
+                )}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* ── Seat / Section selection step ────────────────── */
 
 function SeatSelectStep({
@@ -234,293 +552,31 @@ function SeatSelectStep({
   onSelectSection: (id: string | null) => void;
   onSelectSpotSeat: (id: string | null) => void;
 }) {
-  const [expandedSpotId, setExpandedSpotId] = useState<string | null>(null);
   const seating = event.seating;
   if (!seating) return null;
 
   const mode = seating.mode;
   const accent = event.accent || "#D4A574";
 
-  // Custom spot selection — Hybrid: mini map + card list + drill-in
+  // Custom spot selection — delegates to extracted CustomSpotPicker
   if (mode === "custom") {
-    const spots = seating.spots || [];
-    const tables = spots.filter((s) => (s.spot_type || "table") === "table");
-    const fixtures = spots.filter((s) => s.spot_type === "fixture");
-    const zones = spots.filter((s) => s.spot_type === "zone");
-    const hasCoordinates = spots.some((s) => s.x != null && s.y != null);
-    const expandedSpot = tables.find((s) => s.id === expandedSpotId);
-
-    // Seat picker drill-in — expanded into a specific table
-    if (expandedSpot && expandedSpot.seats && expandedSpot.seats.length > 0) {
-      const tableShape = expandedSpot.shape || "circle";
-      return (
-        <div>
-          <button
-            onClick={() => {
-              // If a seat was picked, auto-close drill-in
-              setExpandedSpotId(null);
-            }}
-            className="mb-3 flex items-center gap-1.5 font-mono text-[11px] text-muted transition-colors hover:text-near-black"
-          >
-            ← back to tables
-          </button>
-          <div className="mb-3 text-center">
-            <span className="text-2xl">{expandedSpot.emoji || "\u{1FA91}"}</span>
-            <p className="mt-1 font-sans text-base font-medium text-near-black">{expandedSpot.name}</p>
-            {expandedSpot.description && (
-              <p className="mt-0.5 font-mono text-[11px] text-muted">{expandedSpot.description}</p>
-            )}
-          </div>
-          {/* Visual seat picker */}
-          <div className="relative mx-auto flex h-[220px] w-[220px] items-center justify-center">
-            <div
-              className={`flex items-center justify-center border-2 bg-sand/20 text-2xl ${tableShape === "rectangle" ? "h-16 w-28 rounded-2xl" : tableShape === "square" ? "h-20 w-20 rounded-2xl" : "h-20 w-20 rounded-full"}`}
-              style={{ borderColor: accent + "40" }}
-            >
-              {expandedSpot.emoji || "\u{1FA91}"}
-            </div>
-            {expandedSpot.seats.map((seat, si) => {
-              const angle = (seat.angle ?? (360 / expandedSpot.seats!.length) * si) * (Math.PI / 180);
-              const r = tableShape === "rectangle" ? 85 : 75;
-              const sx = Math.sin(angle) * r;
-              const sy = -Math.cos(angle) * r;
-              const isBooked = seat.status !== "available";
-              const isSelected = selectedSpotSeatId === seat.id;
-              return (
-                <button
-                  key={seat.id}
-                  onClick={() => {
-                    if (!isBooked) {
-                      onSelectSeat(expandedSpot.id);
-                      onSelectSection(expandedSpot.section_id || null);
-                      onSelectSpotSeat(isSelected ? null : seat.id);
-                      // Auto-return to card list after picking
-                      if (!isSelected) {
-                        setTimeout(() => setExpandedSpotId(null), 400);
-                      }
-                    }
-                  }}
-                  disabled={isBooked}
-                  className={`absolute flex h-9 w-9 items-center justify-center rounded-full border-2 font-mono text-[10px] font-medium transition-all ${
-                    isSelected
-                      ? "scale-110 border-near-black bg-near-black text-white shadow-lg"
-                      : isBooked
-                        ? "border-sand/40 bg-sand/20 text-muted/40"
-                        : "border-sand bg-white text-near-black shadow-sm hover:scale-105 hover:shadow-md"
-                  }`}
-                  style={{ transform: `translate(${sx}px, ${sy}px)` }}
-                >
-                  {si + 1}
-                </button>
-              );
-            })}
-          </div>
-          <div className="mt-4 flex justify-center gap-4">
-            <div className="flex items-center gap-1.5">
-              <div className="h-3 w-3 rounded-full border border-sand bg-white" />
-              <span className="font-mono text-[9px] text-muted">available</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="h-3 w-3 rounded-full border-2 border-near-black bg-near-black" />
-              <span className="font-mono text-[9px] text-muted">selected</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="h-3 w-3 rounded-full border border-sand/40 bg-sand/20" />
-              <span className="font-mono text-[9px] text-muted">taken</span>
-            </div>
-          </div>
-          {selectedSpotSeatId && (
-            <div className="mt-3 rounded-xl bg-sand/20 px-4 py-2.5 text-center">
-              <span className="font-mono text-[11px] text-near-black">
-                <strong>{expandedSpot.name}</strong> — {expandedSpot.seats.find((s) => s.id === selectedSpotSeatId)?.label || "Seat"} selected
-              </span>
-            </div>
-          )}
-        </div>
-      );
-    }
-
-    // Hybrid layout: mini map + scrollable card list
     return (
-      <div>
-        <span className="mb-2.5 block font-mono text-[10px] uppercase tracking-[2px] text-muted">
-          {tables.some((s) => s.seats && s.seats.length > 0) ? "pick a table, then choose your seat" : "tap a spot to select"}
-        </span>
-
-        {/* Mini venue map — compact orientation */}
-        {hasCoordinates && (
-          <div className="relative mb-4 h-[160px] overflow-hidden rounded-2xl border border-sand bg-sand/5">
-            {/* Fixtures as landmarks */}
-            {fixtures.map((f) => (
-              <div
-                key={f.id}
-                className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-none"
-                style={{ left: `${f.x ?? 50}%`, top: `${f.y ?? 50}%` }}
-              >
-                <div className="flex items-center gap-0.5 rounded-full bg-sand/20 px-1.5 py-0.5">
-                  <span className="text-[8px]">{f.emoji}</span>
-                  <span className="font-mono text-[6px] text-muted/70">{f.name}</span>
-                </div>
-              </div>
-            ))}
-            {/* Zones as labels */}
-            {zones.map((z) => (
-              <div
-                key={z.id}
-                className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-none"
-                style={{ left: `${z.x ?? 50}%`, top: `${z.y ?? 50}%` }}
-              >
-                <span className="font-mono text-[6px] text-muted/50">{z.emoji} {z.name}</span>
-              </div>
-            ))}
-            {/* Table dots — tappable */}
-            {tables.map((spot) => {
-              const availableSeats = spot.seats ? spot.seats.filter((s) => s.status === "available").length : 0;
-              const remaining = spot.seats && spot.seats.length > 0 ? availableSeats : spot.capacity - spot.booked;
-              const full = remaining <= 0;
-              const selected = selectedSeatId === spot.id;
-              return (
-                <button
-                  key={spot.id}
-                  onClick={() => {
-                    if (full) return;
-                    // Scroll to matching card
-                    const el = document.getElementById(`spot-card-${spot.id}`);
-                    el?.scrollIntoView({ behavior: "smooth", block: "center" });
-                    if (spot.seats && spot.seats.length > 0) {
-                      setExpandedSpotId(spot.id);
-                    } else {
-                      onSelectSeat(selected ? null : spot.id);
-                      onSelectSection(spot.section_id || null);
-                      onSelectSpotSeat(null);
-                    }
-                  }}
-                  disabled={full}
-                  className={`absolute -translate-x-1/2 -translate-y-1/2 transition-all ${full ? "opacity-30" : selected ? "z-10 scale-125" : ""}`}
-                  style={{ left: `${spot.x ?? 50}%`, top: `${spot.y ?? 50}%` }}
-                >
-                  <div
-                    className={`flex h-5 w-5 items-center justify-center rounded-full border text-[8px]`}
-                    style={{
-                      borderColor: selected ? "#0E0D0B" : accent + "80",
-                      background: selected ? accent + "30" : "white",
-                    }}
-                  >
-                    {spot.emoji || "\u{1FA91}"}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Scrollable card list — primary selection UI */}
-        <div className="flex flex-col gap-2">
-          {/* Fixture info cards (non-interactive) */}
-          {fixtures.length > 0 && (
-            <div className="mb-1 flex flex-wrap gap-1.5">
-              {fixtures.map((f) => (
-                <div key={f.id} className="flex items-center gap-1 rounded-full bg-sand/15 px-2.5 py-1">
-                  <span className="text-xs">{f.emoji}</span>
-                  <span className="font-mono text-[9px] text-muted/60">{f.name}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Zone info cards (non-interactive) */}
-          {zones.length > 0 && (
-            <div className="mb-1 flex flex-wrap gap-1.5">
-              {zones.map((z) => (
-                <div key={z.id} className="flex items-center gap-1 rounded-lg bg-sand/10 px-2.5 py-1">
-                  <span className="text-xs">{z.emoji}</span>
-                  <span className="font-mono text-[9px] text-muted/50">{z.name}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Table cards — bookable */}
-          {tables.map((spot) => {
-            const availableSeats = spot.seats ? spot.seats.filter((s) => s.status === "available").length : 0;
-            const remaining = spot.seats && spot.seats.length > 0 ? availableSeats : spot.capacity - spot.booked;
-            const full = remaining <= 0;
-            const selected = selectedSeatId === spot.id;
-            const selectedSeatLabel = selectedSpotSeatId ? spot.seats?.find((s) => s.id === selectedSpotSeatId)?.label : null;
-
-            return (
-              <button
-                key={spot.id}
-                id={`spot-card-${spot.id}`}
-                onClick={() => {
-                  if (full) return;
-                  if (spot.seats && spot.seats.length > 0) {
-                    setExpandedSpotId(spot.id);
-                  } else {
-                    onSelectSeat(selected ? null : spot.id);
-                    onSelectSection(spot.section_id || null);
-                    onSelectSpotSeat(null);
-                  }
-                }}
-                disabled={full}
-                className={`flex w-full items-center gap-3 rounded-2xl border-2 p-3.5 text-left transition-all ${
-                  selected
-                    ? "border-near-black bg-near-black/[0.03]"
-                    : full
-                      ? "border-sand/30 opacity-40"
-                      : "border-sand bg-white hover:border-near-black/30"
-                }`}
-              >
-                {/* Emoji */}
-                <div
-                  className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-lg`}
-                  style={{ background: accent + "10" }}
-                >
-                  {spot.emoji || "\u{1FA91}"}
-                </div>
-
-                {/* Info */}
-                <div className="min-w-0 flex-1">
-                  <p className="font-sans text-sm font-medium text-near-black">{spot.name}</p>
-                  {spot.description && (
-                    <p className="truncate font-mono text-[10px] text-muted">{spot.description}</p>
-                  )}
-                  {/* Seat availability dots */}
-                  {spot.seats && spot.seats.length > 0 && (
-                    <div className="mt-1 flex items-center gap-0.5">
-                      {spot.seats.map((seat) => (
-                        <div
-                          key={seat.id}
-                          className="h-2 w-2 rounded-full"
-                          style={{
-                            background: seat.status === "available" ? accent : "#E8E0D4",
-                          }}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Right side — availability or selection */}
-                <div className="shrink-0 text-right">
-                  {selected && selectedSeatLabel ? (
-                    <p className="font-mono text-[10px] font-medium text-near-black">{selectedSeatLabel}</p>
-                  ) : (
-                    <>
-                      <p className={`font-mono text-xs font-medium ${full ? "text-terracotta" : "text-near-black"}`}>
-                        {full ? "full" : remaining}
-                      </p>
-                      <p className="font-mono text-[8px] text-muted">
-                        {full ? "" : spot.seats && spot.seats.length > 0 ? "seats left" : "left"}
-                      </p>
-                    </>
-                  )}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      <CustomSpotPicker
+        spots={seating.spots || []}
+        accent={accent}
+        selectedSpotId={selectedSeatId}
+        selectedSpotSeatId={selectedSpotSeatId}
+        onSelectSpot={(id) => {
+          onSelectSeat(id);
+          if (id) {
+            const spot = seating.spots?.find((s) => s.id === id);
+            onSelectSection(spot?.section_id || null);
+          } else {
+            onSelectSection(null);
+          }
+        }}
+        onSelectSpotSeat={onSelectSpotSeat}
+      />
     );
   }
 
@@ -767,6 +823,8 @@ function SummaryStep({
   pickupPoint,
   timeSlotId,
   addonSelections,
+  addonSeatSelections,
+  liveAddonSeating,
   checkoutSteps,
   seatId,
   sectionId,
@@ -777,6 +835,8 @@ function SummaryStep({
   pickupPoint: string | null;
   timeSlotId: string | null;
   addonSelections: Record<string, Record<string, number>>;
+  addonSeatSelections: Record<string, { spotId: string | null; spotSeatId: string | null }>;
+  liveAddonSeating: Record<string, AddonSeatingConfig> | null;
   checkoutSteps: CheckoutStep[];
   seatId: string | null;
   sectionId: string | null;
@@ -785,14 +845,18 @@ function SummaryStep({
   const tierPrice = selectedTier?.price || 0;
 
   // Compute add-on totals
-  const addonItems: { name: string; qty: number; price: number }[] = [];
+  const addonItems: { name: string; qty: number; price: number; spotName?: string; seatLabel?: string }[] = [];
   for (const step of checkoutSteps) {
     if (step.type !== "addon_select" || !step.add_ons) continue;
     const sel = addonSelections[step.id] || {};
     for (const addon of step.add_ons) {
       const qty = sel[addon.id] || 0;
       if (qty > 0) {
-        addonItems.push({ name: addon.name, qty, price: addon.price });
+        const seatSel = addonSeatSelections[addon.id];
+        const addonSeating = liveAddonSeating?.[addon.id] || addon.seating;
+        const spot = seatSel?.spotId ? addonSeating?.spots?.find((s) => s.id === seatSel.spotId) : null;
+        const spotSeatObj = seatSel?.spotSeatId ? spot?.seats?.find((s) => s.id === seatSel.spotSeatId) : null;
+        addonItems.push({ name: addon.name, qty, price: addon.price, spotName: spot?.name, seatLabel: spotSeatObj?.label });
       }
     }
   }
@@ -827,6 +891,11 @@ function SummaryStep({
           <div>
             <p className="font-sans text-[13px] text-near-black">{a.name}</p>
             {a.qty > 1 && <p className="font-mono text-[10px] text-muted">x{a.qty}</p>}
+            {a.spotName && (
+              <p className="font-mono text-[10px] text-muted">
+                spot: {a.spotName}{a.seatLabel ? `, ${a.seatLabel}` : ""}
+              </p>
+            )}
           </div>
           <span className="font-sans text-[13px] text-near-black">
             {a.price === 0 ? "Free" : `\u20B9${a.price * a.qty}`}
@@ -918,10 +987,156 @@ export function CheckoutWizard({ event, onComplete, onClose, loading }: Checkout
   const [selectedSeatId, setSelectedSeatId] = useState<string | null>(null);
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
   const [selectedSpotSeatId, setSelectedSpotSeatId] = useState<string | null>(null);
+  // Per-addon seat selections: { [addonId]: { spotId, spotSeatId } }
+  const [addonSeatSelections, setAddonSeatSelections] = useState<
+    Record<string, { spotId: string | null; spotSeatId: string | null }>
+  >({});
+
+  // Live seating polling
+  const { getIdToken } = useAuth();
+  const [liveSeating, setLiveSeating] = useState<SeatingConfig | null>(null);
+  const [liveAddonSeating, setLiveAddonSeating] = useState<Record<string, AddonSeatingConfig> | null>(null);
+  const [seatConflictToast, setSeatConflictToast] = useState<string | null>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const addonPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const selectedTier = tiers.find((t) => t.id === selectedTierId);
   const step = steps[currentStep];
   const isLastStep = currentStep === steps.length - 1;
+
+  // Determine if current step is a seat_select step
+  const isOnSeatStep = step?.type === "checkout" && step.stepData?.type === "seat_select";
+
+  // Poll seating availability when on seat selection step
+  useEffect(() => {
+    if (!isOnSeatStep) {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+      return;
+    }
+
+    const pollSeating = async () => {
+      try {
+        const token = await getIdToken();
+        if (!token) return;
+        const res = await apiFetch<{ success: boolean; data: SeatingConfig | null }>(
+          `/api/events/${event.id}/seating`,
+          { token },
+        );
+        if (res.data) {
+          setLiveSeating(res.data);
+        }
+      } catch {
+        // Silently ignore polling errors
+      }
+    };
+
+    pollSeating();
+    pollingRef.current = setInterval(pollSeating, 5000);
+
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+  }, [isOnSeatStep, event.id, getIdToken]);
+
+  // Determine if current step has add-ons with seating
+  const isOnAddonStepWithSeating = step?.type === "checkout" && step.stepData?.type === "addon_select" &&
+    (step.stepData.add_ons || []).some((a) => a.seating?.enabled);
+
+  // Poll add-on seating when on an addon_select step with seating
+  useEffect(() => {
+    if (!isOnAddonStepWithSeating) {
+      if (addonPollingRef.current) {
+        clearInterval(addonPollingRef.current);
+        addonPollingRef.current = null;
+      }
+      return;
+    }
+
+    const pollAddonSeating = async () => {
+      try {
+        const token = await getIdToken();
+        if (!token) return;
+        const res = await apiFetch<{ success: boolean; data: Record<string, AddonSeatingConfig> }>(
+          `/api/events/${event.id}/addon-seating`,
+          { token },
+        );
+        if (res.data) {
+          setLiveAddonSeating(res.data);
+        }
+      } catch {
+        // Silently ignore polling errors
+      }
+    };
+
+    pollAddonSeating();
+    addonPollingRef.current = setInterval(pollAddonSeating, 5000);
+
+    return () => {
+      if (addonPollingRef.current) {
+        clearInterval(addonPollingRef.current);
+        addonPollingRef.current = null;
+      }
+    };
+  }, [isOnAddonStepWithSeating, event.id, getIdToken]);
+
+  // Merge live seating into event for the seat picker
+  const eventWithLiveSeating = useMemo(() => {
+    if (!liveSeating) return event;
+    return { ...event, seating: liveSeating };
+  }, [event, liveSeating]);
+
+  // Detect if the user's selected seat was taken by someone else
+  useEffect(() => {
+    if (!liveSeating || !isOnSeatStep) return;
+
+    if (liveSeating.mode === "custom" && selectedSeatId && liveSeating.spots) {
+      const spot = liveSeating.spots.find((s) => s.id === selectedSeatId);
+      if (spot?.seats && selectedSpotSeatId) {
+        const seat = spot.seats.find((s) => s.id === selectedSpotSeatId);
+        if (seat && seat.status !== "available") {
+          setSelectedSeatId(null);
+          setSelectedSpotSeatId(null);
+          setSelectedSectionId(null);
+          setSeatConflictToast(`${spot.name} \u2013 ${seat.label} was just taken`);
+          setTimeout(() => setSeatConflictToast(null), 4000);
+        }
+      }
+    } else if (selectedSeatId && liveSeating.mode !== "custom" && liveSeating.seats) {
+      const seat = liveSeating.seats.find((s) => s.id === selectedSeatId);
+      if (seat && seat.status !== "available") {
+        setSelectedSeatId(null);
+        setSelectedSectionId(null);
+        setSeatConflictToast(`Seat ${selectedSeatId} was just taken`);
+        setTimeout(() => setSeatConflictToast(null), 4000);
+      }
+    }
+  }, [liveSeating, isOnSeatStep, selectedSeatId, selectedSpotSeatId]);
+
+  // Detect if add-on seat selections were taken
+  useEffect(() => {
+    if (!liveAddonSeating) return;
+    for (const [addonId, sel] of Object.entries(addonSeatSelections)) {
+      if (!sel.spotId) continue;
+      const addonSeating = liveAddonSeating[addonId];
+      if (!addonSeating) continue;
+      const spot = addonSeating.spots?.find((s) => s.id === sel.spotId);
+      if (spot?.seats && sel.spotSeatId) {
+        const seat = spot.seats.find((s) => s.id === sel.spotSeatId);
+        if (seat && seat.status !== "available") {
+          setAddonSeatSelections((prev) => ({ ...prev, [addonId]: { spotId: null, spotSeatId: null } }));
+          setSeatConflictToast(`${spot.name} \u2013 ${seat.label} was just taken`);
+          setTimeout(() => setSeatConflictToast(null), 4000);
+          break; // one toast at a time
+        }
+      }
+    }
+  }, [liveAddonSeating, addonSeatSelections]);
 
   // Validate current step
   const canProceed = (): boolean => {
@@ -937,13 +1152,25 @@ export function CheckoutWizard({ event, onComplete, onClose, loading }: Checkout
           // Check required add-ons
           const sel = addonSelections[cs.id] || {};
           const requiredAddons = (cs.add_ons || []).filter((a) => a.required);
-          return requiredAddons.every((a) => (sel[a.id] || 0) > 0);
+          const requiredMet = requiredAddons.every((a) => (sel[a.id] || 0) > 0);
+          // Check add-on seating selections
+          const seatingMet = (cs.add_ons || []).every((addon) => {
+            const qty = sel[addon.id] || 0;
+            if (qty === 0 || !addon.seating?.enabled || !addon.seating.allow_choice) return true;
+            const seatSel = addonSeatSelections[addon.id];
+            if (!seatSel?.spotId) return false;
+            const addonSeating = liveAddonSeating?.[addon.id] || addon.seating;
+            const spot = addonSeating.spots?.find((s) => s.id === seatSel.spotId);
+            if (spot?.seats && spot.seats.length > 0) return !!seatSel.spotSeatId;
+            return true;
+          });
+          return requiredMet && seatingMet;
         }
         if (cs.type === "pickup_select") {
           return !!selectedPickup;
         }
         if (cs.type === "seat_select") {
-          const seating = event.seating;
+          const seating = eventWithLiveSeating.seating;
           if (!seating || seating.mode === "none") return true;
           if (!seating.allow_choice) return true; // auto-assigned
           if (seating.mode === "custom" && selectedSeatId) {
@@ -968,7 +1195,7 @@ export function CheckoutWizard({ event, onComplete, onClose, loading }: Checkout
 
   const handleNext = () => {
     if (isLastStep) {
-      // Compile add-ons from all steps
+      // Compile add-ons from all steps (with seat selections if applicable)
       const allAddons: SelectedAddon[] = [];
       for (const cs of checkoutSteps) {
         if (cs.type !== "addon_select" || !cs.add_ons) continue;
@@ -976,11 +1203,19 @@ export function CheckoutWizard({ event, onComplete, onClose, loading }: Checkout
         for (const addon of cs.add_ons) {
           const qty = sel[addon.id] || 0;
           if (qty > 0) {
+            const seatSel = addonSeatSelections[addon.id];
+            const addonSeating = liveAddonSeating?.[addon.id] || addon.seating;
+            const spot = seatSel?.spotId ? addonSeating?.spots?.find((s) => s.id === seatSel.spotId) : null;
+            const spotSeat = seatSel?.spotSeatId ? spot?.seats?.find((s) => s.id === seatSel.spotSeatId) : null;
             allAddons.push({
               addon_id: addon.id,
               name: addon.name,
               quantity: qty,
               price: addon.price,
+              spot_id: seatSel?.spotId || undefined,
+              spot_name: spot?.name || undefined,
+              spot_seat_id: seatSel?.spotSeatId || undefined,
+              spot_seat_label: spotSeat?.label || undefined,
             });
           }
         }
@@ -1114,6 +1349,15 @@ export function CheckoutWizard({ event, onComplete, onClose, loading }: Checkout
                 setAddonSelections((prev) => ({ ...prev, [step.stepData!.id]: sel }))
               }
               accent={event.accent_dark}
+              addonSeatSelections={addonSeatSelections}
+              onAddonSeatChange={(addonId, sel) =>
+                setAddonSeatSelections((prev) => {
+                  const defaultSel = { spotId: null, spotSeatId: null };
+                  const resolved = typeof sel === "function" ? sel(prev[addonId] || defaultSel) : sel;
+                  return { ...prev, [addonId]: resolved };
+                })
+              }
+              liveAddonSeating={liveAddonSeating}
             />
           )}
 
@@ -1131,7 +1375,7 @@ export function CheckoutWizard({ event, onComplete, onClose, loading }: Checkout
 
           {step.type === "checkout" && step.stepData?.type === "seat_select" && (
             <SeatSelectStep
-              event={event}
+              event={eventWithLiveSeating}
               selectedSeatId={selectedSeatId}
               selectedSectionId={selectedSectionId}
               selectedSpotSeatId={selectedSpotSeatId}
@@ -1148,6 +1392,8 @@ export function CheckoutWizard({ event, onComplete, onClose, loading }: Checkout
               pickupPoint={selectedPickup}
               timeSlotId={selectedTimeSlot}
               addonSelections={addonSelections}
+              addonSeatSelections={addonSeatSelections}
+              liveAddonSeating={liveAddonSeating}
               checkoutSteps={checkoutSteps}
               seatId={selectedSeatId}
               sectionId={selectedSectionId}
@@ -1155,6 +1401,17 @@ export function CheckoutWizard({ event, onComplete, onClose, loading }: Checkout
             />
           )}
         </div>
+
+        {/* Seat conflict toast */}
+        {seatConflictToast && (
+          <div className="pointer-events-none absolute bottom-28 left-1/2 z-50 -translate-x-1/2">
+            <div className="rounded-xl bg-near-black px-5 py-3 shadow-lg" style={{ animation: "chatSlideIn 0.3s ease both" }}>
+              <p className="whitespace-nowrap font-mono text-[11px] text-cream">
+                {seatConflictToast}
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* CTA */}
         <div className="border-t border-sand bg-cream px-6 pb-7 pt-4">

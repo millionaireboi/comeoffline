@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev": "nodemon --exec ts-node src/index.ts",
+    "dev": "nodemon --exec tsx src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit"
@@ -17,6 +17,7 @@
     "express": "^4.21.0",
     "express-rate-limit": "^8.2.1",
     "firebase-admin": "^12.7.0",
+    "helmet": "^8.1.0",
     "qrcode": "^1.5.4",
     "yn": "^3.1.1"
   },

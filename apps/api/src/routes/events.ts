@@ -41,4 +41,49 @@ router.get("/:id", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
+/** GET /api/events/:id/seating — Lightweight seating data for real-time polling */
+router.get("/:id/seating", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const event = await getEventById(req.params.id as string);
+    if (!event) {
+      res.status(404).json({ success: false, error: "Event not found" });
+      return;
+    }
+    res.set("Cache-Control", "no-store");
+    res.json({ success: true, data: event.seating || null });
+  } catch (err) {
+    console.error("[events] seating error:", err);
+    res.status(500).json({ success: false, error: "Failed to fetch seating" });
+  }
+});
+
+/** GET /api/events/:id/addon-seating — Live add-on seating data for real-time polling */
+router.get("/:id/addon-seating", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const event = await getEventById(req.params.id as string);
+    if (!event) {
+      res.status(404).json({ success: false, error: "Event not found" });
+      return;
+    }
+
+    // Extract add-on seating from checkout steps
+    const addonSeating: Record<string, { enabled: boolean; spots: unknown[]; floor_plan_url?: string; allow_choice: boolean }> = {};
+    const steps = event.checkout?.steps || [];
+    for (const step of steps) {
+      if (step.type !== "addon_select" || !step.add_ons) continue;
+      for (const addon of step.add_ons) {
+        if (addon.seating?.enabled) {
+          addonSeating[addon.id] = addon.seating;
+        }
+      }
+    }
+
+    res.set("Cache-Control", "no-store");
+    res.json({ success: true, data: addonSeating });
+  } catch (err) {
+    console.error("[events] addon-seating error:", err);
+    res.status(500).json({ success: false, error: "Failed to fetch addon seating" });
+  }
+});
+
 export default router;

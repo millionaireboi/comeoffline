@@ -8,15 +8,29 @@ import { apiFetch } from "@/lib/api";
 import { GlitchText } from "@/components/ui/GlitchText";
 import { EventCard } from "@/components/events/EventCard";
 import { EventDetail } from "@/components/events/EventDetail";
+import { SignQuiz } from "@/components/onboarding/SignQuiz";
 import { Noise } from "@/components/shared/Noise";
 
 export function EventFeed() {
   const { getIdToken } = useAuth();
+  const user = useAppStore((s) => s.user);
   const { setCurrentEvent, setActiveRsvp, setActiveTicket, setStage } = useAppStore();
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [detailEvent, setDetailEvent] = useState<Event | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [showQuizGate, setShowQuizGate] = useState(false);
+  const [showQuizPrompt, setShowQuizPrompt] = useState(false);
+  const [pendingPurchase, setPendingPurchase] = useState<{
+    event: Event;
+    tierId: string;
+    pickupPoint?: string;
+    timeSlotId?: string;
+    addOns?: Array<{ addon_id: string; name: string; quantity: number; price: number; spot_id?: string; spot_name?: string; spot_seat_id?: string; spot_seat_label?: string }>;
+    seatId?: string;
+    sectionId?: string;
+    spotSeatId?: string;
+  } | null>(null);
 
   useEffect(() => {
     async function fetchEvents() {
@@ -39,6 +53,7 @@ export function EventFeed() {
   // Legacy RSVP flow for free events
   const handleRsvp = useCallback(
     async (event: Event) => {
+      if (actionLoading) return;
       setActionLoading(true);
       try {
         const token = await getIdToken();
@@ -58,21 +73,22 @@ export function EventFeed() {
         setActionLoading(false);
       }
     },
-    [getIdToken, setCurrentEvent, setActiveRsvp, setStage],
+    [actionLoading, getIdToken, setCurrentEvent, setActiveRsvp, setStage],
   );
 
-  // Ticket purchase flow for ticketed events
-  const handleTicketPurchase = useCallback(
+  // Actually execute a ticket purchase (called directly or after quiz gate)
+  const executePurchase = useCallback(
     async (
       event: Event,
       tierId: string,
       pickupPoint?: string,
       timeSlotId?: string,
-      addOns?: Array<{ addon_id: string; name: string; quantity: number; price: number }>,
+      addOns?: Array<{ addon_id: string; name: string; quantity: number; price: number; spot_id?: string; spot_name?: string; spot_seat_id?: string; spot_seat_label?: string }>,
       seatId?: string,
       sectionId?: string,
       spotSeatId?: string,
     ) => {
+      if (actionLoading) return;
       setActionLoading(true);
       try {
         const token = await getIdToken();
@@ -92,6 +108,13 @@ export function EventFeed() {
           }),
         });
         if (data.data) {
+          if (data.data.payment_url) {
+            // Paid event: redirect to Razorpay Payment Link
+            window.location.href = data.data.payment_url;
+            return;
+          }
+
+          // Free event: ticket already confirmed
           setCurrentEvent(event);
           setActiveTicket(data.data);
           setDetailEvent(null);
@@ -103,8 +126,41 @@ export function EventFeed() {
         setActionLoading(false);
       }
     },
-    [getIdToken, setCurrentEvent, setActiveTicket, setStage],
+    [actionLoading, getIdToken, setCurrentEvent, setActiveTicket, setStage],
   );
+
+  // Ticket purchase flow — gates on sign quiz if user hasn't taken it yet
+  const handleTicketPurchase = useCallback(
+    async (
+      event: Event,
+      tierId: string,
+      pickupPoint?: string,
+      timeSlotId?: string,
+      addOns?: Array<{ addon_id: string; name: string; quantity: number; price: number; spot_id?: string; spot_name?: string; spot_seat_id?: string; spot_seat_label?: string }>,
+      seatId?: string,
+      sectionId?: string,
+      spotSeatId?: string,
+    ) => {
+      // One-time gate: if user has no sign, show explainer prompt first
+      if (!user?.sign) {
+        setPendingPurchase({ event, tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId });
+        setShowQuizPrompt(true);
+        return;
+      }
+      await executePurchase(event, tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId);
+    },
+    [user?.sign, executePurchase],
+  );
+
+  // After quiz completes from checkout gate, resume the pending purchase
+  const handleQuizGateComplete = useCallback(() => {
+    setShowQuizGate(false);
+    if (pendingPurchase) {
+      const p = pendingPurchase;
+      setPendingPurchase(null);
+      executePurchase(p.event, p.tierId, p.pickupPoint, p.timeSlotId, p.addOns, p.seatId, p.sectionId, p.spotSeatId);
+    }
+  }, [pendingPurchase, executePurchase]);
 
   if (loading) {
     return (
@@ -119,6 +175,27 @@ export function EventFeed() {
   return (
     <div className="min-h-screen bg-cream pb-[120px]">
       <Noise />
+
+      {/* Quiz reminder banner — fixed at top if user hasn't taken the quiz */}
+      {!user?.sign && (
+        <div
+          className="sticky top-0 z-[100] flex items-center justify-between px-5 py-3"
+          style={{ background: "linear-gradient(135deg, #1A1714, #2A2520)", borderBottom: "1px solid rgba(212,165,116,0.2)" }}
+        >
+          <div className="flex items-center gap-2.5">
+            <span className="text-lg">✦</span>
+            <p className="font-sans text-[13px] text-cream">
+              find your <span className="font-medium text-caramel">comeoffline sign</span>
+            </p>
+          </div>
+          <button
+            onClick={() => setShowQuizGate(true)}
+            className="rounded-full bg-caramel px-4 py-1.5 font-mono text-[11px] font-medium text-gate-black transition-all active:scale-95"
+          >
+            take quiz
+          </button>
+        </div>
+      )}
 
       {/* Header section */}
       <section className="relative px-5 pb-12 pt-10">
@@ -184,6 +261,50 @@ export function EventFeed() {
           }
           loading={actionLoading}
         />
+      )}
+
+      {/* Quiz prompt modal — shown before payment when user hasn't taken quiz */}
+      {showQuizPrompt && (
+        <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/70 px-6">
+          <div
+            className="w-full max-w-[340px] rounded-[20px] p-6 text-center"
+            style={{ background: "#1A1714", border: "1px solid rgba(212,165,116,0.2)" }}
+          >
+            <span className="mb-3 inline-block text-4xl">✦</span>
+            <h3 className="mb-2 font-serif text-[22px] text-cream">
+              one quick thing
+            </h3>
+            <p className="mb-6 font-sans text-[14px] leading-[1.6] text-muted">
+              we use your comeoffline sign to seat you with
+              compatible people at the event. takes 2 mins.
+            </p>
+            <button
+              onClick={() => {
+                setShowQuizPrompt(false);
+                setShowQuizGate(true);
+              }}
+              className="mb-3 w-full rounded-full bg-caramel py-3.5 font-sans text-[15px] font-medium text-gate-black transition-all active:scale-95"
+            >
+              take the quiz →
+            </button>
+            <button
+              onClick={() => {
+                setShowQuizPrompt(false);
+                setPendingPurchase(null);
+              }}
+              className="font-mono text-[12px] text-muted transition-colors"
+            >
+              go back
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Quiz gate overlay — shown once before first ticket purchase or from banner */}
+      {showQuizGate && (
+        <div className="fixed inset-0 z-[600] overflow-y-auto">
+          <SignQuiz onComplete={handleQuizGateComplete} mode={pendingPurchase ? "pre_checkout" : "onboarding"} />
+        </div>
       )}
     </div>
   );

@@ -21,20 +21,20 @@ async function initializeFirebase() {
 
   // Start initialization and store the promise
   _initPromise = (async () => {
-    console.log('[firebase-admin] Lazy-loading Firebase Admin SDK...');
+    try {
+      console.log('[firebase-admin] Lazy-loading Firebase Admin SDK...');
 
-    const { initializeApp, cert, getApps } = await import("firebase-admin/app");
-    const { getFirestore } = await import("firebase-admin/firestore");
-    const { getAuth } = await import("firebase-admin/auth");
-    const { getStorage } = await import("firebase-admin/storage");
+      const { initializeApp, cert, getApps } = await import("firebase-admin/app");
+      const { getFirestore } = await import("firebase-admin/firestore");
+      const { getAuth } = await import("firebase-admin/auth");
+      const { getStorage } = await import("firebase-admin/storage");
 
-    console.log('[firebase-admin] Firebase Admin SDK loaded');
+      console.log('[firebase-admin] Firebase Admin SDK loaded');
 
-    if (getApps().length === 0) {
-      console.log('[firebase-admin] Initializing Firebase...');
-      const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+      if (getApps().length === 0) {
+        console.log('[firebase-admin] Initializing Firebase...');
+        const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
 
-      try {
         if (serviceAccount) {
           console.log('[firebase-admin] Using service account credentials');
           initializeApp({
@@ -48,18 +48,19 @@ async function initializeFirebase() {
           });
         }
         console.log('[firebase-admin] ✓ Firebase initialized');
-      } catch (error) {
-        console.error('[firebase-admin] ✗ Initialization error:', error);
-        throw error;
       }
+
+      _db = getFirestore();
+      _auth = getAuth();
+      _storage = getStorage();
+      _initialized = true;
+
+      console.log('[firebase-admin] ✓ All Firebase services ready');
+    } catch (error) {
+      console.error('[firebase-admin] ✗ Initialization error:', error);
+      _initPromise = null; // Allow retry on next call
+      throw error;
     }
-
-    _db = getFirestore();
-    _auth = getAuth();
-    _storage = getStorage();
-    _initialized = true;
-
-    console.log('[firebase-admin] ✓ All Firebase services ready');
   })();
 
   await _initPromise;

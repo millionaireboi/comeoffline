@@ -37,8 +37,14 @@ export function useStage() {
         return;
       }
 
+      // Offer sign quiz after onboarding if not yet completed
+      if (!user.sign && !isGrandfathered && !["feed", "sign_quiz"].includes(stage)) {
+        setStage("sign_quiz");
+        return;
+      }
+
       // Manual stages that shouldn't be auto-overridden
-      if (["profile", "vouch", "poll"].includes(stage)) return;
+      if (["profile", "vouch", "poll", "sign_quiz"].includes(stage)) return;
 
       // If user has neither RSVP nor ticket for any event, show feed
       if (!currentEvent || (!activeRsvp && !activeTicket)) {

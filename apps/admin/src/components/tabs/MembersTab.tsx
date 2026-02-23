@@ -87,6 +87,8 @@ export function MembersTab() {
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
   const [statusUpdating, setStatusUpdating] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     async function fetchMembers() {
@@ -113,6 +115,7 @@ export function MembersTab() {
     setProfile(null);
     setNotes([]);
     setNewNote("");
+    setDeleteConfirm(false);
 
     try {
       const token = await getIdToken();
@@ -191,6 +194,32 @@ export function MembersTab() {
       setAddingNote(false);
     }
   }, [drawerMemberId, newNote, getIdToken]);
+
+  const handleDelete = useCallback(async () => {
+    if (!drawerMemberId) return;
+    setDeleting(true);
+    try {
+      const token = await getIdToken();
+      if (!token) return;
+      const res = await fetch(`${API_URL}/api/admin/members/${drawerMemberId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMembers((prev) => prev.filter((m) => m.id !== drawerMemberId));
+        closeDrawer();
+      } else {
+        alert(data.error || "Failed to delete member");
+      }
+    } catch (err) {
+      console.error("Failed to delete member:", err);
+      alert("Failed to delete member");
+    } finally {
+      setDeleting(false);
+      setDeleteConfirm(false);
+    }
+  }, [drawerMemberId, getIdToken, closeDrawer]);
 
   const filtered = members.filter((m) => {
     if (statusFilter !== "all" && m.status !== statusFilter) return false;
@@ -533,6 +562,40 @@ export function MembersTab() {
                               </p>
                             </div>
                           ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Delete member */}
+                    <div className="mt-6 border-t border-white/5 pt-4">
+                      {!deleteConfirm ? (
+                        <button
+                          onClick={() => setDeleteConfirm(true)}
+                          className="w-full rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2.5 font-mono text-[11px] text-red-400 transition-colors hover:bg-red-500/10"
+                        >
+                          delete member
+                        </button>
+                      ) : (
+                        <div className="space-y-2">
+                          <p className="font-mono text-[10px] text-red-400">
+                            permanently delete {profile.user.name}? this removes their account, connections, rsvps, vouch codes, and auth. this cannot be undone.
+                          </p>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={handleDelete}
+                              disabled={deleting}
+                              className="flex-1 rounded-lg bg-red-500 px-3 py-2.5 font-mono text-[11px] font-medium text-white transition-opacity hover:opacity-80 disabled:opacity-50"
+                            >
+                              {deleting ? "deleting..." : "confirm delete"}
+                            </button>
+                            <button
+                              onClick={() => setDeleteConfirm(false)}
+                              disabled={deleting}
+                              className="rounded-lg border border-white/10 px-3 py-2.5 font-mono text-[11px] text-muted transition-colors hover:bg-white/5 disabled:opacity-50"
+                            >
+                              cancel
+                            </button>
+                          </div>
                         </div>
                       )}
                     </div>

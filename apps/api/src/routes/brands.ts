@@ -12,6 +12,26 @@ router.post("/", async (req, res) => {
       res.status(400).json({ success: false, error: "name, email, and brand are required" });
       return;
     }
+    if (typeof name !== "string" || name.length > 100) {
+      res.status(400).json({ success: false, error: "name must be a string, max 100 characters" });
+      return;
+    }
+    if (typeof email !== "string" || email.length > 254) {
+      res.status(400).json({ success: false, error: "email must be a string, max 254 characters" });
+      return;
+    }
+    if (typeof brand !== "string" || brand.length > 200) {
+      res.status(400).json({ success: false, error: "brand must be a string, max 200 characters" });
+      return;
+    }
+    if (role && (typeof role !== "string" || role.length > 100)) {
+      res.status(400).json({ success: false, error: "role must be a string, max 100 characters" });
+      return;
+    }
+    if (interest && (typeof interest !== "string" || interest.length > 2000)) {
+      res.status(400).json({ success: false, error: "interest must be a string, max 2000 characters" });
+      return;
+    }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       res.status(400).json({ success: false, error: "invalid email format" });
       return;

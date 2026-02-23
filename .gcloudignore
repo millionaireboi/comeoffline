@@ -1,0 +1,28 @@
+node_modules/
+.next/
+dist/
+.git/
+*.log
+.env
+.env.*
+.playwright-mcp/
+chat-mobile-*.png
+come-offline-*.jsx
+come-offline-*.docx
+*.png
+*.jpeg
+*.jpg
+
+# Exclude apps not needed for API build
+apps/landing/
+apps/app/
+apps/admin/
+
+# Exclude packages not needed for API build
+packages/brand/
+packages/firebase/
+packages/eslint-config/
+
+# Other unneeded files
+cors.json
+package-lock 4.json

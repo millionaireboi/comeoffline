@@ -17,10 +17,16 @@ export const P = {
   highlight: "#C4704D",
 } as const;
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
-export const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3001";
-
-if (typeof window === "undefined" && process.env.NODE_ENV === "production") {
-  if (!process.env.NEXT_PUBLIC_API_URL) console.warn("[comeoffline] NEXT_PUBLIC_API_URL not set — falling back to localhost");
-  if (!process.env.NEXT_PUBLIC_APP_URL) console.warn("[comeoffline] NEXT_PUBLIC_APP_URL not set — falling back to localhost");
+function resolveUrl(envValue: string | undefined, fallbackPort: number): string {
+  // In production or SSR, use the env value as-is
+  if (typeof window === "undefined") return envValue || `http://localhost:${fallbackPort}`;
+  // In the browser, replace localhost with the current hostname so mobile network IPs work
+  const base = envValue || `http://localhost:${fallbackPort}`;
+  if (base.includes("localhost") && window.location.hostname !== "localhost") {
+    return base.replace("localhost", window.location.hostname);
+  }
+  return base;
 }
+
+export const API_URL = resolveUrl(process.env.NEXT_PUBLIC_API_URL, 8080);
+export const APP_URL = resolveUrl(process.env.NEXT_PUBLIC_APP_URL, 3001);

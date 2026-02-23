@@ -123,6 +123,11 @@ let usersCache: {
 } | null = null;
 const USERS_CACHE_TTL = 3 * 60 * 1000; // 3 minutes
 
+/** Invalidate the users list cache (e.g. after deletion) */
+export function invalidateUsersCache(): void {
+  usersCache = null;
+}
+
 export async function getUsers(): Promise<Array<{
   id: string;
   name: string;

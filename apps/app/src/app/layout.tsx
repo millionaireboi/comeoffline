@@ -37,6 +37,9 @@ export const metadata: Metadata = {
   title: "come offline",
   description: "come offline",
   manifest: "/manifest.json",
+  icons: {
+    apple: "/apple-touch-icon.png",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",

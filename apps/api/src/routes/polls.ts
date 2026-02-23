@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireAuth, type AuthRequest } from "../middleware/auth";
+import { requireAuth, requireAdmin, type AuthRequest } from "../middleware/auth";
 import { getEventPoll, submitVotes, createPoll } from "../services/poll.service";
 
 const router = Router();
@@ -40,7 +40,7 @@ router.post("/:id/community-poll", requireAuth, async (req: AuthRequest, res) =>
 });
 
 /** POST /api/events/:id/create-poll — Create a poll (admin) */
-router.post("/:id/create-poll", requireAuth, async (req: AuthRequest, res) => {
+router.post("/:id/create-poll", requireAdmin, async (req: AuthRequest, res) => {
   try {
     const poll = await createPoll(req.params.id as string);
     res.json({ success: true, data: poll });

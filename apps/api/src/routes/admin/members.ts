@@ -2,7 +2,7 @@ import { Router } from "express";
 import { requireAdmin, type AuthRequest } from "../../middleware/auth";
 import { asyncHandler } from "../../middleware/errorHandler";
 import { getUsers } from "../../services/applications.service";
-import { getUserProfile } from "../../services/profile.service";
+import { getUserProfile, deleteUser } from "../../services/profile.service";
 import { getDb } from "../../config/firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 
@@ -72,6 +72,32 @@ router.get("/:id/notes", requireAdmin, asyncHandler(async (req: AuthRequest, res
 
   const notes = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
   res.json({ success: true, data: notes });
+}));
+
+/** DELETE /api/admin/members/:id — Delete a member and all associated data */
+router.delete("/:id", requireAdmin, asyncHandler(async (req: AuthRequest, res) => {
+  const userId = req.params.id as string;
+
+  // Prevent admins from deleting themselves
+  if (userId === req.uid) {
+    res.status(400).json({ success: false, error: "Cannot delete your own account" });
+    return;
+  }
+
+  const db = await getDb();
+  const userDoc = await db.collection("users").doc(userId).get();
+  if (!userDoc.exists) {
+    res.status(404).json({ success: false, error: "Member not found" });
+    return;
+  }
+
+  await deleteUser(userId);
+
+  // Invalidate users cache so the list refreshes
+  const { invalidateUsersCache } = await import("../../services/applications.service");
+  invalidateUsersCache();
+
+  res.json({ success: true });
 }));
 
 /** POST /api/admin/members/:id/notes — Add admin note for a member */

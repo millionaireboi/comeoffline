@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { P, API_URL, APP_URL } from "@/components/shared/P";
 import { useChat } from "./ChatProvider";
 
@@ -12,6 +12,9 @@ export function ChatBot() {
   const [vibeCheckPassed, setVibeCheckPassed] = useState(false);
   const [handoffToken, setHandoffToken] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const vibeDataRef = useRef<{ name: string; instagram: string; answers: { question: string; answer: string }[] }>({
     name: "",
     instagram: "",
@@ -30,18 +33,71 @@ export function ChatBot() {
     }
   }, [chatOpen, messages.length, setMessages]);
 
+  // Auto-scroll messages to bottom
   useEffect(() => {
     scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight);
   }, [messages]);
 
+  // Abort in-flight requests when chat closes
+  useEffect(() => {
+    if (!chatOpen) {
+      abortRef.current?.abort();
+      abortRef.current = null;
+    }
+  }, [chatOpen]);
+
+  // Lock body scroll when chat is open
+  useEffect(() => {
+    if (!chatOpen) return;
+    const original = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = original;
+    };
+  }, [chatOpen]);
+
+  // Handle virtual keyboard on mobile
+  // When keyboard opens, visualViewport shrinks and may scroll.
+  // We position the entire chat overlay to match the visual viewport.
+  const updateViewport = useCallback(() => {
+    const vv = window.visualViewport;
+    if (!vv || !panelRef.current) return;
+
+    const root = document.documentElement;
+    root.style.setProperty("--chat-vh", `${vv.height}px`);
+    root.style.setProperty("--chat-vt", `${vv.offsetTop}px`);
+
+    // Scroll to latest message when keyboard resizes
+    scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight);
+  }, []);
+
+  useEffect(() => {
+    if (!chatOpen) return;
+    const vv = window.visualViewport;
+    if (vv) {
+      vv.addEventListener("resize", updateViewport);
+      vv.addEventListener("scroll", updateViewport);
+      updateViewport();
+    }
+    return () => {
+      if (vv) {
+        vv.removeEventListener("resize", updateViewport);
+        vv.removeEventListener("scroll", updateViewport);
+      }
+      document.documentElement.style.removeProperty("--chat-vh");
+      document.documentElement.style.removeProperty("--chat-vt");
+    };
+  }, [chatOpen, updateViewport]);
+
   const send = async (text: string) => {
-    if (!text.trim()) return;
+    if (!text.trim() || loading) return;
     const newMsgs = [...messages, { role: "user", text }];
     setMessages(newMsgs);
     setInput("");
     setQuickReplies([]);
     setLoading(true);
     const controller = new AbortController();
+    abortRef.current = controller;
     const timeout = setTimeout(() => controller.abort(), 15000);
     try {
       const res = await fetch(`${API_URL}/api/chat/public`, {
@@ -51,11 +107,28 @@ export function ChatBot() {
         body: JSON.stringify({
           messages: newMsgs.map((m) => ({
             role: m.role === "assistant" ? "assistant" : "user",
-            content: m.text,
+            content: m.text.replace(/\[VIBE_CHECK_(?:PASSED|FAILED)\]/g, ""),
           })),
         }),
       });
       const data = await res.json();
+
+      // Handle rate limiting
+      if (res.status === 429) {
+        setMessages((prev) => [...prev, { role: "assistant", text: "you're typing faster than i can think. chill for a sec and try again \u{1F605}" }]);
+        setLoading(false);
+        clearTimeout(timeout);
+        return;
+      }
+
+      // Handle other API errors
+      if (!res.ok || !data.success) {
+        setMessages((prev) => [...prev, { role: "assistant", text: data.error || "hmm, something went weird. try again?" }]);
+        setLoading(false);
+        clearTimeout(timeout);
+        return;
+      }
+
       const reply = data.data?.message || "hmm, something went weird. try again?";
 
       const passed = reply.includes("[VIBE_CHECK_PASSED]");
@@ -71,25 +144,43 @@ export function ChatBot() {
         setMessages((prev) => [...prev, { role: "assistant", text: parts[i] }]);
       }
 
-      const userMessages = newMsgs.filter((m) => m.role === "user").map((m) => m.text);
-      if (userMessages.length >= 2 && !vibeDataRef.current.name) {
-        vibeDataRef.current.name = userMessages[1];
+      // Extract name and instagram by matching bot questions to user responses
+      // Walk the conversation pairs: each assistant message followed by the next user message
+      const allMsgs = newMsgs;
+      const namePatterns = /\b(name|call you|who are you)\b/i;
+      const instaPatterns = /\b(insta|instagram|handle|ig)\b/i;
+
+      for (let idx = 0; idx < allMsgs.length - 1; idx++) {
+        const msg = allMsgs[idx];
+        const nextMsg = allMsgs[idx + 1];
+        if (msg.role !== "assistant" || nextMsg.role !== "user") continue;
+
+        // Bot asked for name → next user message is the name
+        if (namePatterns.test(msg.text) && !vibeDataRef.current.name) {
+          vibeDataRef.current.name = nextMsg.text.trim();
+        }
+        // Bot asked for instagram → next user message is the handle
+        if (instaPatterns.test(msg.text) && !vibeDataRef.current.instagram) {
+          const raw = nextMsg.text.trim();
+          // Normalize: strip @ prefix and any surrounding text
+          const match = raw.match(/@?([\w.]+)/);
+          vibeDataRef.current.instagram = match ? match[1] : raw;
+        }
       }
-      const assistantMsgs = newMsgs.filter((m) => m.role === "assistant");
-      vibeDataRef.current.answers = userMessages.map((answer, i) => ({
-        question: assistantMsgs[i]?.text || `question ${i + 1}`,
-        answer,
-      }));
+
+      // Build Q&A pairs for vibe answers (skip name/instagram responses)
+      const qaPairs: { question: string; answer: string }[] = [];
+      for (let idx = 0; idx < allMsgs.length - 1; idx++) {
+        const msg = allMsgs[idx];
+        const nextMsg = allMsgs[idx + 1];
+        if (msg.role !== "assistant" || nextMsg.role !== "user") continue;
+        // Skip the initial greeting messages and name/instagram exchanges
+        if (namePatterns.test(msg.text) || instaPatterns.test(msg.text)) continue;
+        qaPairs.push({ question: msg.text, answer: nextMsg.text });
+      }
+      vibeDataRef.current.answers = qaPairs;
 
       if (passed) {
-        for (const msg of userMessages) {
-          if (msg.startsWith("@") || msg.includes("instagram")) {
-            vibeDataRef.current.instagram = msg.replace(/.*@/, "@").split(/\s/)[0];
-          }
-          if (!msg.startsWith("@") && msg.length > 1 && msg.length < 40 && !vibeDataRef.current.name) {
-            vibeDataRef.current.name = msg;
-          }
-        }
 
         try {
           const entryRes = await fetch(`${API_URL}/api/auth/chatbot-entry`, {
@@ -105,6 +196,13 @@ export function ChatBot() {
           if (entryData.success && entryData.data?.handoff_token) {
             setVibeCheckPassed(true);
             setHandoffToken(entryData.data.handoff_token);
+          } else if (entryData.error === "vibe_check_failed") {
+            // Backend scoring overrode Gemini's pass
+            await new Promise((r) => setTimeout(r, 500));
+            setMessages((prev) => [...prev, { role: "assistant", text: "hmm actually, on second thought..." }]);
+            await new Promise((r) => setTimeout(r, 800));
+            setMessages((prev) => [...prev, { role: "assistant", text: "not quite the vibe we're looking for right now. but hey, you can always try again." }]);
+            setTimeout(() => setQuickReplies(["let me try again"]), 1000);
           }
         } catch {
           setMessages((prev) => [...prev, { role: "assistant", text: "hmm, something went wrong creating your account. try the code path instead?" }]);
@@ -138,29 +236,38 @@ export function ChatBot() {
 
   return (
     <div
-      className="fixed inset-0 z-[1000] flex flex-col justify-end"
+      className="fixed inset-x-0 z-[1000] flex flex-col justify-end overflow-hidden"
+      style={{
+        top: "var(--chat-vt, 0px)",
+        height: "var(--chat-vh, 100dvh)",
+      }}
       onKeyDown={(e) => {
         if (e.key === "Escape") closeChat();
       }}
     >
+      {/* Backdrop */}
       <div
         onClick={closeChat}
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
       />
+
+      {/* Chat panel — fills available space on mobile, capped on desktop */}
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label="Chat with come offline bot"
-        className="relative flex max-h-[80vh] flex-col rounded-t-3xl bg-gate-black"
+        className="relative flex flex-col overflow-hidden rounded-t-3xl bg-gate-black"
         style={{
+          maxHeight: "100%",
           border: `1px solid ${P.muted}15`,
           borderBottom: "none",
           animation: "fadeSlideUp 0.4s cubic-bezier(0.16,1,0.3,1)",
         }}
       >
-        {/* Header */}
+        {/* Header — fixed at top */}
         <div
-          className="flex shrink-0 items-center justify-between px-5 py-4"
+          className="flex shrink-0 items-center justify-between px-5 py-3"
           style={{ borderBottom: `1px solid ${P.muted}12` }}
         >
           <div>
@@ -177,10 +284,10 @@ export function ChatBot() {
           </button>
         </div>
 
-        {/* Messages */}
+        {/* Messages — scrollable, takes remaining space */}
         <div
           ref={scrollRef}
-          className="flex min-h-[200px] max-h-[50vh] flex-1 flex-col gap-2.5 overflow-y-auto px-5 py-4"
+          className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto overscroll-contain px-5 py-4"
         >
           {messages.map((m, i) => (
             <div
@@ -189,7 +296,7 @@ export function ChatBot() {
               style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start" }}
             >
               <div
-                className="px-4 py-3 font-sans text-sm leading-[1.5]"
+                className="px-4 py-2.5 font-sans text-[15px] leading-[1.5]"
                 style={{
                   borderRadius: m.role === "user" ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
                   background: m.role === "user" ? P.cream : P.cream + "08",
@@ -222,7 +329,7 @@ export function ChatBot() {
 
         {/* Quick replies */}
         {quickReplies.length > 0 && (
-          <div className="flex flex-wrap gap-2 px-5 pb-2.5">
+          <div className="flex shrink-0 flex-wrap gap-2 px-5 pb-2">
             {quickReplies.map((q, i) => (
               <button
                 key={i}
@@ -253,19 +360,27 @@ export function ChatBot() {
           </div>
         )}
 
-        {/* Input */}
+        {/* Input — pinned at bottom */}
         <div
-          className="flex shrink-0 gap-2.5 px-5 pt-3.5 pb-7"
-          style={{ borderTop: `1px solid ${P.muted}12` }}
+          className="flex shrink-0 items-center gap-2.5 px-4 py-2"
+          style={{
+            borderTop: `1px solid ${P.muted}12`,
+            paddingBottom: "max(8px, env(safe-area-inset-bottom, 8px))",
+          }}
         >
           <input
+            ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && send(input)}
             placeholder="say something..."
-            className="flex-1 rounded-[14px] font-sans text-sm text-cream"
+            autoComplete="off"
+            autoCapitalize="off"
+            enterKeyHint="send"
+            className="flex-1 rounded-full font-sans text-cream outline-none"
             style={{
-              padding: "12px 16px",
+              fontSize: "16px",
+              padding: "10px 16px",
               border: `1px solid ${P.muted}20`,
               background: P.cream + "06",
             }}
@@ -273,7 +388,7 @@ export function ChatBot() {
           <button
             onClick={() => send(input)}
             aria-label="Send message"
-            className="cursor-pointer rounded-[14px] border-none bg-cream px-4 py-3 font-sans text-sm font-semibold text-gate-black"
+            className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full border-none bg-cream font-sans text-sm font-semibold text-gate-black"
           >
             {"\u2191"}
           </button>

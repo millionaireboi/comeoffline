@@ -1,0 +1,15 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - '$_IMAGE_TAG'
+      - '-f'
+      - 'apps/api/Dockerfile'
+      - '.'
+
+images:
+  - '$_IMAGE_TAG'
+
+substitutions:
+  _IMAGE_TAG: 'asia-south1-docker.pkg.dev/comeoffline-509fc/comeoffline-api/api:latest'

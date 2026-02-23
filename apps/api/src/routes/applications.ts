@@ -18,6 +18,24 @@ router.post("/", async (req, res) => {
       res.status(400).json({ success: false, error: "name and answers are required" });
       return;
     }
+    if (typeof name !== "string" || name.length > 100) {
+      res.status(400).json({ success: false, error: "name must be a string, max 100 characters" });
+      return;
+    }
+    if (answers.length > 20) {
+      res.status(400).json({ success: false, error: "too many answers (max 20)" });
+      return;
+    }
+    for (const a of answers) {
+      if (!a || typeof a.question !== "string" || typeof a.answer !== "string") {
+        res.status(400).json({ success: false, error: "each answer must have question and answer strings" });
+        return;
+      }
+      if (a.question.length > 500 || a.answer.length > 2000) {
+        res.status(400).json({ success: false, error: "answer text too long" });
+        return;
+      }
+    }
 
     const application = await submitApplication(name, answers);
     res.json({ success: true, data: application });

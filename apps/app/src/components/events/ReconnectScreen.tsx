@@ -14,15 +14,14 @@ interface AttendeeInfo {
   instagram_handle?: string;
   connected: boolean;
   mutual: boolean;
+  sign?: string;
+  sign_emoji?: string;
+  sign_label?: string;
+  sign_color?: string;
+  compat_score?: number;
+  compat_label?: string;
+  compat_emoji?: string;
 }
-
-const VIBE_COLORS: Record<string, string> = {
-  "the connector": "#6B7A63",
-  "the creative": "#D4A574",
-  "the deep talker": "#8B7EC8",
-  "the wildcard": "#D4836B",
-  "the observer": "#7A8B9C",
-};
 
 const RECONNECT_HOURS = 48;
 
@@ -204,24 +203,46 @@ export function ReconnectScreen() {
             style={{ animationDelay: `${0.2 + i * 0.06}s` }}
           >
             <div
-              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full font-serif text-lg text-white"
-              style={{ background: VIBE_COLORS[attendee.vibe_tag.toLowerCase()] || "#D4A574" }}
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-xl"
+              style={{ background: attendee.sign_color ? attendee.sign_color + "20" : "#D4A57420" }}
             >
-              {attendee.name.charAt(0)}
+              {attendee.sign_emoji || attendee.name.charAt(0)}
             </div>
 
             <div className="flex-1 overflow-hidden">
-              <p className="font-sans text-[15px] font-medium text-near-black">{attendee.name}</p>
+              <div className="flex items-center gap-2">
+                <p className="font-sans text-[15px] font-medium text-near-black">{attendee.name}</p>
+                {attendee.compat_score != null && (
+                  <span
+                    className="rounded-full px-1.5 py-0.5 font-mono text-[9px] font-medium"
+                    style={{
+                      color: attendee.sign_color || "#D4A574",
+                      background: (attendee.sign_color || "#D4A574") + "15",
+                    }}
+                  >
+                    {attendee.compat_score}%
+                  </span>
+                )}
+              </div>
               <p className="font-mono text-[10px] text-muted">@{attendee.handle}</p>
-              <span
-                className="mt-1 inline-block rounded-full px-2 py-0.5 font-mono text-[9px]"
-                style={{
-                  color: VIBE_COLORS[attendee.vibe_tag.toLowerCase()] || "#D4A574",
-                  background: (VIBE_COLORS[attendee.vibe_tag.toLowerCase()] || "#D4A574") + "15",
-                }}
-              >
-                {attendee.vibe_tag}
-              </span>
+              <div className="mt-1 flex items-center gap-1.5">
+                {attendee.sign_label && (
+                  <span
+                    className="inline-block rounded-full px-2 py-0.5 font-mono text-[9px] italic"
+                    style={{
+                      color: attendee.sign_color || "#D4A574",
+                      background: (attendee.sign_color || "#D4A574") + "15",
+                    }}
+                  >
+                    {attendee.sign_label}
+                  </span>
+                )}
+                {attendee.compat_label && (
+                  <span className="font-mono text-[9px] text-muted">
+                    {attendee.compat_emoji} {attendee.compat_label}
+                  </span>
+                )}
+              </div>
             </div>
 
             <div className="shrink-0">

@@ -9,6 +9,14 @@ const router = Router();
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
 const MAX_BATCH_SIZE = 10;
 const ALLOWED_TYPES = ["png", "jpeg", "jpg", "gif", "webp"];
+const ALLOWED_PATH_PREFIXES = [
+  "admin/uploads",
+  "events",
+  "avatars",
+  "floorplans",
+  "brands",
+  "content",
+];
 
 function validateDataUri(dataUri: string): void {
   const matches = dataUri.match(/^data:image\/(\w+);base64,(.+)$/);
@@ -76,7 +84,17 @@ router.post(
       (images as string[]).forEach(validateDataUri);
     }
 
-    const prefix = path_prefix || "admin/uploads";
+    const rawPrefix = (path_prefix || "admin/uploads") as string;
+    const prefix = rawPrefix.replace(/^\/+|\/+$/g, "");
+
+    if (
+      prefix.includes("..") ||
+      prefix.includes("//") ||
+      !ALLOWED_PATH_PREFIXES.some((allowed) => prefix === allowed || prefix.startsWith(allowed + "/"))
+    ) {
+      res.status(400).json({ success: false, error: "Invalid upload path" });
+      return;
+    }
 
     if (image) {
       const url = await uploadSingle(image, prefix);
@@ -105,8 +123,9 @@ router.delete(
     const bucket = storage.bucket();
     const bucketName = bucket.name;
 
+    const escapedBucket = bucketName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const pathMatch = (url as string).match(
-      new RegExp(`storage\\.googleapis\\.com/${bucketName}/(.+)$`)
+      new RegExp(`^https://storage\\.googleapis\\.com/${escapedBucket}/(.+)$`)
     );
     if (!pathMatch) {
       res.status(400).json({ success: false, error: "Invalid storage URL" });

@@ -10,10 +10,10 @@ interface ChatMessage {
 }
 
 const QUICK_REPLIES = [
-  "what is come offline?",
-  "how do i get in?",
-  "what happens at events?",
-  "i want to prove myself",
+  "what events are coming up?",
+  "how does the phone-free thing work?",
+  "i need help with my ticket",
+  "tell me about the community",
 ];
 
 interface InAppChatProps {
@@ -25,7 +25,7 @@ export function InAppChat({ onClose }: InAppChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: "assistant",
-      content: "hey — welcome to come offline. ask me anything about the community, or if you're here to prove yourself, just say the word. ✌️",
+      content: "hey! need help with anything? i can answer questions about upcoming events, tickets, or the community. ✌️",
     },
   ]);
   const [input, setInput] = useState("");

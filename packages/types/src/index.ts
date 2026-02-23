@@ -1,3 +1,5 @@
+export * from "./signs";
+
 // ── User ──────────────────────────────────────────
 
 export interface VibeCheckAnswer {
@@ -34,11 +36,19 @@ export interface User {
   avatar_type?: "uploaded" | "illustrated" | "gradient";
   area?: string;
   age_range?: "21-24" | "25-28" | "29-32" | "33+";
+  gender?: "male" | "female" | "non-binary" | "prefer not to say";
   hot_take?: string;
   drink_of_choice?: string;
+  community_intent?: string;
   referral_source?: string;
   has_completed_profile?: boolean;
   has_completed_onboarding?: boolean;
+  sign?: string;
+  sign_scores?: Record<string, number>;
+  sign_label?: string;
+  sign_emoji?: string;
+  sign_color?: string;
+  quiz_completed_at?: string;
   onboarding_source?: OnboardingSource;
   fcm_token?: string;
   second_chance?: boolean;
@@ -101,6 +111,14 @@ export interface TicketingConfig {
 
 // ── Checkout Add-ons ──────────────────────────────
 
+/** Seating config for add-ons — custom mode only (spots/tables) */
+export interface AddonSeatingConfig {
+  enabled: boolean;
+  spots: Spot[];
+  floor_plan_url?: string;
+  allow_choice: boolean;
+}
+
 export interface CheckoutAddOn {
   id: string;
   name: string; // "Stay Booking", "Food Package", "Merch Bundle"
@@ -110,6 +128,7 @@ export interface CheckoutAddOn {
   max_quantity: number; // max per order
   available: number; // remaining inventory
   required: boolean; // must select at least one
+  seating?: AddonSeatingConfig; // optional per-addon seating (custom spots/tables)
 }
 
 export interface CheckoutStep {
@@ -164,6 +183,7 @@ export interface Seat {
   number: number; // 1, 2, 3...
   status: "available" | "held" | "booked";
   held_by?: string; // user_id when held/booked
+  held_until?: string; // ISO timestamp — auto-release hold after this time
   section_id?: string; // link to parent section if mixed mode
   price_override?: number;
 }
@@ -182,6 +202,7 @@ export interface SpotSeat {
   label: string; // "Seat 1", "1", etc.
   status: "available" | "held" | "booked";
   held_by?: string; // user_id when held/booked
+  held_until?: string; // ISO timestamp — auto-release hold after this time
   angle?: number; // degrees around table center (0=top, clockwise) for circular placement
 }
 
@@ -263,6 +284,17 @@ export type TicketStatus =
   | "checked_in"
   | "no_show";
 
+export interface TicketAddOn {
+  addon_id: string;
+  name: string;
+  quantity: number;
+  price: number;
+  spot_id?: string; // for add-on seating — e.g. "spot_123"
+  spot_name?: string; // denormalized — e.g. "Table 3"
+  spot_seat_id?: string; // individual seat within spot
+  spot_seat_label?: string; // denormalized — e.g. "Seat 2"
+}
+
 export interface Ticket {
   id: string;
   user_id: string;
@@ -275,7 +307,7 @@ export interface Ticket {
   qr_code: string;
   pickup_point: string;
   time_slot?: string; // references TimeSlot.id if time slots enabled
-  add_ons?: Array<{ addon_id: string; name: string; quantity: number; price: number }>;
+  add_ons?: TicketAddOn[] | null;
   seat_id?: string; // e.g. "A5" — individual seat assignment
   section_id?: string; // e.g. "vip" — section-based assignment
   section_name?: string; // denormalized for display
@@ -283,6 +315,8 @@ export interface Ticket {
   spot_name?: string; // denormalized — e.g. "Pod Table A"
   spot_seat_id?: string; // individual seat within spot — e.g. "spot_123_seat_1"
   spot_seat_label?: string; // denormalized — e.g. "Seat 3"
+  payment_link_id?: string; // Razorpay payment link ID
+  payment_url?: string; // Razorpay payment URL for redirect
   purchased_at: string;
   checked_in_at?: string;
 }

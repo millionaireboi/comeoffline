@@ -56,6 +56,23 @@ export const authLimiter = rateLimit({
 });
 
 /**
+ * Form submission rate limiter
+ * - 15 submissions per 15 minutes per IP
+ * - For public forms: contact, brands, applications
+ */
+export const formLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 15,
+  skip: skipInDev,
+  message: {
+    success: false,
+    error: "Too many submissions. Please try again later.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+/**
  * Admin rate limiter
  * - 500 requests per 15 minutes per IP
  */

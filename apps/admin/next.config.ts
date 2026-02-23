@@ -15,7 +15,7 @@ const nextConfig: NextConfig = {
   output: 'standalone', // Optimize for deployment
   productionBrowserSourceMaps: false, // Disable source maps to speed up build
   compiler: {
-    removeConsole: false, // Keep console logs for now
+    removeConsole: process.env.NODE_ENV === 'production',
   },
   async headers() {
     return [
@@ -34,7 +34,7 @@ const nextConfig: NextConfig = {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com",
+              "script-src 'self' 'unsafe-inline' https://apis.google.com",
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob: https://storage.googleapis.com https://*.firebasestorage.googleapis.com",
               "font-src 'self' data:",

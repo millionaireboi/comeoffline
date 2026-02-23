@@ -1,4 +1,4 @@
-import { getDb } from "../config/firebase-admin";
+import { getDb, getAuthService } from "../config/firebase-admin";
 import type { User, Event, RSVP, Badge, VouchCode } from "@comeoffline/types";
 
 interface ProfileData {
@@ -140,4 +140,54 @@ export async function checkHandleAvailable(handle: string): Promise<boolean> {
   const db = await getDb();
   const snap = await db.collection("users").where("handle", "==", handle).limit(1).get();
   return snap.empty;
+}
+
+/** Delete a user and all associated data */
+export async function deleteUser(userId: string): Promise<void> {
+  const db = await getDb();
+  const auth = await getAuthService();
+  const batch = db.batch();
+
+  // Delete the user document
+  batch.delete(db.collection("users").doc(userId));
+
+  // Delete RSVPs (subcollection under users)
+  const rsvpsSnap = await db.collection("users").doc(userId).collection("rsvps").get();
+  for (const doc of rsvpsSnap.docs) {
+    batch.delete(doc.ref);
+  }
+
+  // Delete admin notes for this user
+  const notesSnap = await db.collection("admin_notes").where("user_id", "==", userId).get();
+  for (const doc of notesSnap.docs) {
+    batch.delete(doc.ref);
+  }
+
+  // Delete connections involving this user
+  const connectionsFrom = await db.collection("connections").where("from_user_id", "==", userId).get();
+  for (const doc of connectionsFrom.docs) {
+    batch.delete(doc.ref);
+  }
+  const connectionsTo = await db.collection("connections").where("to_user_id", "==", userId).get();
+  for (const doc of connectionsTo.docs) {
+    batch.delete(doc.ref);
+  }
+
+  // Delete vouch codes owned by this user
+  const vouchSnap = await db.collection("vouch_codes").where("owner_id", "==", userId).get();
+  for (const doc of vouchSnap.docs) {
+    batch.delete(doc.ref);
+  }
+
+  // Commit all Firestore deletes
+  await batch.commit();
+
+  // Delete from Firebase Auth
+  try {
+    await auth.deleteUser(userId);
+  } catch (err: unknown) {
+    const error = err as { code?: string };
+    // User may not exist in Auth (e.g. provisional chatbot users)
+    if (error.code !== "auth/user-not-found") throw err;
+  }
 }

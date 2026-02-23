@@ -1,5 +1,6 @@
 import { getDb } from "../config/firebase-admin";
 import type { Connection, User, RSVP } from "@comeoffline/types";
+import { computeCompatibility, getMatchLabel } from "@comeoffline/types";
 
 interface AttendeeInfo {
   id: string;
@@ -9,6 +10,13 @@ interface AttendeeInfo {
   instagram_handle?: string;
   connected: boolean;
   mutual: boolean;
+  sign?: string;
+  sign_emoji?: string;
+  sign_label?: string;
+  sign_color?: string;
+  compat_score?: number;
+  compat_label?: string;
+  compat_emoji?: string;
 }
 
 /** Get attendees for an event (only users with attended or confirmed RSVPs) */
@@ -58,7 +66,12 @@ export async function getEventAttendees(
     incomingSnap.docs.map((doc) => doc.data().from_user_id),
   );
 
-  return userDocs
+  // Fetch current user's sign_scores for compatibility calculation
+  const currentUserDoc = await db.collection("users").doc(currentUserId).get();
+  const currentUser = currentUserDoc.exists ? (currentUserDoc.data() as User) : null;
+  const myScores = currentUser?.sign_scores;
+
+  const attendees = userDocs
     .filter((doc) => doc.exists)
     .map((doc) => {
       const user = doc.data() as User;
@@ -66,7 +79,7 @@ export async function getEventAttendees(
       const hasIncoming = incoming.has(doc.id);
       const isMutual = hasOutgoing && hasIncoming;
 
-      return {
+      const info: AttendeeInfo = {
         id: doc.id,
         name: user.name,
         handle: user.handle,
@@ -74,8 +87,27 @@ export async function getEventAttendees(
         instagram_handle: isMutual ? user.instagram_handle : undefined,
         connected: hasOutgoing,
         mutual: isMutual,
+        sign: user.sign,
+        sign_emoji: user.sign_emoji,
+        sign_label: user.sign_label,
+        sign_color: user.sign_color,
       };
+
+      // Compute compatibility if both users have sign scores
+      if (myScores && user.sign_scores) {
+        info.compat_score = computeCompatibility(myScores, user.sign_scores);
+        const label = getMatchLabel(info.compat_score);
+        info.compat_label = label.text;
+        info.compat_emoji = label.emoji;
+      }
+
+      return info;
     });
+
+  // Sort by compat_score descending (users with scores first, then the rest)
+  attendees.sort((a, b) => (b.compat_score ?? -1) - (a.compat_score ?? -1));
+
+  return attendees;
 }
 
 /** Create a connection request (one-way until mutual) */

@@ -44,7 +44,21 @@ export function SignInScreen({ onBack }: { onBack: () => void }) {
       }
 
       await loginWithToken(res.data.token);
-    } catch {
+
+      // Navigate to main app after successful sign-in
+      if (typeof window !== "undefined" && window.location.pathname === "/sign-in") {
+        window.location.href = "/";
+      }
+    } catch (err) {
+      // If the user was already set in the store, sign-in likely succeeded
+      // but Firebase token refresh failed — redirect anyway
+      const currentUser = useAppStore.getState().user;
+      if (currentUser) {
+        if (typeof window !== "undefined" && window.location.pathname === "/sign-in") {
+          window.location.href = "/";
+        }
+        return;
+      }
       setError(notFoundLines[errorIdx % notFoundLines.length]);
       setErrorIdx((i) => i + 1);
     } finally {

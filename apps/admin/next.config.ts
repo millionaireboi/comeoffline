@@ -6,6 +6,7 @@ import path from "path";
 loadEnvConfig(path.resolve(__dirname, "../../"));
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+const isDev = process.env.NODE_ENV !== "production";
 
 const nextConfig: NextConfig = {
   transpilePackages: ["@comeoffline/brand", "@comeoffline/types", "@comeoffline/ui", "@comeoffline/firebase"],
@@ -34,11 +35,11 @@ const nextConfig: NextConfig = {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' https://apis.google.com",
+              `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""} https://apis.google.com`,
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob: https://storage.googleapis.com https://*.firebasestorage.googleapis.com",
               "font-src 'self' data:",
-              `connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com ${apiUrl}`,
+              `connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com ${apiUrl}${isDev ? " ws://localhost:*" : ""}`,
               "frame-src 'none'",
               "object-src 'none'",
               "base-uri 'self'",

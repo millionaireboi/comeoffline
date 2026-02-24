@@ -276,16 +276,27 @@ export async function signInByHandle(
     }
   }
 
-  // Fallback: search by handle (the app-internal @handle)
+  // Fallback: search by handle (the app-internal handle)
   if (!userDoc) {
     const handleSnap = await db
       .collection("users")
-      .where("handle", "==", `@${normalized}`)
+      .where("handle", "==", normalized)
       .limit(1)
       .get();
 
     if (!handleSnap.empty) {
       userDoc = handleSnap.docs[0];
+    } else {
+      // Also try with @ prefix in case handles were stored that way
+      const handleSnapAt = await db
+        .collection("users")
+        .where("handle", "==", `@${normalized}`)
+        .limit(1)
+        .get();
+
+      if (!handleSnapAt.empty) {
+        userDoc = handleSnapAt.docs[0];
+      }
     }
   }
 

@@ -46,9 +46,9 @@ export function InstallGate() {
             </p>
             <div className="flex flex-col gap-4">
               {[
-                { step: "1", text: "tap the share button in Safari", icon: "↑" },
-                { step: "2", text: 'scroll down, tap "Add to Home Screen"', icon: "+" },
-                { step: "3", text: 'tap "Add" in the top right', icon: "✓" },
+                { step: "1", text: "tap the share button ↑ at the bottom of Safari" },
+                { step: "2", text: 'scroll down and tap "Add to Home Screen"' },
+                { step: "3", text: 'tap "Add" in the top right' },
               ].map((s) => (
                 <div key={s.step} className="flex items-start gap-3">
                   <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-caramel/15 font-mono text-xs text-caramel">
@@ -58,6 +58,9 @@ export function InstallGate() {
                 </div>
               ))}
             </div>
+            <p className="mt-4 font-sans text-[11px] leading-relaxed text-muted/40">
+              make sure you&apos;re using Safari — this won&apos;t work in Chrome or other browsers on iPhone.
+            </p>
           </div>
         ) : deferredPrompt ? (
           <button

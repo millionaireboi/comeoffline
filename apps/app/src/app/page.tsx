@@ -39,15 +39,7 @@ export default function Home() {
   const stage = useAppStore((s) => s.stage);
   const user = useAppStore((s) => s.user);
   const [chatOpen, setChatOpen] = useState(false);
-  const [showSignIn, setShowSignIn] = useState(false);
   const [quizActive, setQuizActive] = useState(false);
-
-  // Check URL for /sign-in route
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      setShowSignIn(window.location.pathname === "/sign-in");
-    }
-  }, []);
 
   // Handle return from Razorpay payment
   useEffect(() => {
@@ -151,16 +143,6 @@ export default function Home() {
         </p>
       </main>
     );
-  }
-
-  // Show sign-in screen if /sign-in route
-  if (showSignIn && !user) {
-    return <SignInScreen onBack={() => {
-      if (typeof window !== "undefined") {
-        window.history.pushState({}, "", "/");
-        setShowSignIn(false);
-      }
-    }} />;
   }
 
   // Show bottom nav on authenticated stages

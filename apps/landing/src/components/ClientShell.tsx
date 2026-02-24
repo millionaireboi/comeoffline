@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { PostHogProvider } from "@comeoffline/analytics";
 import { ChatProvider } from "@/components/chat/ChatProvider";
 import { ChatBot } from "@/components/chat/ChatBot";
 import { FloatingChatButton } from "@/components/chat/FloatingChatButton";
@@ -16,13 +17,17 @@ export function ClientShell({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <ChatProvider>
-      <TabHeader />
-      <div className="overflow-x-hidden">
-        {children}
-      </div>
-      <FloatingChatButton visible={scrolled} />
-      <ChatBot />
-    </ChatProvider>
+    <Suspense>
+      <PostHogProvider>
+        <ChatProvider>
+          <TabHeader />
+          <div className="overflow-x-hidden">
+            {children}
+          </div>
+          <FloatingChatButton visible={scrolled} />
+          <ChatBot />
+        </ChatProvider>
+      </PostHogProvider>
+    </Suspense>
   );
 }

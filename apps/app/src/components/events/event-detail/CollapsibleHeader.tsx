@@ -1,3 +1,4 @@
+import { useAnalytics, EVENT_SHARED } from "@comeoffline/analytics";
 import type { Event } from "@comeoffline/types";
 
 interface CollapsibleHeaderProps {
@@ -7,12 +8,34 @@ interface CollapsibleHeaderProps {
   cheapestPrice?: number | null;
 }
 
+async function shareEvent(event: Event, track: (e: string, p?: Record<string, unknown>) => void) {
+  const url = `https://comeoffline.com/events/${event.id}`;
+  const shareData = { title: event.title, text: event.tagline, url };
+
+  if (typeof navigator !== "undefined" && navigator.share) {
+    try {
+      await navigator.share(shareData);
+      track(EVENT_SHARED, { event_id: event.id, method: "native" });
+    } catch {
+      // User cancelled — no-op
+    }
+  } else {
+    try {
+      await navigator.clipboard.writeText(url);
+      track(EVENT_SHARED, { event_id: event.id, method: "clipboard" });
+    } catch {
+      // Fallback
+    }
+  }
+}
+
 export function CollapsibleHeader({
   event,
   scrolled,
   onClose,
   cheapestPrice,
 }: CollapsibleHeaderProps) {
+  const { track } = useAnalytics();
   const spotsLeft = event.total_spots - event.spots_taken;
 
   const chips: Array<{ icon: string | null; text: string; accent?: boolean }> = [
@@ -69,13 +92,23 @@ export function CollapsibleHeader({
           >
             {event.tag}
           </span>
-          <button
-            onClick={onClose}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs text-warm-brown"
-            style={{ background: "rgba(26,23,21,0.08)" }}
-          >
-            ✕
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => shareEvent(event, track)}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs text-warm-brown"
+              style={{ background: "rgba(26,23,21,0.08)" }}
+              aria-label="Share event"
+            >
+              ↗
+            </button>
+            <button
+              onClick={onClose}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs text-warm-brown"
+              style={{ background: "rgba(26,23,21,0.08)" }}
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
         {/* Title + Emoji */}
@@ -149,13 +182,23 @@ export function CollapsibleHeader({
             {event.tag}
           </span>
         </div>
-        <button
-          onClick={onClose}
-          className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full text-[11px] text-warm-brown"
-          style={{ background: "rgba(26,23,21,0.08)" }}
-        >
-          ✕
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => shareEvent(event, track)}
+            className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full text-[11px] text-warm-brown"
+            style={{ background: "rgba(26,23,21,0.08)" }}
+            aria-label="Share event"
+          >
+            ↗
+          </button>
+          <button
+            onClick={onClose}
+            className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full text-[11px] text-warm-brown"
+            style={{ background: "rgba(26,23,21,0.08)" }}
+          >
+            ✕
+          </button>
+        </div>
       </div>
     </div>
   );

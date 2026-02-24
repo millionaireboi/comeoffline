@@ -3,6 +3,7 @@
 import { useState, useRef, useMemo } from "react";
 import type { Event } from "@comeoffline/types";
 import { CheckoutWizard } from "@/components/events/CheckoutWizard";
+import { ExitSurvey } from "@/components/events/ExitSurvey";
 import { CollapsibleHeader } from "./event-detail/CollapsibleHeader";
 import { SectionTabs } from "./event-detail/SectionTabs";
 import { OverviewTab } from "./event-detail/OverviewTab";
@@ -42,6 +43,7 @@ export function EventDetail({ event, onClose, onRsvp, onTicketPurchase, loading 
     event.pickup_points.length === 1 ? event.pickup_points[0].name : null,
   );
   const [showWizard, setShowWizard] = useState(false);
+  const [showExitSurvey, setShowExitSurvey] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const selectedTier = tiers.find((t) => t.id === selectedTierId);
@@ -178,12 +180,23 @@ export function EventDetail({ event, onClose, onRsvp, onTicketPurchase, loading 
       {showWizard && (
         <CheckoutWizard
           event={event}
-          onClose={() => setShowWizard(false)}
+          onClose={() => {
+            setShowWizard(false);
+            setShowExitSurvey(true);
+          }}
           onComplete={(tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId) => {
             setShowWizard(false);
             onTicketPurchase?.(tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId);
           }}
           loading={loading}
+        />
+      )}
+
+      {/* Exit survey after checkout abandonment */}
+      {showExitSurvey && (
+        <ExitSurvey
+          eventId={event.id}
+          onDone={() => setShowExitSurvey(false)}
         />
       )}
     </div>

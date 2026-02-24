@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import { useAnalytics, EVENT_DETAIL_OPENED, GATE_OPENED, CODE_VALIDATED, CODE_FAILED, CHATBOT_OPENED, EVENT_SHARED } from "@comeoffline/analytics";
 import { P, API_URL, APP_URL } from "@/components/shared/P";
 import { SpotsBar } from "@/components/events/SpotsBar";
 import { useChat } from "@/components/chat/ChatProvider";
@@ -14,6 +15,7 @@ type GateStage = "idle" | "gate" | "confirmed";
 
 export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
   const { openChat } = useChat();
+  const { track } = useAnalytics();
   const [gateStage, setGateStage] = useState<GateStage>("idle");
   const [code, setCode] = useState("");
   const [codeError, setCodeError] = useState("");
@@ -34,6 +36,15 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
     daysUntilVenue = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
   }
 
+  // Track event detail opened
+  useEffect(() => {
+    track(EVENT_DETAIL_OPENED, {
+      event_id: event.id,
+      event_title: event.title,
+      spots_remaining: spotsLeft,
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Lock body scroll when detail is open
   useEffect(() => {
     document.body.style.overflow = "hidden";
@@ -50,8 +61,9 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
   }, [gateStage]);
 
   const handleImIn = useCallback(() => {
+    track(GATE_OPENED, { event_id: event.id, event_title: event.title });
     setGateStage("gate");
-  }, []);
+  }, [event.id, event.title, track]);
 
   const handleValidateCode = useCallback(async () => {
     if (!code.trim()) {
@@ -71,16 +83,19 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
       const data = await res.json();
 
       if (data.success && data.data?.handoff_token) {
+        track(CODE_VALIDATED, { event_id: event.id });
         setGateStage("confirmed");
         setTimeout(() => {
           window.location.href = `${APP_URL}?token=${data.data.handoff_token}`;
         }, 1200);
       } else {
+        track(CODE_FAILED, { event_id: event.id, error: data.message });
         setCodeError(data.message || "invalid code");
         setShaking(true);
         setTimeout(() => setShaking(false), 500);
       }
     } catch {
+      track(CODE_FAILED, { event_id: event.id, error: "network" });
       setCodeError("something went wrong. try again.");
       setShaking(true);
       setTimeout(() => setShaking(false), 500);
@@ -90,11 +105,12 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
   }, [code]);
 
   const handleNoCode = useCallback(() => {
+    track(CHATBOT_OPENED, { event_id: event.id, source: "no_code" });
     onClose();
     setTimeout(() => {
       openChat();
     }, 200);
-  }, [onClose, openChat]);
+  }, [event.id, onClose, openChat, track]);
 
   return (
     <div
@@ -352,21 +368,54 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
                 >
                   {event.tag}
                 </span>
-                <button
-                  onClick={onClose}
-                  aria-label="Close event details"
-                  style={{
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    fontSize: 20,
-                    color: P.muted,
-                    padding: "4px 8px",
-                    lineHeight: 1,
-                  }}
-                >
-                  &times;
-                </button>
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <button
+                    onClick={async () => {
+                      const url = typeof window !== "undefined"
+                        ? `${window.location.origin}/events/${event.id}`
+                        : `https://comeoffline.com/events/${event.id}`;
+                      const shareData = { title: event.title, text: event.tagline, url };
+                      if (typeof navigator !== "undefined" && navigator.share) {
+                        try {
+                          await navigator.share(shareData);
+                          track(EVENT_SHARED, { event_id: event.id, method: "native" });
+                        } catch { /* cancelled */ }
+                      } else {
+                        try {
+                          await navigator.clipboard.writeText(url);
+                          track(EVENT_SHARED, { event_id: event.id, method: "clipboard" });
+                        } catch { /* fallback */ }
+                      }
+                    }}
+                    aria-label="Share event"
+                    style={{
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      fontSize: 18,
+                      color: P.muted,
+                      padding: "4px 8px",
+                      lineHeight: 1,
+                    }}
+                  >
+                    &#8599;
+                  </button>
+                  <button
+                    onClick={onClose}
+                    aria-label="Close event details"
+                    style={{
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      fontSize: 20,
+                      color: P.muted,
+                      padding: "4px 8px",
+                      lineHeight: 1,
+                    }}
+                  >
+                    &times;
+                  </button>
+                </div>
               </div>
 
               {/* Title + emoji */}

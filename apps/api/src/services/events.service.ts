@@ -62,6 +62,37 @@ export async function getPublicEvents(): Promise<Partial<Event>[]> {
     }));
 }
 
+/** Fetch a single public-facing event by ID (stripped of venue secrets) */
+export async function getPublicEvent(eventId: string): Promise<Partial<Event> | null> {
+  const db = await getDb();
+  const doc = await db.collection("events").doc(eventId).get();
+  if (!doc.exists) return null;
+
+  const e = { id: doc.id, ...doc.data() } as Event;
+  const validStatuses = new Set(["upcoming", "sold_out", "live"]);
+  if (!validStatuses.has(e.status)) return null;
+
+  return {
+    id: e.id,
+    title: e.title,
+    tagline: e.tagline,
+    description: e.description,
+    date: e.date,
+    time: e.time,
+    total_spots: e.total_spots,
+    spots_taken: e.spots_taken,
+    accent: e.accent,
+    accent_dark: e.accent_dark,
+    emoji: e.emoji,
+    tag: e.tag,
+    zones: e.zones,
+    dress_code: e.dress_code,
+    includes: e.includes,
+    venue_reveal_date: e.venue_reveal_date,
+    status: e.status,
+  };
+}
+
 /** Create a new event (admin) */
 export async function createEvent(
   data: Omit<Event, "id">,

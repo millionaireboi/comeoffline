@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect, useRef } from "react";
 import type { Event, TicketTier, CheckoutStep, CheckoutAddOn, TimeSlot, SeatingSection, Seat, SeatingConfig, AddonSeatingConfig, Spot } from "@comeoffline/types";
+import { useAnalytics, CHECKOUT_STARTED, CHECKOUT_STEP_VIEWED, CHECKOUT_STEP_COMPLETED, TIER_SELECTED, CHECKOUT_COMPLETED, CHECKOUT_ABANDONED } from "@comeoffline/analytics";
 import { useAuth } from "@/hooks/useAuth";
 import { apiFetch } from "@/lib/api";
 
@@ -947,6 +948,7 @@ function SummaryStep({
 /* ── Main Wizard ─────────────────────────────────── */
 
 export function CheckoutWizard({ event, onComplete, onClose, loading }: CheckoutWizardProps) {
+  const { track } = useAnalytics();
   const tiers = event.ticketing?.tiers || [];
   const checkoutSteps = event.checkout?.steps || [];
   const timeSlots = event.ticketing?.time_slots || [];
@@ -1003,6 +1005,25 @@ export function CheckoutWizard({ event, onComplete, onClose, loading }: Checkout
   const selectedTier = tiers.find((t) => t.id === selectedTierId);
   const step = steps[currentStep];
   const isLastStep = currentStep === steps.length - 1;
+
+  // Track checkout started on mount
+  useEffect(() => {
+    track(CHECKOUT_STARTED, {
+      event_id: event.id,
+      event_title: event.title,
+      tier_count: tiers.length,
+      total_steps: steps.length,
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Track step views
+  useEffect(() => {
+    track(CHECKOUT_STEP_VIEWED, {
+      event_id: event.id,
+      step_type: step?.type === "checkout" ? step.stepData?.type : step?.type,
+      step_index: currentStep,
+    });
+  }, [currentStep]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Determine if current step is a seat_select step
   const isOnSeatStep = step?.type === "checkout" && step.stepData?.type === "seat_select";
@@ -1194,7 +1215,31 @@ export function CheckoutWizard({ event, onComplete, onClose, loading }: Checkout
   };
 
   const handleNext = () => {
+    // Track step completion
+    track(CHECKOUT_STEP_COMPLETED, {
+      event_id: event.id,
+      step_type: step?.type === "checkout" ? step.stepData?.type : step?.type,
+      step_index: currentStep,
+    });
+
+    // Track tier selection specifically
+    if (step?.type === "tier" && selectedTierId) {
+      track(TIER_SELECTED, {
+        event_id: event.id,
+        tier_id: selectedTierId,
+        tier_label: selectedTier?.label,
+        tier_price: selectedTier?.price,
+      });
+    }
+
     if (isLastStep) {
+      track(CHECKOUT_COMPLETED, {
+        event_id: event.id,
+        tier_id: selectedTierId,
+        tier_price: selectedTier?.price,
+        total_steps: steps.length,
+      });
+
       // Compile add-ons from all steps (with seat selections if applicable)
       const allAddons: SelectedAddon[] = [];
       for (const cs of checkoutSteps) {
@@ -1236,6 +1281,12 @@ export function CheckoutWizard({ event, onComplete, onClose, loading }: Checkout
 
   const handleBack = () => {
     if (currentStep === 0) {
+      track(CHECKOUT_ABANDONED, {
+        event_id: event.id,
+        last_step_type: step?.type === "checkout" ? step.stepData?.type : step?.type,
+        last_step_index: currentStep,
+        selected_tier_id: selectedTierId,
+      });
       onClose();
     } else {
       setCurrentStep((prev) => prev - 1);
@@ -1273,7 +1324,10 @@ export function CheckoutWizard({ event, onComplete, onClose, loading }: Checkout
     <div className="animate-fadeIn fixed inset-0 z-[500] flex items-end justify-center">
       {/* Backdrop */}
       <div
-        onClick={onClose}
+        onClick={() => {
+          track(CHECKOUT_ABANDONED, { event_id: event.id, step: currentStep, method: "backdrop" });
+          onClose();
+        }}
         className="absolute inset-0 bg-[rgba(10,9,7,0.5)] backdrop-blur-sm"
       />
 

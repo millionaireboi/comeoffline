@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@comeoffline/analytics": "*",
     "@comeoffline/brand": "*",
     "@comeoffline/firebase": "*",
     "@comeoffline/types": "*",

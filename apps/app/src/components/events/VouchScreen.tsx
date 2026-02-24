@@ -2,12 +2,14 @@
 
 import { useState, useEffect, useCallback } from "react";
 import type { VouchCode } from "@comeoffline/types";
+import { useAnalytics, VOUCH_CODE_SHARED } from "@comeoffline/analytics";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppStore } from "@/store/useAppStore";
 import { apiFetch } from "@/lib/api";
 import { Noise } from "@/components/shared/Noise";
 
 export function VouchScreen() {
+  const { track } = useAnalytics();
   const { getIdToken } = useAuth();
   const { currentEvent, user, setStage } = useAppStore();
   const [codes, setCodes] = useState<VouchCode[]>([]);
@@ -66,6 +68,22 @@ export function VouchScreen() {
 
   const handleReveal = (id: string) => {
     setRevealedIds((prev) => new Set(prev).add(id));
+  };
+
+  const handleShare = async (codeText: string, id: string) => {
+    const shareData = {
+      text: `Here's an invite code for come offline: ${codeText}`,
+    };
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share(shareData);
+        track(VOUCH_CODE_SHARED, { code_id: id, method: "native" });
+      } catch { /* cancelled */ }
+    } else {
+      // Fallback to copy
+      await handleCopy(codeText, id);
+      track(VOUCH_CODE_SHARED, { code_id: id, method: "clipboard" });
+    }
   };
 
   const handleCopy = async (code: string, id: string) => {
@@ -183,6 +201,7 @@ export function VouchScreen() {
                 copied={copiedId === code.id}
                 onReveal={() => handleReveal(code.id)}
                 onCopy={() => handleCopy(code.code, code.id)}
+                onShare={() => handleShare(code.code, code.id)}
               />
             ))}
           </div>
@@ -205,6 +224,7 @@ export function VouchScreen() {
                 copied={copiedId === code.id}
                 onReveal={() => handleReveal(code.id)}
                 onCopy={() => handleCopy(code.code, code.id)}
+                onShare={() => handleShare(code.code, code.id)}
               />
             ))}
           </div>
@@ -230,6 +250,7 @@ function VouchCodeCard({
   copied,
   onReveal,
   onCopy,
+  onShare,
 }: {
   code: VouchCode;
   index: number;
@@ -237,7 +258,9 @@ function VouchCodeCard({
   copied: boolean;
   onReveal: () => void;
   onCopy: () => void;
+  onShare: () => void;
 }) {
+  const canShare = typeof navigator !== "undefined" && !!navigator.share;
   const isUsed = code.status === "depleted" || (code.uses !== undefined && code.uses > 0 && code.type === "single");
 
   return (
@@ -278,12 +301,22 @@ function VouchCodeCard({
         </div>
 
         {!isUsed && revealed && (
-          <button
-            onClick={onCopy}
-            className="rounded-full bg-near-black px-4 py-2 font-mono text-[11px] text-white transition-all"
-          >
-            {copied ? "copied ✓" : "copy"}
-          </button>
+          <div className="flex items-center gap-2">
+            {canShare && (
+              <button
+                onClick={onShare}
+                className="rounded-full border border-sand bg-white px-3 py-2 font-mono text-[11px] text-near-black transition-all"
+              >
+                share ↗
+              </button>
+            )}
+            <button
+              onClick={onCopy}
+              className="rounded-full bg-near-black px-4 py-2 font-mono text-[11px] text-white transition-all"
+            >
+              {copied ? "copied ✓" : "copy"}
+            </button>
+          </div>
         )}
 
         {isUsed && (

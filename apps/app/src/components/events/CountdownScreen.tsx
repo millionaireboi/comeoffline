@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useAnalytics, TICKET_SHARED } from "@comeoffline/analytics";
 import { useAppStore } from "@/store/useAppStore";
 import { Noise } from "@/components/shared/Noise";
 
@@ -33,6 +34,7 @@ function useCountdown(targetDate: string) {
 }
 
 export function CountdownScreen() {
+  const { track } = useAnalytics();
   const { currentEvent, activeTicket, setStage } = useAppStore();
   const [quote] = useState(
     () => disconnectQuotes[Math.floor(Math.random() * disconnectQuotes.length)],
@@ -123,6 +125,38 @@ export function CountdownScreen() {
           )}
         </div>
       )}
+
+      {/* Share "I'm going" */}
+      <div
+        className="animate-fadeSlideUp mb-5 px-0"
+        style={{ animationDelay: "0.17s" }}
+      >
+        <button
+          onClick={async () => {
+            const shareData = {
+              title: `I'm going to ${currentEvent.title}!`,
+              text: `Just got my ticket to ${currentEvent.title}. comeoffline.`,
+              url: `https://comeoffline.com/events/${currentEvent.id}`,
+            };
+            if (typeof navigator !== "undefined" && navigator.share) {
+              try {
+                await navigator.share(shareData);
+                track(TICKET_SHARED, { event_id: currentEvent.id, method: "native" });
+              } catch { /* cancelled */ }
+            } else {
+              try {
+                await navigator.clipboard.writeText(shareData.url);
+                track(TICKET_SHARED, { event_id: currentEvent.id, method: "clipboard" });
+              } catch { /* fallback */ }
+            }
+          }}
+          className="w-full rounded-[16px] border border-sand bg-white px-5 py-3.5 text-center transition-all hover:-translate-y-0.5"
+        >
+          <span className="font-sans text-[13px] font-medium text-near-black">
+            share that you&apos;re going ↗
+          </span>
+        </button>
+      </div>
 
       {/* Countdown card */}
       <div

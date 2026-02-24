@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth, type AuthRequest } from "../middleware/auth";
-import { getEvents, getEventById, getPublicEvents } from "../services/events.service";
+import { getEvents, getEventById, getPublicEvents, getPublicEvent } from "../services/events.service";
 
 const router = Router();
 
@@ -12,6 +12,21 @@ router.get("/public", async (_req, res) => {
   } catch (err) {
     console.error("[events] public list error:", err);
     res.status(500).json({ success: false, error: "Failed to fetch events" });
+  }
+});
+
+/** GET /api/events/public/:id — Single public event (no auth, for OG/share pages) */
+router.get("/public/:id", async (req, res) => {
+  try {
+    const event = await getPublicEvent(req.params.id as string);
+    if (!event) {
+      res.status(404).json({ success: false, error: "Event not found" });
+      return;
+    }
+    res.json({ success: true, data: event });
+  } catch (err) {
+    console.error("[events] public single error:", err);
+    res.status(500).json({ success: false, error: "Failed to fetch event" });
   }
 });
 

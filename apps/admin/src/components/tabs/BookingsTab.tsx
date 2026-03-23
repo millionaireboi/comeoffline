@@ -69,8 +69,7 @@ const STATUS_LABELS: Record<string, string> = {
   no_show: "no show",
 };
 
-function formatPrice(paise: number): string {
-  const rupees = paise / 100;
+function formatPrice(rupees: number): string {
   return `₹${rupees.toLocaleString("en-IN")}`;
 }
 

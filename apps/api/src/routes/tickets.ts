@@ -21,9 +21,26 @@ router.post("/create", requireAuth, strictLimiter, async (req: AuthRequest, res)
   try {
     const { event_id, tier_id, pickup_point, time_slot_id, add_ons, seat_id, section_id, spot_seat_id } = req.body;
 
-    if (!event_id) {
+    // Input validation
+    if (!event_id || typeof event_id !== "string") {
       res.status(400).json({ success: false, error: "event_id is required" });
       return;
+    }
+    if (tier_id !== undefined && typeof tier_id !== "string") {
+      res.status(400).json({ success: false, error: "Invalid tier_id" });
+      return;
+    }
+    if (add_ons !== undefined) {
+      if (!Array.isArray(add_ons)) {
+        res.status(400).json({ success: false, error: "add_ons must be an array" });
+        return;
+      }
+      for (const addon of add_ons) {
+        if (!addon.addon_id || typeof addon.addon_id !== "string" || typeof addon.quantity !== "number") {
+          res.status(400).json({ success: false, error: "Each add-on must have addon_id (string) and quantity (number)" });
+          return;
+        }
+      }
     }
 
     const result = await createTicket(req.uid!, event_id, tier_id, pickup_point, time_slot_id, add_ons, seat_id, section_id, spot_seat_id);
@@ -65,11 +82,19 @@ router.post("/create", requireAuth, strictLimiter, async (req: AuthRequest, res)
         return;
       }
 
-      await attachPaymentLink(
-        result.ticket.id as string,
-        linkResult.payment_link_id!,
-        linkResult.payment_url!,
-      );
+      try {
+        await attachPaymentLink(
+          result.ticket.id as string,
+          linkResult.payment_link_id!,
+          linkResult.payment_url!,
+        );
+      } catch (attachErr) {
+        // Payment link was created but we couldn't store it — cancel ticket so user can retry
+        console.error("[tickets] attachPaymentLink failed:", attachErr);
+        await cancelTicket(result.ticket.id as string, req.uid!);
+        res.status(502).json({ success: false, error: "Could not finalize payment link. Please try again." });
+        return;
+      }
 
       result.ticket.payment_url = linkResult.payment_url;
       result.ticket.payment_link_id = linkResult.payment_link_id;

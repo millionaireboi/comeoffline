@@ -241,18 +241,30 @@ export async function createTicket(
       }
     }
 
-    // Validate add-on seating selections
+    // Validate add-on quantity, price, and seating selections
     if (addOns && addOns.length > 0) {
       const checkoutSteps = event.checkout?.steps || [];
       for (const addon of addOns) {
-        if (!addon.spot_id) continue;
-        // Find addon config in checkout steps
-        let addonConfig: { seating?: { enabled?: boolean; spots?: Array<{ id: string; name: string; capacity: number; booked: number; seats?: Array<{ id: string; label: string; status: string }> }> } } | null = null;
+        if (!addon.quantity || addon.quantity < 1) {
+          return { success: false, error: `Invalid quantity for add-on ${addon.name}` };
+        }
+        // Find addon config in checkout steps to validate quantity limits and enforce server price
+        let addonConfig: { id?: string; name?: string; price?: number; max_quantity?: number; available?: number; seating?: { enabled?: boolean; spots?: Array<{ id: string; name: string; capacity: number; booked: number; seats?: Array<{ id: string; label: string; status: string }> }> } } | null = null;
         for (const step of checkoutSteps) {
           if (step.type !== "addon_select" || !step.add_ons) continue;
           const found = step.add_ons.find((a: { id: string }) => a.id === addon.addon_id);
           if (found) { addonConfig = found; break; }
         }
+        if (!addonConfig) {
+          return { success: false, error: `Add-on ${addon.name} not found in event configuration` };
+        }
+        // Enforce server-side price — never trust client-submitted price
+        addon.price = addonConfig.price ?? 0;
+        // Validate quantity against max_quantity from config
+        if (addonConfig.max_quantity && addon.quantity > addonConfig.max_quantity) {
+          return { success: false, error: `Maximum ${addonConfig.max_quantity} allowed for ${addon.name}` };
+        }
+        if (!addon.spot_id) continue;
         if (!addonConfig?.seating?.enabled) {
           return { success: false, error: `Add-on ${addon.name} does not support seating` };
         }
@@ -491,6 +503,15 @@ export async function confirmPayment(ticketId: string): Promise<{ success: boole
     const eventRef = db.collection("events").doc(ticket.event_id);
     const eventDoc = await tx.get(eventRef);
 
+    // Verify event is still active — don't confirm tickets for cancelled/completed events
+    if (eventDoc.exists) {
+      const eventStatus = eventDoc.data()!.status;
+      if (eventStatus === "cancelled" || eventStatus === "completed") {
+        tx.update(ticketRef, { status: "cancelled", cancelled_reason: "event_" + eventStatus });
+        return { success: false, error: `Event is ${eventStatus} — ticket cannot be confirmed` };
+      }
+    }
+
     // Now perform all writes
     tx.update(ticketRef, { status: "confirmed", confirmed_at: new Date().toISOString() });
     tx.update(eventRef, { spots_taken: FieldValue.increment(quantity) });
@@ -622,9 +643,11 @@ export async function cancelTicket(
     const hasAddonSeating = ticket.add_ons?.some((a: { spot_id?: string }) => a.spot_id);
 
     // Read event BEFORE any writes (Firestore requires all reads before writes)
+    // Always read when confirmed (need to update tier.sold, time_slot.booked, section.booked)
+    // Also read when pending with seating (need to release holds)
     const eventRef = db.collection("events").doc(ticket.event_id);
     let eventDoc = null;
-    if ((wasConfirmed || wasPending) && (hasSeating || hasAddonSeating)) {
+    if (wasConfirmed || (wasPending && (hasSeating || hasAddonSeating))) {
       eventDoc = await tx.get(eventRef);
     }
 
@@ -634,6 +657,35 @@ export async function cancelTicket(
     // Only decrement if the ticket was already confirmed (counted toward spots)
     if (wasConfirmed) {
       tx.update(eventRef, { spots_taken: FieldValue.increment(-quantity) });
+
+      // Decrement tier.sold, time_slot.booked, and section.booked counters
+      if (eventDoc && eventDoc.exists) {
+        const event = eventDoc.data()!;
+
+        // Decrement tier sold count
+        if (ticket.tier_id && event.ticketing?.tiers?.length) {
+          const updatedTiers = event.ticketing.tiers.map((t: { id: string; sold: number }) =>
+            t.id === ticket.tier_id ? { ...t, sold: Math.max(0, t.sold - quantity) } : t,
+          );
+          tx.update(eventRef, { "ticketing.tiers": updatedTiers });
+        }
+
+        // Decrement time slot booked count
+        if (ticket.time_slot && event.ticketing?.time_slots?.length) {
+          const updatedSlots = event.ticketing.time_slots.map((s: { id: string; booked: number }) =>
+            s.id === ticket.time_slot ? { ...s, booked: Math.max(0, s.booked - quantity) } : s,
+          );
+          tx.update(eventRef, { "ticketing.time_slots": updatedSlots });
+        }
+
+        // Decrement section booked count
+        if (ticket.section_id && event.seating?.sections?.length) {
+          const updatedSections = event.seating.sections.map((s: { id: string; booked: number }) =>
+            s.id === ticket.section_id ? { ...s, booked: Math.max(0, s.booked - 1) } : s,
+          );
+          tx.update(eventRef, { "seating.sections": updatedSections });
+        }
+      }
 
       // Release custom spot booking
       if (ticket.spot_id && eventDoc && eventDoc.exists) {
@@ -779,43 +831,52 @@ export async function getUserEventTicket(userId: string, eventId: string) {
   return { id: snap.docs[0].id, ...snap.docs[0].data() };
 }
 
-/** Check in a ticket (admin action) */
+/** Check in a ticket (admin action) — transactional to prevent double check-in */
 export async function checkInTicket(
   ticketId: string,
 ): Promise<{ success: boolean; ticket?: Record<string, unknown>; error?: string }> {
   const db = await getDb();
-  const ticketRef = db.collection("tickets").doc(ticketId);
-  const ticketDoc = await ticketRef.get();
+  const result = await db.runTransaction(async (tx) => {
+    const ticketRef = db.collection("tickets").doc(ticketId);
+    const ticketDoc = await tx.get(ticketRef);
 
-  if (!ticketDoc.exists) {
-    return { success: false, error: "Ticket not found" };
-  }
+    if (!ticketDoc.exists) {
+      return { success: false as const, error: "Ticket not found" };
+    }
 
-  const ticket = ticketDoc.data()!;
+    const ticket = ticketDoc.data()!;
 
-  if (ticket.status === "checked_in") {
-    return { success: false, error: "Already checked in", ticket };
-  }
+    if (ticket.status === "checked_in") {
+      return { success: false as const, error: "Already checked in", ticket };
+    }
 
-  if (ticket.status !== "confirmed") {
-    return { success: false, error: `Cannot check in: ticket is ${ticket.status}` };
-  }
+    if (ticket.status !== "confirmed") {
+      return { success: false as const, error: `Cannot check in: ticket is ${ticket.status}` };
+    }
 
-  await ticketRef.update({
-    status: "checked_in",
-    checked_in_at: new Date().toISOString(),
+    const checkedInAt = new Date().toISOString();
+    tx.update(ticketRef, {
+      status: "checked_in",
+      checked_in_at: checkedInAt,
+    });
+
+    return { success: true as const, ticket, checkedInAt };
   });
 
-  // Fetch user name for the check-in confirmation
-  const userDoc = await db.collection("users").doc(ticket.user_id).get();
+  if (!result.success) {
+    return result;
+  }
+
+  // Fetch user name outside transaction (read-only, not critical)
+  const userDoc = await db.collection("users").doc(result.ticket.user_id).get();
   const userName = userDoc.exists ? userDoc.data()!.name : "Unknown";
 
   return {
     success: true,
     ticket: {
-      ...ticket,
+      ...result.ticket,
       status: "checked_in",
-      checked_in_at: new Date().toISOString(),
+      checked_in_at: result.checkedInAt,
       user_name: userName,
     },
   };

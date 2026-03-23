@@ -45,15 +45,33 @@ router.post("/razorpay", async (req: Request, res: Response) => {
       const result = await confirmPayment(ticketId);
 
       if (!result.success) {
-        console.warn(`[webhook] confirmPayment for ${ticketId}:`, result.error);
+        // Non-retryable errors: ticket already processed or permanently invalid
+        // Return 200 to acknowledge — retrying won't help and 24h of failures disables the webhook
+        const nonRetryable = [
+          "Ticket not found",
+          "Ticket is not pending payment",
+          "ticket cannot be confirmed",
+        ];
+        if (nonRetryable.some((msg) => result.error?.includes(msg))) {
+          console.warn(`[webhook] confirmPayment non-retryable for ${ticketId}:`, result.error);
+          res.status(200).json({ success: true });
+          return;
+        }
+
+        // Retryable error (e.g. Firestore transient failure, event status issue)
+        // Return 500 so Razorpay retries with exponential backoff
+        console.error(`[webhook] confirmPayment retryable failure for ${ticketId}:`, result.error);
+        res.status(500).json({ success: false, error: "Payment confirmation failed" });
+        return;
       }
     }
 
-    // Always 200 to prevent Razorpay retries
+    // Acknowledge all other events with 200
     res.status(200).json({ success: true });
   } catch (err) {
+    // Unexpected errors are retryable — return 500 for Razorpay to retry
     console.error("[webhook] Razorpay webhook error:", err);
-    res.status(200).json({ success: true });
+    res.status(500).json({ success: false, error: "Internal webhook error" });
   }
 });
 

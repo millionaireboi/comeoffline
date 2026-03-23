@@ -38,6 +38,10 @@ export interface User {
   age_range?: "21-24" | "25-28" | "29-32" | "33+";
   gender?: "male" | "female" | "non-binary" | "prefer not to say";
   hot_take?: string;
+  bio?: string;
+  interests?: string[];
+  date_of_birth?: string;
+  show_age?: boolean;
   drink_of_choice?: string;
   community_intent?: string;
   referral_source?: string;
@@ -57,6 +61,20 @@ export interface User {
   events_attended?: number;
   created_at: string;
 }
+
+// ── Interests ────────────────────────────────────
+
+export const CURATED_INTERESTS = [
+  "live music", "house parties", "hiking", "coffee",
+  "street food", "craft beer", "board games", "gaming",
+  "fitness", "yoga", "reading", "writing",
+  "photography", "filmmaking", "startups", "design",
+  "travel", "thrifting", "anime", "comedy",
+  "cooking", "dancing", "volunteering", "pets",
+  "astrology", "sustainability",
+] as const;
+
+export type Interest = (typeof CURATED_INTERESTS)[number];
 
 // ── Event ─────────────────────────────────────────
 
@@ -80,7 +98,7 @@ export interface TicketTier {
   id: string; // unique tier ID within event
   name: string; // flexible: "early_bird", "regular", "last_call", "vip", "couples", etc.
   label: string; // display name: "Early Bird", "Regular", "VIP Table", "Couples Pass"
-  price: number; // in paise (INR). 0 = free
+  price: number; // in rupees (INR). 0 = free
   capacity: number;
   sold: number;
   deadline: string; // ISO date — when this tier closes
@@ -124,7 +142,7 @@ export interface CheckoutAddOn {
   name: string; // "Stay Booking", "Food Package", "Merch Bundle"
   description: string;
   image_url?: string;
-  price: number; // in paise
+  price: number; // in rupees (INR)
   max_quantity: number; // max per order
   available: number; // remaining inventory
   required: boolean; // must select at least one

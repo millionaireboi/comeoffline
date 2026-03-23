@@ -351,6 +351,40 @@ export async function adminCancelTicket(
           );
           tx.update(eventRef, { "ticketing.tiers": updatedTiers });
         }
+
+        // Decrement time slot booked count
+        if (ticket.time_slot && event.ticketing?.time_slots?.length) {
+          const updatedSlots = event.ticketing.time_slots.map((s: { id: string; booked: number }) =>
+            s.id === ticket.time_slot ? { ...s, booked: Math.max(0, s.booked - quantity) } : s,
+          );
+          tx.update(eventRef, { "ticketing.time_slots": updatedSlots });
+        }
+
+        // Release add-on seat bookings
+        if (ticket.add_ons?.some((a: { spot_id?: string }) => a.spot_id)) {
+          const checkoutSteps = JSON.parse(JSON.stringify(event.checkout?.steps || []));
+          for (const addon of ticket.add_ons) {
+            if (!addon.spot_id) continue;
+            for (const step of checkoutSteps) {
+              if (step.type !== "addon_select" || !step.add_ons) continue;
+              for (const addonCfg of step.add_ons) {
+                if (addonCfg.id !== addon.addon_id || !addonCfg.seating?.spots) continue;
+                for (const spot of addonCfg.seating.spots) {
+                  if (spot.id !== addon.spot_id) continue;
+                  if (addon.spot_seat_id && spot.seats) {
+                    spot.seats = spot.seats.map((s: { id: string; status: string }) =>
+                      s.id === addon.spot_seat_id
+                        ? { ...s, status: "available", held_by: null, held_until: null }
+                        : s,
+                    );
+                  }
+                  spot.booked = Math.max(0, (spot.booked || 0) - 1);
+                }
+              }
+            }
+          }
+          tx.update(eventRef, { "checkout.steps": checkoutSteps });
+        }
       }
     }
 
@@ -362,7 +396,6 @@ export async function adminCancelTicket(
 export async function adminConfirmTicket(
   ticketId: string,
 ): Promise<{ success: boolean; error?: string }> {
-  // Reuse the same logic as confirmPayment from ticket.service
   const db = await getDb();
   return db.runTransaction(async (tx) => {
     const ticketRef = db.collection("tickets").doc(ticketId);
@@ -380,12 +413,23 @@ export async function adminConfirmTicket(
 
     const quantity = ticket.quantity || 1;
 
-    tx.update(ticketRef, { status: "confirmed", confirmed_at: new Date().toISOString() });
-
+    // Read event BEFORE any writes (Firestore requires all reads before writes)
     const eventRef = db.collection("events").doc(ticket.event_id);
+    const eventDoc = await tx.get(eventRef);
+
+    // Verify event is still active
+    if (eventDoc.exists) {
+      const eventStatus = eventDoc.data()!.status;
+      if (eventStatus === "cancelled" || eventStatus === "completed") {
+        tx.update(ticketRef, { status: "cancelled", cancelled_reason: "event_" + eventStatus });
+        return { success: false, error: `Event is ${eventStatus} — ticket cannot be confirmed` };
+      }
+    }
+
+    // Now perform all writes
+    tx.update(ticketRef, { status: "confirmed", confirmed_at: new Date().toISOString() });
     tx.update(eventRef, { spots_taken: FieldValue.increment(quantity) });
 
-    const eventDoc = await tx.get(eventRef);
     if (eventDoc.exists) {
       const event = eventDoc.data()!;
       const tiers = event.ticketing?.tiers || [];
@@ -396,7 +440,15 @@ export async function adminConfirmTicket(
         tx.update(eventRef, { "ticketing.tiers": updatedTiers });
       }
 
-      // Update seating
+      // Update time slot booked count
+      if (ticket.time_slot && event.ticketing?.time_slots?.length) {
+        const updatedSlots = event.ticketing.time_slots.map((s: { id: string; booked: number }) =>
+          s.id === ticket.time_slot ? { ...s, booked: s.booked + quantity } : s,
+        );
+        tx.update(eventRef, { "ticketing.time_slots": updatedSlots });
+      }
+
+      // Update seating (held -> booked)
       const seating = event.seating;
       if (seating && seating.mode !== "none") {
         if (seating.mode === "custom" && ticket.spot_id && seating.spots) {
@@ -404,7 +456,7 @@ export async function adminConfirmTicket(
             if (s.id !== ticket.spot_id) return s;
             if (ticket.spot_seat_id && s.seats) {
               const updatedSeats = s.seats.map((seat) =>
-                seat.id === ticket.spot_seat_id ? { ...seat, status: "booked", held_by: ticket.user_id } : seat,
+                seat.id === ticket.spot_seat_id ? { ...seat, status: "booked", held_by: ticket.user_id, held_until: null } : seat,
               );
               return { ...s, seats: updatedSeats, booked: s.booked + 1 };
             }
@@ -414,7 +466,7 @@ export async function adminConfirmTicket(
         }
         if (ticket.seat_id && seating.mode !== "custom" && seating.seats) {
           const updatedSeats = seating.seats.map((s: { id: string }) =>
-            s.id === ticket.seat_id ? { ...s, status: "booked", held_by: ticket.user_id } : s,
+            s.id === ticket.seat_id ? { ...s, status: "booked", held_by: ticket.user_id, held_until: null } : s,
           );
           tx.update(eventRef, { "seating.seats": updatedSeats });
         }
@@ -424,6 +476,32 @@ export async function adminConfirmTicket(
           );
           tx.update(eventRef, { "seating.sections": updatedSections });
         }
+      }
+
+      // Confirm add-on seat bookings (held -> booked)
+      if (ticket.add_ons?.some((a: { spot_id?: string }) => a.spot_id)) {
+        const checkoutSteps = JSON.parse(JSON.stringify(event.checkout?.steps || []));
+        for (const addon of ticket.add_ons) {
+          if (!addon.spot_id) continue;
+          for (const step of checkoutSteps) {
+            if (step.type !== "addon_select" || !step.add_ons) continue;
+            for (const addonCfg of step.add_ons) {
+              if (addonCfg.id !== addon.addon_id || !addonCfg.seating?.spots) continue;
+              for (const spot of addonCfg.seating.spots) {
+                if (spot.id !== addon.spot_id) continue;
+                if (addon.spot_seat_id && spot.seats) {
+                  spot.seats = spot.seats.map((s: { id: string; status: string }) =>
+                    s.id === addon.spot_seat_id
+                      ? { ...s, status: "booked", held_by: ticket.user_id, held_until: null }
+                      : s,
+                  );
+                }
+                spot.booked = (spot.booked || 0) + 1;
+              }
+            }
+          }
+        }
+        tx.update(eventRef, { "checkout.steps": checkoutSteps });
       }
     }
 
@@ -459,7 +537,7 @@ export async function exportTicketsCSV(filters: BookingsFilters): Promise<string
     escapeCsv(t.user_handle || ""),
     escapeCsv(t.event_title || ""),
     escapeCsv(t.tier_name || ""),
-    ((t.price || 0) / 100).toFixed(2),
+    (t.price || 0).toFixed(2),
     t.quantity || 1,
     t.status,
     t.add_ons ? t.add_ons.map((a) => `${a.name} x${a.quantity}`).join("; ") : "",

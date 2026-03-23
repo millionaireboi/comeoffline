@@ -33,5 +33,6 @@ export const env = {
   firebaseServiceAccountKey: requireEnv("FIREBASE_SERVICE_ACCOUNT_KEY"),
   razorpayKeyId: requireEnv("RAZORPAY_KEY_ID"),
   razorpayKeySecret: requireEnv("RAZORPAY_KEY_SECRET"),
+  razorpayWebhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || requireEnv("RAZORPAY_KEY_SECRET"),
   appUrl: process.env.APP_URL || "http://localhost:3001",
 } as const;

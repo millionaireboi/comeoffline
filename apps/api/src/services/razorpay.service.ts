@@ -2,7 +2,7 @@ import crypto from "crypto";
 import { env } from "../config/env";
 
 interface CreatePaymentLinkParams {
-  amount: number; // in rupees (converted to paise for Razorpay)
+  amount: number; // in rupees — converted to paise (×100) for Razorpay API
   ticketId: string;
   eventTitle: string;
   customerName: string;
@@ -22,6 +22,7 @@ export async function createPaymentLink(params: CreatePaymentLinkParams): Promis
   const callbackUrl = `${env.appUrl}/?razorpay_status=paid&ticket_id=${ticketId}`;
   const isLocalhost = env.appUrl.includes("localhost");
 
+  const PAYMENT_TIMEOUT_S = 15 * 60; // 15 minutes — aligned with ticket auto-cancel timeout
   const body: Record<string, any> = {
     amount: amount * 100, // Convert rupees to paise (Razorpay expects paise)
     currency: "INR",
@@ -29,6 +30,7 @@ export async function createPaymentLink(params: CreatePaymentLinkParams): Promis
     customer: { name: customerName },
     notes: { ticket_id: ticketId },
     reminder_enable: false,
+    expire_by: Math.floor(Date.now() / 1000) + PAYMENT_TIMEOUT_S,
   };
 
   // Razorpay rejects localhost callback URLs — only set for real domains
@@ -47,6 +49,7 @@ export async function createPaymentLink(params: CreatePaymentLinkParams): Promis
         Authorization: `Basic ${auth}`,
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10_000),
     });
 
     const data = await res.json() as Record<string, any>;
@@ -67,10 +70,10 @@ export async function createPaymentLink(params: CreatePaymentLinkParams): Promis
   }
 }
 
-/** Verify Razorpay webhook signature (HMAC SHA256) */
+/** Verify Razorpay webhook signature (HMAC SHA256 using the dedicated webhook secret) */
 export function verifyWebhookSignature(body: string, signature: string): boolean {
   const expectedSignature = crypto
-    .createHmac("sha256", env.razorpayKeySecret)
+    .createHmac("sha256", env.razorpayWebhookSecret)
     .update(body)
     .digest("hex");
 

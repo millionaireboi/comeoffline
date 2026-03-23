@@ -357,7 +357,7 @@ function TierBuilder({ tiers, onChange }: { tiers: FormTier[]; onChange: (t: For
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <span className="mb-1 block font-mono text-[9px] text-muted">price (paise)</span>
+                  <span className="mb-1 block font-mono text-[9px] text-muted">price (₹)</span>
                   <input
                     type="number"
                     placeholder="0"
@@ -581,7 +581,7 @@ function CheckoutStepBuilder({ steps, onChange, eventSpots }: { steps: CheckoutS
                       />
                       <input
                         type="number"
-                        placeholder="Price (paise)"
+                        placeholder="Price (₹)"
                         value={addon.price || ""}
                         onChange={(e) => updateAddon(i, j, { price: Number(e.target.value) || 0 })}
                         className={inputClass}

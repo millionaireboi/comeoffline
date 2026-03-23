@@ -275,14 +275,20 @@ function HandleCard({ name, value, onChange, userId }: { name: string; value: st
     }
     setChecking(true);
     setAvailable(null);
+    let cancelled = false;
     const t = setTimeout(async () => {
       try {
-        const token = await getIdToken();
-        if (!token) { setChecking(false); return; }
+        const token = await Promise.race([
+          getIdToken(),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000)),
+        ]);
+        if (cancelled) return;
+        if (!token) { setChecking(false); setAvailable(true); return; }
         const res = await apiFetch<{ success: boolean; data: { available: boolean } }>(
           `/api/users/check-handle/${encodeURIComponent(value)}`,
           { token },
         );
+        if (cancelled) return;
         const isAvailable = res.data?.available ?? true;
         setAvailable(isAvailable);
 
@@ -292,12 +298,12 @@ function HandleCard({ name, value, onChange, userId }: { name: string; value: st
           onChangeRef.current(value + suffix);
         }
       } catch {
-        setAvailable(true); // Optimistic on error
+        if (!cancelled) setAvailable(true); // Optimistic on error
       } finally {
-        setChecking(false);
+        if (!cancelled) setChecking(false);
       }
     }, 500);
-    return () => clearTimeout(t);
+    return () => { cancelled = true; clearTimeout(t); };
   }, [value, getIdToken]);
 
   return (
@@ -342,13 +348,12 @@ function HandleCard({ name, value, onChange, userId }: { name: string; value: st
 function InstagramCard({ value, onChange, prefilled }: { value: string; onChange: (v: string) => void; prefilled: boolean }) {
   return (
     <CardShell animKey="insta">
-      <p className="mb-2 font-mono text-[10px] uppercase tracking-[3px] text-muted">optional</p>
       <h2 className="mb-2 font-serif text-[28px] font-normal text-cream">
         drop your insta
         {prefilled && <MicroLabel />}
       </h2>
       <p className="mb-8 font-sans text-[13px] leading-relaxed text-muted">
-        only revealed on mutual match after events. nobody sees this unless you both vibe.
+        we use this to verify your profile. only revealed on mutual match after events.
       </p>
       <div className="relative">
         <span className="absolute left-4 top-1/2 -translate-y-1/2 font-mono text-base" style={{ color: "rgba(155,142,130,0.25)" }}>@</span>
@@ -483,7 +488,6 @@ function GenderCard({ value, onChange }: { value: string; onChange: (v: string) 
 function HotTakeCard({ value, onChange, prefilled }: { value: string; onChange: (v: string) => void; prefilled: boolean }) {
   return (
     <CardShell animKey="hottake">
-      <p className="mb-2 font-mono text-[10px] uppercase tracking-[3px] text-muted">optional</p>
       <h2 className="mb-2 font-serif text-[28px] font-normal text-cream">
         the hill you&apos;ll die on
         {prefilled && <MicroLabel />}
@@ -588,6 +592,11 @@ function ConfirmCard({ profile }: { profile: ProfileDraft }) {
         <p className="mb-1 font-mono text-sm text-caramel">
           {profile.handle ? `@${profile.handle}` : "@"}
         </p>
+        {profile.instagram && (
+          <p className="font-mono text-[11px] text-muted/60">
+            ig: @{profile.instagram}
+          </p>
+        )}
         <div className="mb-2 mt-4 flex flex-wrap justify-center gap-2">
           {profile.area && (
             <span className="rounded-lg font-mono text-[11px] text-muted" style={{ background: "rgba(155,142,130,0.07)", padding: "4px 10px" }}>{profile.area}</span>
@@ -668,12 +677,12 @@ export function ProfileSetup() {
       case 1: return true; // avatar optional
       case 2: return profile.name.trim().length >= 2;
       case 3: return profile.handle.length >= 3;
-      case 4: return true; // instagram optional
+      case 4: return profile.instagram.length >= 2;
       case 5: return profile.area.length > 0;
       case 6: return profile.age.length > 0;
       case 7: return profile.gender.length > 0;
-      case 8: return true; // hot take optional
-      case 9: return true; // intent optional
+      case 8: return profile.hotTake.trim().length > 0;
+      case 9: return profile.intent.length > 0;
       case 10: return profile.source.length > 0;
       case 11: return true;
       default: return false;

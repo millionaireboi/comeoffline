@@ -1,13 +1,29 @@
-import { loadEnvConfig } from "@next/env";
+import { config } from "dotenv";
 import type { NextConfig } from "next";
 import path from "path";
+import { fileURLToPath } from "url";
 
-loadEnvConfig(path.resolve(__dirname, "../../"));
+// Load env vars from the monorepo root .env
+const __filename2 = fileURLToPath(import.meta.url);
+const __dirname2 = path.dirname(__filename2);
+config({ path: path.resolve(__dirname2, "../../.env") });
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 const isDev = process.env.NODE_ENV !== "production";
 
 const nextConfig: NextConfig = {
+  env: {
+    NEXT_PUBLIC_FIREBASE_API_KEY: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "",
+    NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "",
+    NEXT_PUBLIC_FIREBASE_PROJECT_ID: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "",
+    NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "",
+    NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "",
+    NEXT_PUBLIC_FIREBASE_APP_ID: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "",
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || "",
+    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || "",
+    NEXT_PUBLIC_POSTHOG_KEY: process.env.NEXT_PUBLIC_POSTHOG_KEY || "",
+    NEXT_PUBLIC_POSTHOG_HOST: process.env.NEXT_PUBLIC_POSTHOG_HOST || "",
+  },
   transpilePackages: ["@comeoffline/brand", "@comeoffline/types", "@comeoffline/ui"],
   experimental: {
     webpackBuildWorker: false,

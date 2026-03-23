@@ -40,6 +40,22 @@ export const strictLimiter = rateLimit({
 });
 
 /**
+ * Sign-in rate limiter — very strict to prevent handle guessing
+ * - 5 sign-in attempts per 15 minutes per IP
+ */
+export const signInLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  skip: skipInDev,
+  message: {
+    success: false,
+    error: "Too many sign-in attempts. Please try again in 15 minutes.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+/**
  * Auth rate limiter
  * - 30 auth attempts per 15 minutes per IP
  */

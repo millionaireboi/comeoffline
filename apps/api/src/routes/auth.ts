@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { validateCode, validateHandoffToken, chatbotEntry, signInByHandle } from "../services/auth.service";
-import { strictLimiter } from "../middleware/rateLimit";
+import { strictLimiter, signInLimiter } from "../middleware/rateLimit";
 
 const router = Router();
 
@@ -71,8 +71,8 @@ router.post("/validate-token", async (req, res) => {
   }
 });
 
-/** POST /api/auth/sign-in — Sign in returning user by Instagram handle */
-router.post("/sign-in", strictLimiter, async (req, res) => {
+/** POST /api/auth/sign-in — Sign in returning user by handle */
+router.post("/sign-in", signInLimiter, async (req, res) => {
   try {
     const { handle } = req.body;
 

@@ -44,7 +44,9 @@ export function useStage() {
       }
 
       // Manual stages that shouldn't be auto-overridden
-      if (["profile", "vouch", "poll", "sign_quiz"].includes(stage)) return;
+      // sign_quiz should only stay manual while the quiz is incomplete
+      if (["profile", "vouch", "poll"].includes(stage)) return;
+      if (stage === "sign_quiz" && !user.sign) return;
 
       // If user has neither RSVP nor ticket for any event, show feed
       if (!currentEvent || (!activeRsvp && !activeTicket)) {

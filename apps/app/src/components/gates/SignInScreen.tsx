@@ -92,7 +92,7 @@ export function SignInScreen({ onBack }: { onBack: () => void }) {
       <form onSubmit={handleSubmit} className="w-full max-w-[320px] space-y-4">
         <div>
           <label className="mb-2 block font-mono text-[11px] uppercase tracking-[2px] text-muted">
-            instagram handle
+            your handle or instagram
           </label>
           <div className="relative">
             <span className="absolute left-4 top-1/2 -translate-y-1/2 font-sans text-[15px] text-muted/40">@</span>

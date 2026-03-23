@@ -240,7 +240,7 @@ export async function chatbotEntry(
   return createChatbotUser(name, instagramHandle, vibeAnswers);
 }
 
-/** Signs in a returning user by their Instagram handle */
+/** Signs in a returning user by their handle */
 export async function signInByHandle(
   handle: string,
 ): Promise<HandoffTokenResult> {
@@ -253,49 +253,48 @@ export async function signInByHandle(
     return { valid: false, error: "Handle is required" };
   }
 
-  // Search by instagram_handle first (most users have this)
+  // Search by app handle first, then fall back to instagram handle
   let userDoc = null;
-  const igSnap = await db
+  const handleSnap = await db
     .collection("users")
-    .where("instagram_handle", "==", normalized)
+    .where("handle", "==", normalized)
     .limit(1)
     .get();
 
-  if (!igSnap.empty) {
-    userDoc = igSnap.docs[0];
+  if (!handleSnap.empty) {
+    userDoc = handleSnap.docs[0];
   } else {
-    // Also try with @ prefix in case it was stored that way
-    const igSnapAt = await db
+    // Try with @ prefix
+    const handleSnapAt = await db
       .collection("users")
-      .where("instagram_handle", "==", `@${normalized}`)
+      .where("handle", "==", `@${normalized}`)
       .limit(1)
       .get();
 
-    if (!igSnapAt.empty) {
-      userDoc = igSnapAt.docs[0];
+    if (!handleSnapAt.empty) {
+      userDoc = handleSnapAt.docs[0];
     }
   }
 
-  // Fallback: search by handle (the app-internal handle)
+  // Fallback: search by instagram_handle
   if (!userDoc) {
-    const handleSnap = await db
+    const igSnap = await db
       .collection("users")
-      .where("handle", "==", normalized)
+      .where("instagram_handle", "==", normalized)
       .limit(1)
       .get();
 
-    if (!handleSnap.empty) {
-      userDoc = handleSnap.docs[0];
+    if (!igSnap.empty) {
+      userDoc = igSnap.docs[0];
     } else {
-      // Also try with @ prefix in case handles were stored that way
-      const handleSnapAt = await db
+      const igSnapAt = await db
         .collection("users")
-        .where("handle", "==", `@${normalized}`)
+        .where("instagram_handle", "==", `@${normalized}`)
         .limit(1)
         .get();
 
-      if (!handleSnapAt.empty) {
-        userDoc = handleSnapAt.docs[0];
+      if (!igSnapAt.empty) {
+        userDoc = igSnapAt.docs[0];
       }
     }
   }

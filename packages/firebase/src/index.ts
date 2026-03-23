@@ -29,7 +29,14 @@ export { getApp as getFirebaseApp };
 export const app = typeof window !== "undefined" ? getApp() : (null as unknown as FirebaseApp);
 
 export const auth: Auth = typeof window !== "undefined"
-  ? (_auth ??= getAuth(getApp()))
+  ? (_auth ??= (() => {
+      const a = getAuth(getApp());
+      // Ensure session persists across app reloads / PWA revisits
+      import("firebase/auth").then(({ browserLocalPersistence, setPersistence }) => {
+        setPersistence(a, browserLocalPersistence).catch(() => {});
+      }).catch(() => {});
+      return a;
+    })())
   : (null as unknown as Auth);
 
 export const db: Firestore = typeof window !== "undefined"

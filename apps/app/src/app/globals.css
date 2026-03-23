@@ -14,8 +14,31 @@
   display: none;
 }
 
+/* Safe area insets for notch/Dynamic Island devices (PWA standalone mode) */
+body {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* Dark screens: extend bg color behind status bar / Dynamic Island */
+body:has(.bg-gate-black) {
+  background-color: #0E0D0B;
+}
+body:has(.bg-near-black) {
+  background-color: #1A1714;
+}
+body:has(.bg-cream) {
+  background-color: #FAF6F0;
+}
+
+/* Use dvh for proper mobile viewport height (accounts for browser chrome) */
+.min-h-screen {
+  min-height: 100dvh !important;
+}
+
 input::placeholder {
-  color: #E8DDD0;
+  color: rgba(155, 142, 130, 0.4);
 }
 
 /* ═══════════════════════════════════════════

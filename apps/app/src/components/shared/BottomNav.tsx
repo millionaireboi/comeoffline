@@ -28,6 +28,17 @@ export function BottomNav({ onChatOpen }: BottomNavProps) {
           <span className="font-mono text-[9px] tracking-[0.5px]">events</span>
         </button>
 
+        {/* Bookings */}
+        <button
+          onClick={() => setStage("bookings")}
+          className={`flex flex-col items-center gap-0.5 px-4 py-1.5 transition-colors ${
+            isActive("bookings") ? "text-near-black" : "text-muted"
+          }`}
+        >
+          <span className="text-[18px]">🎫</span>
+          <span className="font-mono text-[9px] tracking-[0.5px]">bookings</span>
+        </button>
+
         {/* Chat */}
         <button
           onClick={onChatOpen}

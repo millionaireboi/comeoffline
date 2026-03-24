@@ -38,14 +38,14 @@ export function useStage() {
       }
 
       // Offer sign quiz after onboarding if not yet completed
-      if (!user.sign && !isGrandfathered && !["feed", "sign_quiz"].includes(stage)) {
+      if (!user.sign && !isGrandfathered && !["feed", "sign_quiz", "bookings"].includes(stage)) {
         setStage("sign_quiz");
         return;
       }
 
       // Manual stages that shouldn't be auto-overridden
       // sign_quiz should only stay manual while the quiz is incomplete
-      if (["profile", "vouch", "poll"].includes(stage)) return;
+      if (["profile", "vouch", "poll", "bookings"].includes(stage)) return;
       if (stage === "sign_quiz" && !user.sign) return;
 
       // If user has neither RSVP nor ticket for any event, show feed

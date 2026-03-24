@@ -17,7 +17,8 @@ export type AppStage =
   | "reconnect"
   | "vouch"
   | "profile"
-  | "poll";
+  | "poll"
+  | "bookings";
 
 interface AppState {
   // Auth

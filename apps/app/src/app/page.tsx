@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { usePWAInstall } from "@/hooks/usePWAInstall";
 import { useTokenHandoff } from "@/hooks/useTokenHandoff";
@@ -23,6 +23,7 @@ import { ReconnectScreen } from "@/components/events/ReconnectScreen";
 import { VouchScreen } from "@/components/events/VouchScreen";
 import { CommunityPoll } from "@/components/events/CommunityPoll";
 import { ProfileScreen } from "@/components/profile/ProfileScreen";
+import { BookingsScreen } from "@/components/bookings/BookingsScreen";
 import { ProfileSetup } from "@/components/onboarding/ProfileSetup";
 import { AppEducation } from "@/components/onboarding/AppEducation";
 import { SignQuizOffer } from "@/components/onboarding/SignQuizOffer";
@@ -44,7 +45,9 @@ export default function Home() {
   const [quizActive, setQuizActive] = useState(false);
   const [showSignIn, setShowSignIn] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
+  const [paymentProcessing, setPaymentProcessing] = useState(false);
   const prevStageRef = useRef(stage);
+  const ticketRestorationDone = useRef(false);
 
   // Reset sign-in view when leaving the gate stage (e.g. after successful login)
   useEffect(() => {
@@ -65,9 +68,55 @@ export default function Home() {
     }
   }, [stage]);
 
+  // Restore active ticket on startup (survives page reloads, app restarts)
+  const restoreActiveTicket = useCallback(async (signal?: { cancelled: boolean }) => {
+    try {
+      const token = await getIdToken();
+      if (!token || signal?.cancelled) return;
+
+      // /api/tickets/mine returns enriched tickets sorted by purchased_at DESC
+      const ticketsRes = await apiFetch<{ success: boolean; data: Array<Ticket & { event_date?: string }> }>("/api/tickets/mine", { token });
+      if (!ticketsRes.data?.length || signal?.cancelled) return;
+
+      // Find most recent confirmed/checked-in ticket for an upcoming event
+      const now = new Date();
+      const activeStatuses = new Set(["confirmed", "checked_in", "partially_checked_in"]);
+      const activeTicket = ticketsRes.data.find((t) => {
+        if (!activeStatuses.has(t.status)) return false;
+        if (t.event_date) {
+          const eventDate = new Date(t.event_date);
+          const dayAfter = new Date(eventDate);
+          dayAfter.setDate(dayAfter.getDate() + 2); // grace period
+          return now < dayAfter;
+        }
+        return true; // no date info — assume active
+      });
+
+      if (!activeTicket || signal?.cancelled) return;
+
+      const eventRes = await apiFetch<{ success: boolean; data: Event }>(
+        `/api/events/${activeTicket.event_id}`,
+        { token },
+      );
+
+      if (signal?.cancelled) return;
+
+      // Only set ticket if we also got the event — they must be paired
+      if (eventRes.data) {
+        const { setActiveTicket, setCurrentEvent } = useAppStore.getState();
+        setCurrentEvent(eventRes.data);
+        setActiveTicket(activeTicket);
+        // useStage will auto-derive the correct stage (countdown/reveal/dayof/etc.)
+      }
+    } catch (err) {
+      console.error("[ticket-restore] Failed to restore active ticket:", err);
+    }
+  }, [getIdToken]);
+
   // Handle return from Razorpay payment
   useEffect(() => {
     if (typeof window === "undefined" || loading || tokenChecking) return;
+    if (!user) return;
 
     const params = new URLSearchParams(window.location.search);
     const rzpStatus = params.get("razorpay_status");
@@ -75,60 +124,123 @@ export default function Home() {
 
     if (!rzpStatus || !ticketId) return;
 
-    // Clean URL immediately (preserve stage in history state)
+    // Mark as handled so the startup restoration doesn't also run
+    ticketRestorationDone.current = true;
+
+    // Clean URL only after we've confirmed user is available
     window.history.replaceState({ stage: useAppStore.getState().stage }, "", "/");
 
-    if (!user) return;
-
-    let cancelled = false;
+    setPaymentProcessing(true);
+    const signal = { cancelled: false };
     let attempts = 0;
-    const maxAttempts = 10;
+    const maxAttempts = 20;
+    let pendingTimeout: ReturnType<typeof setTimeout> | null = null;
 
     const poll = async () => {
-      if (cancelled) return;
+      if (signal.cancelled) return;
       attempts++;
 
       try {
         const token = await getIdToken();
-        if (!token) return;
+        if (!token || signal.cancelled) {
+          setPaymentProcessing(false);
+          return;
+        }
 
         const res = await apiFetch<{ success: boolean; data: { id: string; status: string; event_id: string } }>(
           `/api/tickets/${ticketId}/status`,
           { token },
         );
 
+        if (signal.cancelled) return;
+
         if (res.data?.status === "confirmed") {
-          // Fetch the full ticket and event
           const [ticketRes, eventRes] = await Promise.all([
             apiFetch<{ success: boolean; data: Ticket[] }>("/api/tickets/mine", { token }),
             apiFetch<{ success: boolean; data: Event }>(`/api/events/${res.data.event_id}`, { token }),
           ]);
 
-          const ticket = ticketRes.data?.find((t) => t.id === ticketId);
-          if (ticket) {
-            const { setActiveTicket, setCurrentEvent, setStage } = useAppStore.getState();
-            if (eventRes.data) setCurrentEvent(eventRes.data);
-            setActiveTicket(ticket);
-            setStage("countdown");
+          if (!signal.cancelled) {
+            const ticket = ticketRes.data?.find((t) => t.id === ticketId);
+            if (ticket && eventRes.data) {
+              const { setActiveTicket, setCurrentEvent, setStage } = useAppStore.getState();
+              setCurrentEvent(eventRes.data);
+              setActiveTicket(ticket);
+              setStage("countdown");
+            }
+            setPaymentProcessing(false);
           }
           return;
         }
 
         if (attempts < maxAttempts) {
-          setTimeout(poll, 3000);
+          pendingTimeout = setTimeout(poll, 3000);
+        } else {
+          // Polling exhausted — try restoring via tickets/mine as fallback
+          await restoreActiveTicket(signal);
+          if (!signal.cancelled) setPaymentProcessing(false);
         }
       } catch (err) {
         console.error("[payment-callback] Poll error:", err);
+        if (signal.cancelled) return;
         if (attempts < maxAttempts) {
-          setTimeout(poll, 3000);
+          pendingTimeout = setTimeout(poll, 3000);
+        } else {
+          await restoreActiveTicket(signal);
+          if (!signal.cancelled) setPaymentProcessing(false);
         }
       }
     };
 
     poll();
 
-    return () => { cancelled = true; };
-  }, [loading, tokenChecking, user, getIdToken]);
+    return () => {
+      signal.cancelled = true;
+      if (pendingTimeout) clearTimeout(pendingTimeout);
+      setPaymentProcessing(false);
+    };
+  }, [loading, tokenChecking, user, getIdToken, restoreActiveTicket]);
+
+  // Restore active ticket on app startup (when no payment callback is in progress)
+  useEffect(() => {
+    if (loading || tokenChecking || !user || ticketRestorationDone.current) return;
+
+    // Skip if Razorpay callback params are present (the payment callback handles that)
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("razorpay_status") && params.get("ticket_id")) return;
+    }
+
+    // Skip if we already have an active ticket
+    const { activeTicket } = useAppStore.getState();
+    if (activeTicket) {
+      ticketRestorationDone.current = true;
+      return;
+    }
+
+    ticketRestorationDone.current = true;
+    const signal = { cancelled: false };
+    restoreActiveTicket(signal);
+    return () => { signal.cancelled = true; };
+  }, [loading, tokenChecking, user, restoreActiveTicket]);
+
+  // Payment processing screen — show while polling for webhook confirmation
+  if (paymentProcessing) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center bg-cream px-8 text-center">
+        <div className="mb-6 h-10 w-10 animate-spin rounded-full border-[3px] border-sand border-t-caramel" />
+        <h2 className="font-serif text-2xl text-near-black" style={{ letterSpacing: "-0.5px" }}>
+          verifying payment
+        </h2>
+        <p className="mt-3 max-w-[260px] font-sans text-[14px] leading-relaxed text-warm-brown">
+          hang tight — we&apos;re confirming your ticket with the payment provider.
+        </p>
+        <p className="mt-6 font-mono text-[10px] uppercase tracking-[3px] text-muted/40">
+          this usually takes a few seconds
+        </p>
+      </main>
+    );
+  }
 
   // Loading state (auth loading or token handoff in progress)
   if (loading || tokenChecking) {
@@ -223,6 +335,9 @@ export default function Home() {
       break;
     case "profile":
       screen = <ProfileScreen />;
+      break;
+    case "bookings":
+      screen = <BookingsScreen />;
       break;
     default:
       screen = <TheGate />;

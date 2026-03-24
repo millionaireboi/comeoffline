@@ -10,7 +10,7 @@ import {
   getEventTickets,
   attachPaymentLink,
 } from "../services/ticket.service";
-import { createPaymentLink } from "../services/razorpay.service";
+import { createPaymentLink, cancelPaymentLink } from "../services/razorpay.service";
 import { getDb } from "../config/firebase-admin";
 import { strictLimiter } from "../middleware/rateLimit";
 
@@ -89,9 +89,12 @@ router.post("/create", requireAuth, strictLimiter, async (req: AuthRequest, res)
           linkResult.payment_url!,
         );
       } catch (attachErr) {
-        // Payment link was created but we couldn't store it — cancel ticket so user can retry
+        // Payment link was created but we couldn't store it — cancel ticket and kill orphaned link
         console.error("[tickets] attachPaymentLink failed:", attachErr);
         await cancelTicket(result.ticket.id as string, req.uid!);
+        cancelPaymentLink(linkResult.payment_link_id!).catch((e) =>
+          console.error("[tickets] Failed to cancel orphaned payment link:", e),
+        );
         res.status(502).json({ success: false, error: "Could not finalize payment link. Please try again." });
         return;
       }
@@ -201,17 +204,22 @@ router.delete("/:id", requireAuth, async (req: AuthRequest, res) => {
 /** POST /api/tickets/check-in — Check in a ticket (admin) */
 router.post("/check-in", requireAdmin, async (req: AuthRequest, res) => {
   try {
-    const { ticket_id } = req.body;
+    const { ticket_id, event_id, signature, headcount } = req.body;
 
     if (!ticket_id) {
       res.status(400).json({ success: false, error: "ticket_id is required" });
       return;
     }
 
-    const result = await checkInTicket(ticket_id);
+    const result = await checkInTicket(ticket_id, {
+      event_id,
+      signature,
+      checked_in_by: req.uid,
+      headcount: headcount ? parseInt(headcount, 10) : undefined,
+    });
 
     if (!result.success) {
-      res.status(400).json({ success: false, error: result.error, data: result.ticket });
+      res.status(400).json({ success: false, error: result.error, error_code: result.error_code, data: result.ticket });
       return;
     }
 

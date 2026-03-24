@@ -2,6 +2,19 @@ import { getDb } from "../config/firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import QRCode from "qrcode";
 import crypto from "crypto";
+import { env } from "../config/env";
+
+/** Sign QR payload with HMAC-SHA256 to prevent forgery */
+export function signQrPayload(payload: { ticket_id: string; event_id: string }): string {
+  const data = `${payload.ticket_id}:${payload.event_id}`;
+  return crypto.createHmac("sha256", env.qrSigningSecret).update(data).digest("hex");
+}
+
+/** Verify a QR signature */
+export function verifyQrSignature(ticketId: string, eventId: string, signature: string): boolean {
+  const expected = signQrPayload({ ticket_id: ticketId, event_id: eventId });
+  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+}
 
 interface CreateTicketResult {
   success: boolean;
@@ -43,15 +56,17 @@ export async function createTicket(
     const ticketing = event.ticketing || { enabled: false, tiers: [], time_slots_enabled: false, max_per_user: 1 };
 
     // Check for existing tickets — also expire stale pending_payment tickets (15-min timeout)
-    const existingSnap = await db
+    // Use tx.get() so this query is part of the transaction's read set,
+    // preventing race conditions where two concurrent purchases both pass this check
+    const existingQuery = db
       .collection("tickets")
       .where("user_id", "==", userId)
       .where("event_id", "==", eventId)
-      .where("status", "in", ["pending_payment", "confirmed"])
-      .get();
+      .where("status", "in", ["pending_payment", "confirmed", "partially_checked_in"]);
+    const existingSnap = await tx.get(existingQuery);
 
-    const PAYMENT_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
-    const HOLD_DURATION_MS = 10 * 60 * 1000; // 10 minutes
+    const PAYMENT_TIMEOUT_MS = 16 * 60 * 1000; // 16 minutes — aligned with Razorpay payment link expiry
+    const HOLD_DURATION_MS = 16 * 60 * 1000; // 16 minutes — aligned with payment link expiry
     let existingCount = 0;
     // Track stale holds to release from seating data
     const staleHolds: Array<{ spot_id?: string; spot_seat_id?: string; seat_id?: string }> = [];
@@ -63,6 +78,8 @@ export async function createTicket(
         const purchasedAt = new Date(t.purchased_at).getTime();
         if (Date.now() - purchasedAt > PAYMENT_TIMEOUT_MS) {
           tx.update(doc.ref, { status: "cancelled", cancelled_reason: "payment_timeout" });
+          // Release reserved capacity
+          tx.update(eventRef, { spots_held: FieldValue.increment(-(t.quantity || 1)) });
           // Collect seat holds to release
           if (t.spot_id || t.seat_id) {
             staleHolds.push({ spot_id: t.spot_id, spot_seat_id: t.spot_seat_id, seat_id: t.seat_id });
@@ -294,8 +311,8 @@ export async function createTicket(
       }
     }
 
-    // Check overall capacity
-    if (event.spots_taken >= event.total_spots) {
+    // Check overall capacity (include held spots from pending payments)
+    if ((event.spots_taken + (event.spots_held || 0)) >= event.total_spots) {
       return { success: false, error: "Event is full" };
     }
 
@@ -312,9 +329,11 @@ export async function createTicket(
     const isFree = price === 0 || event.is_free || !ticketing.enabled;
     const status = isFree ? "confirmed" : "pending_payment";
 
-    // Generate ticket ID and QR code
+    // Generate ticket ID and signed QR code
     const ticketId = crypto.randomUUID();
-    const qrData = JSON.stringify({ ticket_id: ticketId, event_id: eventId });
+    const qrPayload = { ticket_id: ticketId, event_id: eventId };
+    const qrSignature = signQrPayload(qrPayload);
+    const qrData = JSON.stringify({ ...qrPayload, sig: qrSignature });
     const qrCode = await QRCode.toDataURL(qrData, {
       width: 300,
       margin: 2,
@@ -347,6 +366,11 @@ export async function createTicket(
 
     // Create ticket document
     tx.set(db.collection("tickets").doc(ticketId), ticketData);
+
+    // For paid tickets, reserve capacity via spots_held counter
+    if (!isFree) {
+      tx.update(eventRef, { spots_held: FieldValue.increment(quantity) });
+    }
 
     // Increment spots_taken if free (confirmed immediately)
     if (isFree) {
@@ -508,13 +532,45 @@ export async function confirmPayment(ticketId: string): Promise<{ success: boole
       const eventStatus = eventDoc.data()!.status;
       if (eventStatus === "cancelled" || eventStatus === "completed") {
         tx.update(ticketRef, { status: "cancelled", cancelled_reason: "event_" + eventStatus });
+        tx.update(eventRef, { spots_held: FieldValue.increment(-quantity) });
         return { success: false, error: `Event is ${eventStatus} — ticket cannot be confirmed` };
+      }
+    }
+
+    // Validate seat is still held by this user (hold may have expired and been taken by someone else)
+    if (eventDoc.exists) {
+      const event = eventDoc.data()!;
+      const seating = event.seating;
+      if (seating && seating.mode !== "none") {
+        if (seating.mode === "custom" && ticket.spot_id && seating.spots) {
+          const spot = seating.spots.find((s: { id: string }) => s.id === ticket.spot_id);
+          if (spot && ticket.spot_seat_id && spot.seats) {
+            const seat = spot.seats.find((s: { id: string }) => s.id === ticket.spot_seat_id);
+            if (!seat || (seat.status !== "held" || seat.held_by !== ticket.user_id)) {
+              tx.update(ticketRef, { status: "cancelled", cancelled_reason: "seat_lost" });
+              tx.update(eventRef, { spots_held: FieldValue.increment(-quantity) });
+              return { success: false, error: "Seat hold expired — ticket cannot be confirmed" };
+            }
+          }
+        }
+        if (ticket.seat_id && seating.mode !== "custom" && seating.seats) {
+          const seat = seating.seats.find((s: { id: string }) => s.id === ticket.seat_id);
+          if (!seat || (seat.status !== "held" || seat.held_by !== ticket.user_id)) {
+            tx.update(ticketRef, { status: "cancelled", cancelled_reason: "seat_lost" });
+            tx.update(eventRef, { spots_held: FieldValue.increment(-quantity) });
+            return { success: false, error: "Seat hold expired — ticket cannot be confirmed" };
+          }
+        }
       }
     }
 
     // Now perform all writes
     tx.update(ticketRef, { status: "confirmed", confirmed_at: new Date().toISOString() });
-    tx.update(eventRef, { spots_taken: FieldValue.increment(quantity) });
+    // Transfer from held to taken
+    tx.update(eventRef, {
+      spots_taken: FieldValue.increment(quantity),
+      spots_held: FieldValue.increment(-quantity),
+    });
 
     if (eventDoc.exists) {
       const event = eventDoc.data()!;
@@ -632,7 +688,7 @@ export async function cancelTicket(
       return { success: false, error: "Not your ticket" };
     }
 
-    if (!["pending_payment", "confirmed"].includes(ticket.status)) {
+    if (!["pending_payment", "confirmed", "partially_checked_in"].includes(ticket.status)) {
       return { success: false, error: "Cannot cancel this ticket" };
     }
 
@@ -643,16 +699,20 @@ export async function cancelTicket(
     const hasAddonSeating = ticket.add_ons?.some((a: { spot_id?: string }) => a.spot_id);
 
     // Read event BEFORE any writes (Firestore requires all reads before writes)
-    // Always read when confirmed (need to update tier.sold, time_slot.booked, section.booked)
-    // Also read when pending with seating (need to release holds)
+    // Always read for confirmed (counters) and pending (spots_held + hold release)
     const eventRef = db.collection("events").doc(ticket.event_id);
     let eventDoc = null;
-    if (wasConfirmed || (wasPending && (hasSeating || hasAddonSeating))) {
+    if (wasConfirmed || wasPending) {
       eventDoc = await tx.get(eventRef);
     }
 
     // Now perform all writes
     tx.update(ticketRef, { status: "cancelled", cancelled_at: new Date().toISOString() });
+
+    // Decrement spots_held for pending tickets (reserved capacity)
+    if (wasPending) {
+      tx.update(eventRef, { spots_held: FieldValue.increment(-quantity) });
+    }
 
     // Only decrement if the ticket was already confirmed (counted toward spots)
     if (wasConfirmed) {
@@ -823,7 +883,7 @@ export async function getUserEventTicket(userId: string, eventId: string) {
     .collection("tickets")
     .where("user_id", "==", userId)
     .where("event_id", "==", eventId)
-    .where("status", "in", ["confirmed", "checked_in"])
+    .where("status", "in", ["confirmed", "checked_in", "partially_checked_in"])
     .limit(1)
     .get();
 
@@ -834,33 +894,105 @@ export async function getUserEventTicket(userId: string, eventId: string) {
 /** Check in a ticket (admin action) — transactional to prevent double check-in */
 export async function checkInTicket(
   ticketId: string,
-): Promise<{ success: boolean; ticket?: Record<string, unknown>; error?: string }> {
+  options: {
+    event_id?: string;
+    signature?: string;
+    checked_in_by?: string;
+    headcount?: number;
+  } = {},
+): Promise<{ success: boolean; ticket?: Record<string, unknown>; error?: string; error_code?: string }> {
   const db = await getDb();
   const result = await db.runTransaction(async (tx) => {
     const ticketRef = db.collection("tickets").doc(ticketId);
     const ticketDoc = await tx.get(ticketRef);
 
     if (!ticketDoc.exists) {
-      return { success: false as const, error: "Ticket not found" };
+      return { success: false as const, error: "Ticket not found", error_code: "NOT_FOUND" };
     }
 
     const ticket = ticketDoc.data()!;
 
+    // Event-scoped validation: ensure ticket belongs to the event being scanned for
+    if (options.event_id && ticket.event_id !== options.event_id) {
+      return {
+        success: false as const,
+        error: "This ticket is for a different event",
+        error_code: "WRONG_EVENT",
+        ticket,
+      };
+    }
+
+    // Verify QR signature if provided
+    if (options.signature) {
+      const isValid = verifyQrSignature(ticketId, ticket.event_id, options.signature);
+      if (!isValid) {
+        return { success: false as const, error: "Invalid QR code — possible forgery", error_code: "INVALID_SIGNATURE" };
+      }
+    }
+
     if (ticket.status === "checked_in") {
-      return { success: false as const, error: "Already checked in", ticket };
+      return {
+        success: false as const,
+        error: `Already checked in at ${ticket.checked_in_at}`,
+        error_code: "ALREADY_CHECKED_IN",
+        ticket,
+      };
+    }
+
+    if (ticket.status === "cancelled") {
+      return { success: false as const, error: "This ticket has been cancelled", error_code: "CANCELLED", ticket };
+    }
+
+    if (ticket.status === "pending_payment") {
+      return { success: false as const, error: "Payment not completed for this ticket", error_code: "PENDING_PAYMENT", ticket };
     }
 
     if (ticket.status !== "confirmed") {
-      return { success: false as const, error: `Cannot check in: ticket is ${ticket.status}` };
+      return { success: false as const, error: `Cannot check in: ticket status is "${ticket.status}"`, error_code: "INVALID_STATUS" };
     }
 
-    const checkedInAt = new Date().toISOString();
-    tx.update(ticketRef, {
-      status: "checked_in",
-      checked_in_at: checkedInAt,
-    });
+    // Multi-quantity: track headcount arriving
+    const totalQuantity = ticket.quantity || 1;
+    const previousHeadcount = ticket.checked_in_headcount || 0;
+    const arrivingHeadcount = options.headcount || totalQuantity;
+    const newHeadcount = Math.min(previousHeadcount + arrivingHeadcount, totalQuantity);
+    const fullyCheckedIn = newHeadcount >= totalQuantity;
 
-    return { success: true as const, ticket, checkedInAt };
+    const checkedInAt = new Date().toISOString();
+    const updateData: Record<string, unknown> = {
+      checked_in_at: ticket.checked_in_at || checkedInAt,
+      checked_in_headcount: newHeadcount,
+    };
+
+    if (fullyCheckedIn) {
+      updateData.status = "checked_in";
+    } else {
+      updateData.status = "partially_checked_in";
+    }
+
+    // Audit trail
+    if (options.checked_in_by) {
+      updateData.checked_in_by = options.checked_in_by;
+    }
+
+    // Append to check-in log for audit history
+    const logEntry = {
+      at: checkedInAt,
+      by: options.checked_in_by || "unknown",
+      headcount: arrivingHeadcount,
+    };
+    updateData.check_in_log = FieldValue.arrayUnion(logEntry);
+
+    tx.update(ticketRef, updateData);
+
+    return {
+      success: true as const,
+      ticket,
+      checkedInAt,
+      headcount: newHeadcount,
+      totalQuantity,
+      fullyCheckedIn,
+    };
   });
 
   if (!result.success) {
@@ -875,8 +1007,11 @@ export async function checkInTicket(
     success: true,
     ticket: {
       ...result.ticket,
-      status: "checked_in",
+      status: result.fullyCheckedIn ? "checked_in" : "partially_checked_in",
       checked_in_at: result.checkedInAt,
+      checked_in_headcount: result.headcount,
+      total_quantity: result.totalQuantity,
+      fully_checked_in: result.fullyCheckedIn,
       user_name: userName,
     },
   };

@@ -20,9 +20,9 @@ export async function createPaymentLink(params: CreatePaymentLinkParams): Promis
   const { amount, ticketId, eventTitle, customerName } = params;
 
   const callbackUrl = `${env.appUrl}/?razorpay_status=paid&ticket_id=${ticketId}`;
-  const isLocalhost = env.appUrl.includes("localhost");
+  const isLocalhost = process.env.NODE_ENV !== "production";
 
-  const PAYMENT_TIMEOUT_S = 15 * 60; // 15 minutes — aligned with ticket auto-cancel timeout
+  const PAYMENT_TIMEOUT_S = 16 * 60; // 16 minutes — Razorpay requires at least 15min in future, so add 1min buffer
   const body: Record<string, any> = {
     amount: amount * 100, // Convert rupees to paise (Razorpay expects paise)
     currency: "INR",
@@ -67,6 +67,62 @@ export async function createPaymentLink(params: CreatePaymentLinkParams): Promis
   } catch (err) {
     console.error("[razorpay] Payment link API error:", err);
     return { success: false, error: "Failed to connect to payment provider" };
+  }
+}
+
+/** Fetch payment link status from Razorpay (for reconciliation) */
+export async function fetchPaymentLinkStatus(paymentLinkId: string): Promise<{
+  status: string;
+  payments?: Array<{ payment_id: string; status: string }>;
+} | null> {
+  const auth = Buffer.from(`${env.razorpayKeyId}:${env.razorpayKeySecret}`).toString("base64");
+  try {
+    const res = await fetch(`https://api.razorpay.com/v1/payment_links/${paymentLinkId}`, {
+      method: "GET",
+      headers: { Authorization: `Basic ${auth}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) {
+      console.error(`[razorpay] Failed to fetch payment link ${paymentLinkId}:`, res.status);
+      return null;
+    }
+    const data = await res.json() as Record<string, any>;
+    return {
+      status: data.status as string,
+      payments: (data.payments || []).map((p: any) => ({
+        payment_id: p.payment_id,
+        status: p.status,
+      })),
+    };
+  } catch (err) {
+    console.error(`[razorpay] fetchPaymentLinkStatus error for ${paymentLinkId}:`, err);
+    return null;
+  }
+}
+
+/** Cancel a Razorpay payment link (best-effort cleanup) */
+export async function cancelPaymentLink(paymentLinkId: string): Promise<boolean> {
+  const auth = Buffer.from(`${env.razorpayKeyId}:${env.razorpayKeySecret}`).toString("base64");
+  try {
+    const res = await fetch(`https://api.razorpay.com/v1/payment_links/${paymentLinkId}/cancel`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Basic ${auth}`,
+      },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) {
+      const data = await res.json() as Record<string, any>;
+      // Already cancelled/expired is fine
+      if (data.error?.code === "BAD_REQUEST_ERROR") return true;
+      console.error(`[razorpay] Failed to cancel payment link ${paymentLinkId}:`, data);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error(`[razorpay] cancelPaymentLink error for ${paymentLinkId}:`, err);
+    return false;
   }
 }
 

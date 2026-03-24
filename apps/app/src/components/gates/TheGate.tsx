@@ -100,14 +100,16 @@ export function TheGate({ onSignIn }: { onSignIn?: () => void }) {
       // Only show rejection if we haven't already unlocked
       // (loginWithToken failing after unlock shouldn't send user back to code entry)
       if (!unlockedRef.current) {
+        const msg = err instanceof Error ? err.message : "";
+        const isRateLimit = msg.toLowerCase().includes("too many");
         setStatus("rejected");
-        setRejectMsg(rejectLines[rejectCount % rejectLines.length]);
-        setRejectCount((c) => c + 1);
+        setRejectMsg(isRateLimit ? "slow down — try again in a bit." : rejectLines[rejectCount % rejectLines.length]);
+        if (!isRateLimit) setRejectCount((c) => c + 1);
         setTimeout(() => {
           setStatus("idle");
           setCode("");
           inputRef.current?.focus();
-        }, 1800);
+        }, isRateLimit ? 3000 : 1800);
       } else {
         // Login failed after successful code validation — retry silently
         console.error("[TheGate] loginWithToken failed after unlock:", err);

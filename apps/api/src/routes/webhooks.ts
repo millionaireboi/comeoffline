@@ -32,9 +32,16 @@ router.post("/razorpay", async (req: Request, res: Response) => {
 
     const payload = JSON.parse(rawBody);
     const event = payload.event;
+    const db = await getDb();
 
     if (event === "payment_link.paid") {
-      const paymentLinkEntity = payload.payload.payment_link.entity;
+      const paymentLinkEntity = payload.payload?.payment_link?.entity;
+      if (!paymentLinkEntity) {
+        console.warn("[webhook] payment_link.paid but missing payment_link entity in payload");
+        res.status(200).json({ success: true });
+        return;
+      }
+
       const ticketId = paymentLinkEntity.notes?.ticket_id;
 
       if (!ticketId) {
@@ -43,12 +50,29 @@ router.post("/razorpay", async (req: Request, res: Response) => {
         return;
       }
 
+      // Deduplicate webhooks — Razorpay can send the same event multiple times
+      const dedupeId = `payment_link_paid_${paymentLinkEntity.id}`;
+      const dedupeRef = db.collection("processed_webhooks").doc(dedupeId);
+      const existing = await dedupeRef.get();
+      if (existing.exists) {
+        console.log(`[webhook] Duplicate webhook ${dedupeId}, skipping`);
+        res.status(200).json({ success: true });
+        return;
+      }
+
       console.log(`[webhook] Payment confirmed for ticket: ${ticketId}`);
       const result = await confirmPayment(ticketId);
 
+      // Mark webhook as processed (best-effort — dedup is a safety net, not critical path)
+      if (result.success) {
+        dedupeRef.set({
+          ticket_id: ticketId,
+          processed_at: new Date().toISOString(),
+        }).catch((e) => console.warn("[webhook] Failed to write dedup record:", e));
+      }
+
       if (result.success && posthog) {
         try {
-          const db = await getDb();
           const ticketDoc = await db.collection("tickets").doc(ticketId).get();
           const ticket = ticketDoc.data();
           if (ticket) {
@@ -77,6 +101,7 @@ router.post("/razorpay", async (req: Request, res: Response) => {
           "Ticket not found",
           "Ticket is not pending payment",
           "ticket cannot be confirmed",
+          "Seat hold expired",
         ];
         if (nonRetryable.some((msg) => result.error?.includes(msg))) {
           console.warn(`[webhook] confirmPayment non-retryable for ${ticketId}:`, result.error);

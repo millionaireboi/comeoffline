@@ -4,10 +4,17 @@ import { getEvents, getEventById, getPublicEvents, getPublicEvent } from "../ser
 
 const router = Router();
 
+/**
+ * Public event routes — exported separately so they can be mounted
+ * before the general rate limiter (high-traffic, read-only, no auth).
+ */
+export const publicEventsRouter = Router();
+
 /** GET /api/events/public — List upcoming events (no auth, for landing page) */
-router.get("/public", async (_req, res) => {
+publicEventsRouter.get("/", async (_req, res) => {
   try {
     const events = await getPublicEvents();
+    res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=120");
     res.json({ success: true, data: events });
   } catch (err) {
     console.error("[events] public list error:", err);
@@ -16,13 +23,14 @@ router.get("/public", async (_req, res) => {
 });
 
 /** GET /api/events/public/:id — Single public event (no auth, for OG/share pages) */
-router.get("/public/:id", async (req, res) => {
+publicEventsRouter.get("/:id", async (req, res) => {
   try {
     const event = await getPublicEvent(req.params.id as string);
     if (!event) {
       res.status(404).json({ success: false, error: "Event not found" });
       return;
     }
+    res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=120");
     res.json({ success: true, data: event });
   } catch (err) {
     console.error("[events] public single error:", err);

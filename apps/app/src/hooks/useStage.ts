@@ -87,7 +87,7 @@ function determineEventStage(
   const venueRevealDate = new Date(event.venue_reveal_date);
 
   // Post-event: memories + reconnect window
-  if (rsvp?.status === "attended" || ticket?.status === "checked_in") {
+  if (rsvp?.status === "attended" || ticket?.status === "checked_in" || ticket?.status === "partially_checked_in") {
     return "memories";
   }
 

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import crypto from "crypto";
 import { validateCode, validateHandoffToken, chatbotEntry, signInByHandle } from "../services/auth.service";
-import { strictLimiter, signInLimiter, authLimiter } from "../middleware/rateLimit";
+import { strictLimiter, signInLimiter } from "../middleware/rateLimit";
 import { isValidPin, verifyPin, hashPin } from "../services/pin.service";
 import { sendPinResetEmail } from "../services/email.service";
 import { getDb } from "../config/firebase-admin";
@@ -9,7 +9,7 @@ import { getDb } from "../config/firebase-admin";
 const router = Router();
 
 /** POST /api/auth/validate-code — Validate invite/vouch code */
-router.post("/validate-code", authLimiter, async (req, res) => {
+router.post("/validate-code", async (req, res) => {
   try {
     const { code, name, handle, vibe_tag, source, utm_source, utm_medium, utm_campaign } = req.body;
 
@@ -62,7 +62,7 @@ router.post("/validate-code", authLimiter, async (req, res) => {
 });
 
 /** POST /api/auth/validate-token — Validate a handoff token from landing/chatbot redirect */
-router.post("/validate-token", authLimiter, async (req, res) => {
+router.post("/validate-token", async (req, res) => {
   try {
     const { token } = req.body;
 

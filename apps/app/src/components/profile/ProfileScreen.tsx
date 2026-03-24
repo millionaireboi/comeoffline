@@ -115,6 +115,7 @@ const STATUS_STYLES: Record<string, { color: string; bg: string; label: string }
   confirmed: { color: "#6B7A63", bg: "#6B7A6315", label: "confirmed" },
   pending_payment: { color: "#D4A574", bg: "#D4A57415", label: "pending" },
   checked_in: { color: "#5B8CB8", bg: "#5B8CB815", label: "checked in" },
+  partially_checked_in: { color: "#D4A574", bg: "#D4A57415", label: "partially checked in" },
   cancelled: { color: "#9B8E82", bg: "#9B8E8215", label: "cancelled" },
   no_show: { color: "#9B8E82", bg: "#9B8E8215", label: "no show" },
 };
@@ -545,7 +546,7 @@ export function ProfileScreen() {
                       )}
 
                       {/* QR Code */}
-                      {ticket.qr_code && ["confirmed", "checked_in"].includes(ticket.status) && (
+                      {ticket.qr_code && ["confirmed", "checked_in", "partially_checked_in"].includes(ticket.status) && (
                         <div className="mb-3 flex justify-center">
                           <img
                             src={ticket.qr_code}

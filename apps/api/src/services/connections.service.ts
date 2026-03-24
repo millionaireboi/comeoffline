@@ -203,7 +203,7 @@ export async function getEventAttendeePreview(
     .collection("tickets")
     .where("event_id", "==", eventId)
     .where("user_id", "==", currentUserId)
-    .where("status", "in", ["confirmed", "checked_in"])
+    .where("status", "in", ["confirmed", "checked_in", "partially_checked_in"])
     .limit(1)
     .get();
 
@@ -227,7 +227,7 @@ export async function getEventAttendeePreview(
   const ticketSnap = await db
     .collection("tickets")
     .where("event_id", "==", eventId)
-    .where("status", "in", ["confirmed", "checked_in"])
+    .where("status", "in", ["confirmed", "checked_in", "partially_checked_in"])
     .get();
 
   // Also fetch RSVPs

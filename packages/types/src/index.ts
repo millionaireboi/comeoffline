@@ -305,6 +305,7 @@ export type TicketStatus =
   | "confirmed"
   | "cancelled"
   | "checked_in"
+  | "partially_checked_in"
   | "no_show";
 
 export interface TicketAddOn {
@@ -342,6 +343,9 @@ export interface Ticket {
   payment_url?: string; // Razorpay payment URL for redirect
   purchased_at: string;
   checked_in_at?: string;
+  checked_in_by?: string;
+  checked_in_headcount?: number;
+  check_in_log?: Array<{ at: string; by: string; headcount: number }>;
 }
 
 // ── Handoff Token ────────────────────────────────

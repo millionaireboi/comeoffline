@@ -1,12 +1,28 @@
 import { getDb } from "../config/firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 
+/** Convert a date string + time in a given timezone to a UTC ISO string */
+function toUtcIso(dateStr: string, time: string, timezone: string): string {
+  try {
+    // Build a locale string in the target timezone, then find the offset
+    const local = new Date(`${dateStr}T${time}`);
+    const utcStr = local.toLocaleString("en-US", { timeZone: "UTC" });
+    const tzStr = local.toLocaleString("en-US", { timeZone: timezone });
+    const offsetMs = new Date(utcStr).getTime() - new Date(tzStr).getTime();
+    return new Date(local.getTime() + offsetMs).toISOString();
+  } catch {
+    // Fallback: treat as UTC if timezone is invalid
+    return `${dateStr}T${time}Z`;
+  }
+}
+
 interface BookingsFilters {
   event_id?: string;
   status?: string;
   search?: string;
   from_date?: string;
   to_date?: string;
+  timezone?: string;
   sort_by?: "date" | "price" | "status";
   sort_dir?: "asc" | "desc";
   page?: number;
@@ -54,6 +70,7 @@ export async function getFilteredTickets(filters: BookingsFilters) {
     search,
     from_date,
     to_date,
+    timezone = "Asia/Kolkata",
     sort_by = "date",
     sort_dir = "desc",
     page = 1,
@@ -72,12 +89,18 @@ export async function getFilteredTickets(filters: BookingsFilters) {
   }
 
   if (from_date) {
-    query = query.where("purchased_at", ">=", from_date);
+    // Convert date-only string to start-of-day in the given timezone
+    const startDate = from_date.includes("T")
+      ? from_date
+      : toUtcIso(from_date, "00:00:00.000", timezone);
+    query = query.where("purchased_at", ">=", startDate);
   }
 
   if (to_date) {
-    // Add end-of-day to include the full day
-    const endDate = to_date.includes("T") ? to_date : `${to_date}T23:59:59.999Z`;
+    // Convert date-only string to end-of-day in the given timezone
+    const endDate = to_date.includes("T")
+      ? to_date
+      : toUtcIso(to_date, "23:59:59.999", timezone);
     query = query.where("purchased_at", "<=", endDate);
   }
 
@@ -181,7 +204,7 @@ export async function getBookingsStats(eventId?: string) {
   // Fetch all confirmed/checked_in tickets
   let query: FirebaseFirestore.Query = db
     .collection("tickets")
-    .where("status", "in", ["confirmed", "checked_in"]);
+    .where("status", "in", ["confirmed", "checked_in", "partially_checked_in"]);
 
   if (eventId) {
     query = query.where("event_id", "==", eventId);
@@ -281,6 +304,7 @@ export async function getBookingsStats(eventId?: string) {
 export async function adminCancelTicket(
   ticketId: string,
   reason?: string,
+  adminId?: string,
 ): Promise<{ success: boolean; error?: string }> {
   const db = await getDb();
   return db.runTransaction(async (tx) => {
@@ -304,6 +328,7 @@ export async function adminCancelTicket(
       status: "cancelled",
       cancelled_at: new Date().toISOString(),
       cancelled_reason: reason || "admin_cancelled",
+      ...(adminId && { cancelled_by: adminId }),
     });
 
     if (wasConfirmed) {
@@ -509,29 +534,26 @@ export async function adminConfirmTicket(
   });
 }
 
-/** Export tickets as CSV string */
-export async function exportTicketsCSV(filters: BookingsFilters): Promise<string> {
-  // Reuse the filtered tickets logic but without pagination
-  const allFilters = { ...filters, page: 1, limit: 10000 };
-  const { tickets } = await getFilteredTickets(allFilters);
+/** CSV column headers for ticket export */
+export const CSV_HEADERS = [
+  "Ticket ID",
+  "User Name",
+  "User Handle",
+  "Event",
+  "Tier",
+  "Price (INR)",
+  "Quantity",
+  "Status",
+  "Add-ons",
+  "Section/Seat",
+  "Pickup Point",
+  "Purchased At",
+  "Checked In At",
+];
 
-  const headers = [
-    "Ticket ID",
-    "User Name",
-    "User Handle",
-    "Event",
-    "Tier",
-    "Price (INR)",
-    "Quantity",
-    "Status",
-    "Add-ons",
-    "Section/Seat",
-    "Pickup Point",
-    "Purchased At",
-    "Checked In At",
-  ];
-
-  const rows = tickets.map((t) => [
+/** Format a single ticket as a CSV row */
+export function ticketToCsvRow(t: TicketWithUser): string {
+  return [
     t.id,
     escapeCsv(t.user_name || ""),
     escapeCsv(t.user_handle || ""),
@@ -545,9 +567,28 @@ export async function exportTicketsCSV(filters: BookingsFilters): Promise<string
     t.pickup_point || "",
     t.purchased_at || "",
     t.checked_in_at || "",
-  ]);
+  ].join(",");
+}
 
-  return [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+/** Stream CSV export in paginated chunks — writes directly to a writable stream */
+export async function streamTicketsCSV(
+  filters: BookingsFilters,
+  write: (chunk: string) => boolean | void,
+): Promise<void> {
+  write(CSV_HEADERS.join(",") + "\n");
+
+  const PAGE_SIZE = 500;
+  let page = 1;
+  let hasMore = true;
+
+  while (hasMore) {
+    const { tickets, total_pages } = await getFilteredTickets({ ...filters, page, limit: PAGE_SIZE });
+    for (const t of tickets) {
+      write(ticketToCsvRow(t) + "\n");
+    }
+    hasMore = page < total_pages;
+    page++;
+  }
 }
 
 function escapeCsv(value: string): string {

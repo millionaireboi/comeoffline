@@ -5,7 +5,7 @@ import {
   getBookingsStats,
   adminCancelTicket,
   adminConfirmTicket,
-  exportTicketsCSV,
+  streamTicketsCSV,
 } from "../../services/bookings.service";
 import { withCache, invalidateCacheByPrefix, isQuotaError } from "../../utils/cache";
 
@@ -20,6 +20,7 @@ router.get("/", requireAdmin, async (req: AuthRequest, res) => {
       search: req.query.search as string | undefined,
       from_date: req.query.from_date as string | undefined,
       to_date: req.query.to_date as string | undefined,
+      timezone: (req.query.timezone as string) || undefined,
       sort_by: (req.query.sort_by as "date" | "price" | "status") || "date",
       sort_dir: (req.query.sort_dir as "asc" | "desc") || "desc",
       page: parseInt(req.query.page as string) || 1,
@@ -66,15 +67,15 @@ router.get("/export", requireAdmin, async (req: AuthRequest, res) => {
       search: req.query.search as string | undefined,
       from_date: req.query.from_date as string | undefined,
       to_date: req.query.to_date as string | undefined,
+      timezone: (req.query.timezone as string) || undefined,
       sort_by: (req.query.sort_by as "date" | "price" | "status") || "date",
       sort_dir: (req.query.sort_dir as "asc" | "desc") || "desc",
     };
 
-    const csv = await exportTicketsCSV(filters);
-
     res.setHeader("Content-Type", "text/csv");
     res.setHeader("Content-Disposition", `attachment; filename=bookings-${new Date().toISOString().split("T")[0]}.csv`);
-    res.send(csv);
+    await streamTicketsCSV(filters, (chunk) => res.write(chunk));
+    res.end();
   } catch (err) {
     console.error("[admin/bookings] export error:", err);
     res.status(500).json({ success: false, error: "Internal server error" });
@@ -85,7 +86,7 @@ router.get("/export", requireAdmin, async (req: AuthRequest, res) => {
 router.post("/:id/cancel", requireAdmin, async (req: AuthRequest, res) => {
   try {
     const { reason } = req.body || {};
-    const result = await adminCancelTicket(req.params.id as string, reason);
+    const result = await adminCancelTicket(req.params.id as string, reason, req.uid);
 
     if (!result.success) {
       res.status(400).json({ success: false, error: result.error });

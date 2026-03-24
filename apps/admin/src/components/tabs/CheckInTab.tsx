@@ -341,16 +341,21 @@ export function CheckInTab() {
   const startCamera = useCallback(async () => {
     if (!cameraContainerRef.current) return;
 
-    // Show container first so the viewport has dimensions for the video feed
-    setCameraActive(true);
-
-    // Wait for the DOM to update before starting the scanner
-    await new Promise((r) => setTimeout(r, 100));
-
     try {
       const { Html5Qrcode } = await import("html5-qrcode");
       const scanner = new Html5Qrcode("qr-camera-viewport");
       html5QrScannerRef.current = scanner;
+
+      // Request camera permission in the same user-gesture call stack (Safari requirement)
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" },
+      });
+      // Stop the temporary stream — html5-qrcode will open its own
+      stream.getTracks().forEach((t) => t.stop());
+
+      // Now safe to show container and wait for DOM
+      setCameraActive(true);
+      await new Promise((r) => setTimeout(r, 100));
 
       await scanner.start(
         { facingMode: "environment", aspectRatio: { ideal: 1 } },
@@ -590,7 +595,7 @@ export function CheckInTab() {
             {/* Camera viewport */}
             <div
               ref={cameraContainerRef}
-              className={`mb-3 overflow-hidden rounded-lg ${cameraActive ? "" : "hidden"}`}
+              className={`overflow-hidden rounded-lg transition-all ${cameraActive ? "mb-3" : "h-0"}`}
             >
               <div id="qr-camera-viewport" className="w-full" />
             </div>

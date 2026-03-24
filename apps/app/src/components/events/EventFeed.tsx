@@ -22,21 +22,10 @@ export function EventFeed() {
   const [detailEvent, setDetailEvent] = useState<Event | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [showQuizGate, setShowQuizGate] = useState(false);
-  const [showQuizPrompt, setShowQuizPrompt] = useState(false);
   const [nudgeDismissed, setNudgeDismissed] = useState(() => {
     try { return localStorage.getItem("co_profile_nudge_dismissed") === "1"; } catch { return false; }
   });
   const profileIncomplete = user && (!user.interests || user.interests.length === 0 || !user.bio);
-  const [pendingPurchase, setPendingPurchase] = useState<{
-    event: Event;
-    tierId: string;
-    pickupPoint?: string;
-    timeSlotId?: string;
-    addOns?: Array<{ addon_id: string; name: string; quantity: number; price: number; spot_id?: string; spot_name?: string; spot_seat_id?: string; spot_seat_label?: string }>;
-    seatId?: string;
-    sectionId?: string;
-    spotSeatId?: string;
-  } | null>(null);
 
   const fetchEvents = useCallback(async () => {
     try {
@@ -136,7 +125,7 @@ export function EventFeed() {
     [actionLoading, getIdToken, setCurrentEvent, setActiveTicket, setStage],
   );
 
-  // Ticket purchase flow — gates on sign quiz if user hasn't taken it yet
+  // Ticket purchase flow — quiz is no longer required before booking
   const handleTicketPurchase = useCallback(
     async (
       event: Event,
@@ -148,26 +137,10 @@ export function EventFeed() {
       sectionId?: string,
       spotSeatId?: string,
     ) => {
-      // One-time gate: if user has no sign, show explainer prompt first
-      if (!user?.sign) {
-        setPendingPurchase({ event, tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId });
-        setShowQuizPrompt(true);
-        return;
-      }
       await executePurchase(event, tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId);
     },
-    [user?.sign, executePurchase],
+    [executePurchase],
   );
-
-  // After quiz completes from checkout gate, resume the pending purchase
-  const handleQuizGateComplete = useCallback(() => {
-    setShowQuizGate(false);
-    if (pendingPurchase) {
-      const p = pendingPurchase;
-      setPendingPurchase(null);
-      executePurchase(p.event, p.tierId, p.pickupPoint, p.timeSlotId, p.addOns, p.seatId, p.sectionId, p.spotSeatId);
-    }
-  }, [pendingPurchase, executePurchase]);
 
   if (loading) {
     return (
@@ -297,47 +270,18 @@ export function EventFeed() {
         />
       )}
 
-      {/* Quiz prompt modal — shown before payment when user hasn't taken quiz */}
-      {showQuizPrompt && (
-        <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/70 px-6">
-          <div
-            className="w-full max-w-[340px] rounded-[20px] p-6 text-center"
-            style={{ background: "#1A1714", border: "1px solid rgba(212,165,116,0.2)" }}
-          >
-            <span className="mb-3 inline-block text-4xl">✦</span>
-            <h3 className="mb-2 font-serif text-[22px] text-cream">
-              one quick thing
-            </h3>
-            <p className="mb-6 font-sans text-[14px] leading-[1.6] text-muted">
-              we use your comeoffline sign to seat you with
-              compatible people at the event. takes 2 mins.
-            </p>
-            <button
-              onClick={() => {
-                setShowQuizPrompt(false);
-                setShowQuizGate(true);
-              }}
-              className="mb-3 w-full rounded-full bg-caramel py-3.5 font-sans text-[15px] font-medium text-gate-black transition-all active:scale-95"
-            >
-              take the quiz →
-            </button>
-            <button
-              onClick={() => {
-                setShowQuizPrompt(false);
-                setPendingPurchase(null);
-              }}
-              className="font-mono text-[12px] text-muted transition-colors"
-            >
-              go back
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Quiz gate overlay — shown once before first ticket purchase or from banner */}
+      {/* Quiz gate overlay — shown from banner */}
       {showQuizGate && (
-        <div className="fixed inset-0 z-[600] overflow-y-auto">
-          <SignQuiz onComplete={handleQuizGateComplete} mode={pendingPurchase ? "pre_checkout" : "onboarding"} />
+        <div className="fixed inset-0 z-[600] overflow-y-auto" style={{ paddingBottom: "calc(56px + env(safe-area-inset-bottom, 0px))" }}>
+          {/* Close button */}
+          <button
+            onClick={() => setShowQuizGate(false)}
+            className="fixed right-5 top-5 z-[610] flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-sm text-cream backdrop-blur-sm"
+            style={{ top: "calc(1.25rem + env(safe-area-inset-top, 0px))" }}
+          >
+            ✕
+          </button>
+          <SignQuiz onComplete={() => setShowQuizGate(false)} mode="onboarding" />
         </div>
       )}
     </>

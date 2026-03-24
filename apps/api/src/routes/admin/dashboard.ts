@@ -2,6 +2,7 @@ import { Router } from "express";
 import { requireAdmin } from "../../middleware/auth";
 import { getDb } from "../../config/firebase-admin";
 import { withCache, isQuotaError } from "../../utils/cache";
+import { getAllEvents } from "../../services/events.service";
 
 const router = Router();
 
@@ -71,6 +72,33 @@ router.get("/dashboard-stats", requireAdmin, async (_req, res) => {
     console.error("[admin/dashboard] stats error:", err);
     const status = isQuotaError(err) ? 429 : 500;
     res.status(status).json({ success: false, error: isQuotaError(err) ? "Firestore quota exceeded. Try again in a few minutes." : "Internal server error" });
+  }
+});
+
+/** GET /api/admin/dashboard-init — Batch endpoint: stats + events in one request */
+router.get("/dashboard-init", requireAdmin, async (_req, res) => {
+  try {
+    const [stats, events] = await Promise.all([
+      withCache(fetchDashboardStats, {
+        key: "admin-dashboard-stats",
+        ttl: 15 * 60 * 1000,
+      }),
+      withCache(() => getAllEvents(), {
+        key: "admin-events",
+        ttl: 5 * 60 * 1000,
+      }),
+    ]);
+
+    res.json({ success: true, data: { stats, events } });
+  } catch (err) {
+    console.error("[admin/dashboard] init error:", err);
+    const status = isQuotaError(err) ? 429 : 500;
+    res.status(status).json({
+      success: false,
+      error: isQuotaError(err)
+        ? "Firestore quota exceeded. Try again in a few minutes."
+        : "Internal server error",
+    });
   }
 });
 

@@ -104,7 +104,10 @@ function saveFailedQueue(queue: QueuedCheckIn[]) {
 
 export function CheckInTab() {
   const { getIdToken } = useAuth();
-  const { data: allEvents } = useApi<Event[]>("/api/admin/events");
+  const { data: allEvents } = useApi<Event[]>("/api/admin/events", {
+    dedupingInterval: 2 * 60 * 1000,
+    cacheTime: 10 * 60 * 1000,
+  });
   const events = (allEvents || []).filter((e) => e.status === "live" || e.status === "upcoming");
   const [eventId, setEventId] = useState("");
   const [tickets, setTickets] = useState<TicketData[]>([]);

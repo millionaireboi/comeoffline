@@ -116,10 +116,16 @@ export function BookingsTab() {
   const [showRevenue, setShowRevenue] = useState(false);
 
   // Events list for filter dropdown
-  const { data: events } = useApi<Event[]>("/api/admin/events");
+  const { data: events } = useApi<Event[]>("/api/admin/events", {
+    dedupingInterval: 2 * 60 * 1000,
+    cacheTime: 10 * 60 * 1000,
+  });
 
   // Stats
-  const { data: stats, refetch: refetchStats } = useApi<BookingsStats>("/api/admin/bookings/stats");
+  const { data: stats, refetch: refetchStats } = useApi<BookingsStats>("/api/admin/bookings/stats", {
+    dedupingInterval: 2 * 60 * 1000,
+    cacheTime: 10 * 60 * 1000,
+  });
 
   // Fetch tickets
   const fetchTickets = useCallback(async () => {

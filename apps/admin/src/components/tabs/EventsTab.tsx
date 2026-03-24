@@ -10,7 +10,10 @@ import { EventPreview } from "@/components/EventPreview";
 import type { Event } from "@comeoffline/types";
 
 export function EventsTab() {
-  const { data: events, loading, refetch } = useApi<Event[]>("/api/admin/events");
+  const { data: events, loading, refetch } = useApi<Event[]>("/api/admin/events", {
+    dedupingInterval: 2 * 60 * 1000,
+    cacheTime: 10 * 60 * 1000,
+  });
   const [mode, setMode] = useState<"list" | "create" | "edit">("list");
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
   const [expandedPickups, setExpandedPickups] = useState<string | null>(null);

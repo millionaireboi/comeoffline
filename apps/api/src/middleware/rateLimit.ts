@@ -104,12 +104,13 @@ export const formLimiter = rateLimit({
 
 /**
  * Admin rate limiter
- * - 2000 requests per 15 minutes per user
- * - Higher limit since admin panels are data-heavy
+ * - 5000 requests per 15 minutes per user
+ * - High limit since admin panels are data-heavy and authenticated single-user
+ * - Real protection comes from backend Firestore cache, not request count
  */
 export const adminLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 2000,
+  limit: 5000,
   keyGenerator: keyByUser,
   skip: skipInDev,
   message: {

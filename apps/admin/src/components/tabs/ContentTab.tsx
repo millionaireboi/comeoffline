@@ -177,7 +177,10 @@ function NotificationComposer() {
 
 export function ContentTab() {
   const { getIdToken } = useAuth();
-  const { data: events, loading: loadingEvents } = useApi<EventOption[]>("/api/admin/events");
+  const { data: events, loading: loadingEvents } = useApi<EventOption[]>("/api/admin/events", {
+    dedupingInterval: 2 * 60 * 1000,
+    cacheTime: 10 * 60 * 1000,
+  });
   const [eventId, setEventId] = useState("");
   const [polaroidUrl, setPolaroidUrl] = useState("");
   const [polaroidCaption, setPolaroidCaption] = useState("");

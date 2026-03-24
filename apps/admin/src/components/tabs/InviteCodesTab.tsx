@@ -45,6 +45,8 @@ const TYPE_LABELS: Record<string, string> = {
 export function InviteCodesTab() {
   const { data: codes, loading, error, refetch } = useApi<VouchCode[]>("/api/admin/vouch-codes", {
     refreshInterval: 0,
+    dedupingInterval: 2 * 60 * 1000,
+    cacheTime: 5 * 60 * 1000,
   });
   const [creating, setCreating] = useState(false);
   const [showForm, setShowForm] = useState(false);

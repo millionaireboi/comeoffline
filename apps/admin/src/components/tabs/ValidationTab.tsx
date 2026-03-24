@@ -27,7 +27,10 @@ interface ValidationQueueItem {
 
 export function ValidationTab() {
   const { getIdToken } = useAuth();
-  const { data: events } = useApi<Event[]>("/api/admin/events");
+  const { data: events } = useApi<Event[]>("/api/admin/events", {
+    dedupingInterval: 2 * 60 * 1000,
+    cacheTime: 10 * 60 * 1000,
+  });
   const [queue, setQueue] = useState<ValidationQueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);

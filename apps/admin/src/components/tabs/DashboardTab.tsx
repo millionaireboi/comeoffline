@@ -6,9 +6,18 @@ import { instrumentSerif } from "@/lib/constants";
 import { TabLoadingSkeleton } from "@/components/Skeleton";
 import type { Event } from "@comeoffline/types";
 
+interface DashboardInit {
+  stats: Record<string, number | string>;
+  events: Event[];
+}
+
 export function DashboardTab() {
-  const { data: stats, loading: statsLoading, error: statsError } = useApi<Record<string, number | string>>("/api/admin/dashboard-stats");
-  const { data: events } = useApi<Event[]>("/api/admin/events");
+  const { data: initData, loading: statsLoading, error: statsError } = useApi<DashboardInit>(
+    "/api/admin/dashboard-init",
+    { dedupingInterval: 5 * 60 * 1000, cacheTime: 15 * 60 * 1000 }
+  );
+  const stats = initData?.stats ?? null;
+  const events = initData?.events ?? null;
 
   const items = [
     { label: "total members", value: stats?.total_members ?? "—", emoji: "👥" },

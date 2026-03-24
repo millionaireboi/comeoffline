@@ -7,8 +7,11 @@ interface UseApiOptions {
   autoFetch?: boolean;
   /** Refresh interval in ms (0 = no auto-refresh) */
   refreshInterval?: number;
-  /** Dedupe requests within this window (ms) */
+  /** Don't refetch if cached data is younger than this (ms). Default: 30000 */
   dedupingInterval?: number;
+  /** Serve stale cache up to this age (ms) while revalidating in background.
+   *  Must be >= dedupingInterval. Default: same as dedupingInterval. */
+  cacheTime?: number;
 }
 
 interface UseApiReturn<T> {
@@ -24,7 +27,7 @@ const cache = new Map<string, { data: unknown; timestamp: number }>();
 const pendingRequests = new Map<string, Promise<unknown>>();
 
 /**
- * Production-ready data fetching hook with caching, deduping, and auto-refresh
+ * Production-ready data fetching hook with caching, deduping, stale-while-revalidate, and auto-refresh
  * Similar to SWR but lighter weight
  */
 export function useApi<T>(
@@ -35,7 +38,10 @@ export function useApi<T>(
     autoFetch = true,
     refreshInterval = 0,
     dedupingInterval = 30000,
+    cacheTime,
   } = options;
+
+  const effectiveCacheTime = Math.max(cacheTime ?? dedupingInterval, dedupingInterval);
 
   const { getIdToken } = useAuth();
   const [data, setData] = useState<T | null>(null);
@@ -58,14 +64,27 @@ export function useApi<T>(
       return;
     }
 
-    // Check cache first
+    // Check cache
     const cached = cache.get(endpoint);
-    if (cached && Date.now() - cached.timestamp < dedupingInterval) {
+    const cacheAge = cached ? Date.now() - cached.timestamp : Infinity;
+
+    // Fresh cache — return without fetching
+    if (cached && cacheAge < dedupingInterval) {
       if (mountedRef.current) {
         setData(cached.data as T);
         setLoading(false);
       }
       return;
+    }
+
+    // Stale-while-revalidate — serve stale data immediately, revalidate in background
+    if (cached && cacheAge < effectiveCacheTime) {
+      if (mountedRef.current) {
+        setData(cached.data as T);
+        setLoading(false);
+      }
+      // Continue to revalidate in background (don't return)
+      showLoading = false;
     }
 
     // Check for pending request (deduping)
@@ -133,7 +152,7 @@ export function useApi<T>(
         setLoading(false);
       }
     }
-  }, [endpoint, dedupingInterval, getIdToken]);
+  }, [endpoint, dedupingInterval, effectiveCacheTime, getIdToken]);
 
   // Initial fetch
   useEffect(() => {

@@ -50,7 +50,23 @@ app.use(express.json({
 // Public read-only endpoints — exempt from rate limiting (high traffic, no auth)
 app.use("/api/events/public", publicEventsRouter);
 
-// Apply general rate limiting to all other routes
+// Admin routes — only adminLimiter, exempt from generalLimiter to avoid double-counting
+app.use("/api/admin/events", adminLimiter, adminEventsRouter);
+app.use("/api/admin/events", adminLimiter, adminContentRouter);
+app.use("/api/admin/applications", adminLimiter, applicationsRouter);
+app.use("/api/admin/members", adminLimiter, adminMembersRouter);
+app.use("/api/admin/settings", adminLimiter, adminSettingsRouter);
+app.use("/api/admin", adminLimiter, adminValidationRouter);
+app.use("/api/admin", adminLimiter, adminDashboardRouter);
+app.use("/api/admin", adminLimiter, adminNotificationsRouter);
+app.use("/api/admin", adminLimiter, adminVouchRouter);
+app.use("/api/admin/contact", adminLimiter, contactRouter);
+app.use("/api/admin/brands", adminLimiter, brandsRouter);
+app.use("/api/admin", adminLimiter, adminUploadRouter);
+app.use("/api/admin", adminLimiter, adminFloorplanRouter);
+app.use("/api/admin/bookings", adminLimiter, adminBookingsRouter);
+
+// Apply general rate limiting to all non-admin routes
 app.use("/api", generalLimiter);
 
 // Routes
@@ -64,24 +80,10 @@ app.use("/api/vouch-codes", vouchRouter);
 app.use("/api/users", profileRouter);
 app.use("/api/chat", chatRouter);
 app.use("/api/applications", formLimiter, applicationsRouter);
-app.use("/api/admin/events", adminLimiter, adminEventsRouter);
-app.use("/api/admin/events", adminLimiter, adminContentRouter);
-app.use("/api/admin/applications", adminLimiter, applicationsRouter);
-app.use("/api/admin/members", adminLimiter, adminMembersRouter);
-app.use("/api/admin/settings", adminLimiter, adminSettingsRouter);
 app.use("/api/tickets", ticketsRouter);
 app.use("/api/events", pollsRouter);
-app.use("/api/admin", adminLimiter, adminValidationRouter);
-app.use("/api/admin", adminLimiter, adminDashboardRouter);
-app.use("/api/admin", adminLimiter, adminNotificationsRouter);
-app.use("/api/admin", adminLimiter, adminVouchRouter);
 app.use("/api/contact", formLimiter, contactRouter);
 app.use("/api/brands", formLimiter, brandsRouter);
-app.use("/api/admin/contact", adminLimiter, contactRouter);
-app.use("/api/admin/brands", adminLimiter, brandsRouter);
-app.use("/api/admin", adminLimiter, adminUploadRouter);
-app.use("/api/admin", adminLimiter, adminFloorplanRouter);
-app.use("/api/admin/bookings", adminLimiter, adminBookingsRouter);
 app.use("/api/webhooks", webhooksRouter);
 
 // Error handling

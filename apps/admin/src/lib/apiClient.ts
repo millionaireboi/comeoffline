@@ -20,10 +20,11 @@ async function withRetry<T>(
     initialDelay = 1000,
     maxDelay = 10000,
     shouldRetry = (error: Error, attempt: number) => {
-      // Don't retry on client errors (4xx) except 429 (rate limit)
+      // Don't retry on client errors (4xx) — including 429 (rate limit)
+      // The useApi hook handles 429 gracefully with cached data fallback
       if ('status' in error && typeof error.status === 'number') {
         const status = error.status;
-        if (status >= 400 && status < 500 && status !== 429) {
+        if (status >= 400 && status < 500) {
           return false;
         }
       }

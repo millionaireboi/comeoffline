@@ -34,7 +34,7 @@ export function useApi<T>(
   const {
     autoFetch = true,
     refreshInterval = 0,
-    dedupingInterval = 2000,
+    dedupingInterval = 10000,
   } = options;
 
   const { getIdToken } = useAuth();

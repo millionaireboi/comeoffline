@@ -48,68 +48,125 @@ export function CollapsibleHeader({
     chips.push({ icon: null, text: `₹${cheapestPrice}+`, accent: true });
   }
 
+  const hasCover = !!event.cover_url;
+
   return (
-    <div
-      className="relative shrink-0 overflow-hidden transition-[padding] duration-300"
-      style={{
-        padding: scrolled ? "10px 20px 8px" : "16px 20px 14px",
-        background: `linear-gradient(135deg, ${event.accent || "#D4A574"}40 0%, ${event.accent || "#D4A574"}15 50%, #FAF6F0 100%)`,
-        borderBottom: `1px solid ${event.accent || "#D4A574"}20`,
-      }}
-    >
-      {/* Top accent line */}
-      <div
-        className="absolute left-0 right-0 top-0 h-[3px]"
-        style={{
-          background: `linear-gradient(90deg, ${event.accent || "#D4A574"}, ${event.accent_dark || "#B8845A"})`,
-        }}
-      />
-
-      {/* Ghost emoji */}
-      <div
-        className="pointer-events-none absolute -top-[30px] -right-4 font-serif text-[130px] font-normal leading-[0.9] text-near-black transition-opacity duration-300"
-        style={{ opacity: scrolled ? 0 : 0.03 }}
-      >
-        {event.emoji}
-      </div>
-
-      {/* EXPANDED state */}
-      <div
-        className="overflow-hidden transition-all duration-300"
-        style={{
-          maxHeight: scrolled ? "0px" : "200px",
-          opacity: scrolled ? 0 : 1,
-        }}
-      >
-        {/* Top row: tag + close */}
-        <div className="mb-2.5 flex items-center justify-between">
-          <span
-            className="rounded-full px-2.5 py-0.5 font-mono text-[9px] font-medium uppercase tracking-[1.5px]"
-            style={{
-              color: event.accent_dark || "#B8845A",
-              background: (event.accent || "#D4A574") + "30",
-            }}
-          >
-            {event.tag}
-          </span>
-          <div className="flex items-center gap-1.5">
+    <div className="relative shrink-0 overflow-hidden">
+      {/* Cover media */}
+      {hasCover && (
+        <div
+          className="relative overflow-hidden transition-all duration-300"
+          style={{
+            maxHeight: scrolled ? "0px" : "200px",
+            opacity: scrolled ? 1 : 1,
+          }}
+        >
+          {event.cover_type === "video" ? (
+            <video
+              src={event.cover_url}
+              className="h-[200px] w-full object-cover"
+              muted
+              loop
+              playsInline
+              autoPlay
+              preload="metadata"
+            />
+          ) : (
+            <img
+              src={event.cover_url}
+              alt={event.title}
+              className="h-[200px] w-full object-cover"
+            />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/20" />
+          {/* Top buttons over cover */}
+          <div className="absolute right-3 top-3 flex items-center gap-1.5">
             <button
               onClick={() => shareEvent(event, track)}
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs text-warm-brown"
-              style={{ background: "rgba(26,23,21,0.08)" }}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-black/40 text-xs text-white backdrop-blur-sm"
               aria-label="Share event"
             >
               ↗
             </button>
             <button
               onClick={onClose}
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs text-warm-brown"
-              style={{ background: "rgba(26,23,21,0.08)" }}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-black/40 text-xs text-white backdrop-blur-sm"
             >
               ✕
             </button>
           </div>
         </div>
+      )}
+
+      <div
+        className="relative transition-[padding] duration-300"
+        style={{
+          padding: scrolled ? "10px 20px 8px" : "16px 20px 14px",
+          background: hasCover
+            ? "#FAF6F0"
+            : `linear-gradient(135deg, ${event.accent || "#D4A574"}40 0%, ${event.accent || "#D4A574"}15 50%, #FAF6F0 100%)`,
+          borderBottom: `1px solid ${event.accent || "#D4A574"}20`,
+        }}
+      >
+        {/* Top accent line (only when no cover) */}
+        {!hasCover && (
+          <div
+            className="absolute left-0 right-0 top-0 h-[3px]"
+            style={{
+              background: `linear-gradient(90deg, ${event.accent || "#D4A574"}, ${event.accent_dark || "#B8845A"})`,
+            }}
+          />
+        )}
+
+        {/* Ghost emoji (only when no cover) */}
+        {!hasCover && (
+          <div
+            className="pointer-events-none absolute -top-[30px] -right-4 font-serif text-[130px] font-normal leading-[0.9] text-near-black transition-opacity duration-300"
+            style={{ opacity: scrolled ? 0 : 0.03 }}
+          >
+            {event.emoji}
+          </div>
+        )}
+
+        {/* EXPANDED state */}
+        <div
+          className="overflow-hidden transition-all duration-300"
+          style={{
+            maxHeight: scrolled ? "0px" : "200px",
+            opacity: scrolled ? 0 : 1,
+          }}
+        >
+          {/* Top row: tag + close */}
+          <div className="mb-2.5 flex items-center justify-between">
+            <span
+              className="rounded-full px-2.5 py-0.5 font-mono text-[9px] font-medium uppercase tracking-[1.5px]"
+              style={{
+                color: event.accent_dark || "#B8845A",
+                background: (event.accent || "#D4A574") + "30",
+              }}
+            >
+              {event.tag}
+            </span>
+            {!hasCover && (
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => shareEvent(event, track)}
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs text-warm-brown"
+                  style={{ background: "rgba(26,23,21,0.08)" }}
+                  aria-label="Share event"
+                >
+                  ↗
+                </button>
+                <button
+                  onClick={onClose}
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs text-warm-brown"
+                  style={{ background: "rgba(26,23,21,0.08)" }}
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+          </div>
 
         {/* Title + Emoji */}
         <div className="mb-2.5 flex items-center justify-between gap-2.5">
@@ -198,6 +255,7 @@ export function CollapsibleHeader({
           >
             ✕
           </button>
+        </div>
         </div>
       </div>
     </div>

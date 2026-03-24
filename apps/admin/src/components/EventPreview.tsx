@@ -149,11 +149,34 @@ function DetailView({ event }: { event: Event }) {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
+      {/* Cover media */}
+      {event.cover_url && (
+        <div className="relative shrink-0">
+          {event.cover_type === "video" ? (
+            <video
+              src={event.cover_url}
+              className="h-[180px] w-full object-cover"
+              muted
+              loop
+              playsInline
+              autoPlay
+            />
+          ) : (
+            <img
+              src={event.cover_url}
+              alt={event.title}
+              className="h-[180px] w-full object-cover"
+            />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/20" />
+        </div>
+      )}
+
       {/* Header — always expanded in preview */}
-      <div className="relative shrink-0 overflow-hidden" style={{ padding: "16px 20px 14px", background: `linear-gradient(135deg, ${accent}40 0%, ${accent}15 50%, #FAF6F0 100%)`, borderBottom: `1px solid ${accent}20` }}>
-        <div className="absolute left-0 right-0 top-0 h-[3px]" style={{ background: `linear-gradient(90deg, ${accent}, ${accentDark})` }} />
+      <div className="relative shrink-0 overflow-hidden" style={{ padding: "16px 20px 14px", background: event.cover_url ? "#FAF6F0" : `linear-gradient(135deg, ${accent}40 0%, ${accent}15 50%, #FAF6F0 100%)`, borderBottom: `1px solid ${accent}20` }}>
+        {!event.cover_url && <div className="absolute left-0 right-0 top-0 h-[3px]" style={{ background: `linear-gradient(90deg, ${accent}, ${accentDark})` }} />}
         {/* Ghost emoji */}
-        <div className="pointer-events-none absolute -right-4 -top-[30px] font-serif text-[130px] font-normal leading-[0.9] text-[#1A1715] opacity-[0.03]">{event.emoji}</div>
+        {!event.cover_url && <div className="pointer-events-none absolute -right-4 -top-[30px] font-serif text-[130px] font-normal leading-[0.9] text-[#1A1715] opacity-[0.03]">{event.emoji}</div>}
         {/* Tag + close */}
         <div className="mb-2.5 flex items-center justify-between">
           {event.tag && (

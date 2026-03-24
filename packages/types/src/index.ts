@@ -281,6 +281,8 @@ export interface Event {
   post_booking?: PostBookingContent;
   checkout?: CheckoutConfig;
   seating?: SeatingConfig;
+  cover_url?: string; // image or video URL for event cover
+  cover_type?: "image" | "video"; // media type of the cover
 }
 
 // ── RSVP ──────────────────────────────────────────

@@ -5,6 +5,7 @@ import type { Event, Zone, PickupPoint, TicketTier, TicketingConfig, PostBooking
 import { apiClient } from "@/lib/apiClient";
 import { EventPreview } from "@/components/EventPreview";
 import { ImageUpload } from "@/components/ImageUpload";
+import { MediaUpload } from "@/components/MediaUpload";
 
 // ── Types ────────────────────────────────────────
 
@@ -1793,6 +1794,8 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
   );
   const [floorPlanUrl, setFloorPlanUrl] = useState(event?.seating?.floor_plan_url || "");
   const [analyzingFloorPlan, setAnalyzingFloorPlan] = useState(false);
+  const [coverUrl, setCoverUrl] = useState(event?.cover_url || "");
+  const [coverType, setCoverType] = useState<"image" | "video">(event?.cover_type || "image");
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -1943,6 +1946,8 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
         floor_plan_url: seatingMode === "custom" ? (floorPlanUrl || undefined) : undefined,
         allow_choice: allowSeatChoice,
       } : undefined,
+      cover_url: coverUrl || undefined,
+      cover_type: coverUrl ? coverType : undefined,
       status: event?.status || "draft",
     } as Event;
   }
@@ -2067,6 +2072,8 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
         floor_plan_url: seatingMode === "custom" ? (floorPlanUrl || undefined) : undefined,
         allow_choice: allowSeatChoice,
       } : undefined,
+      cover_url: coverUrl || undefined,
+      cover_type: coverUrl ? coverType : undefined,
       status,
     };
 
@@ -2209,6 +2216,23 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
             event emoji
           </label>
           <EmojiPicker value={emoji} onChange={setEmoji} />
+        </div>
+
+        {/* Cover Image/Video */}
+        <div>
+          <label className="mb-2 block font-mono text-[10px] uppercase tracking-[2px] text-muted">
+            cover image / video
+          </label>
+          <MediaUpload
+            value={coverUrl}
+            mediaType={coverType}
+            onChange={(url, type) => { setCoverUrl(url); setCoverType(type); }}
+            onClear={() => { setCoverUrl(""); setCoverType("image"); }}
+            pathPrefix="events"
+          />
+          <p className="mt-1.5 font-mono text-[9px] text-muted/40">
+            shown at the top of the event card and detail page
+          </p>
         </div>
 
         {/* Description */}

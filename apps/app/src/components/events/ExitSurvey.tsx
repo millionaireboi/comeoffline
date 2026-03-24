@@ -39,7 +39,7 @@ export function ExitSurvey({ eventId, onDone }: ExitSurveyProps) {
       {/* Bottom sheet */}
       <div
         className="relative w-full max-w-[430px] rounded-t-3xl bg-cream px-6 pt-6"
-        style={{ paddingBottom: "max(2.5rem, env(safe-area-inset-bottom, 2.5rem))", animation: "chatSlideIn 0.35s cubic-bezier(0.16,1,0.3,1) both" }}
+        style={{ paddingBottom: "calc(2rem + 56px + env(safe-area-inset-bottom, 0px))", animation: "chatSlideIn 0.35s cubic-bezier(0.16,1,0.3,1) both" }}
       >
         {/* Close */}
         <div className="mb-4 flex items-center justify-between">

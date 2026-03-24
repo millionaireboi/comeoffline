@@ -1472,7 +1472,7 @@ export function CheckoutWizard({ event, onComplete, onClose, loading }: Checkout
         )}
 
         {/* CTA */}
-        <div className="border-t border-sand bg-cream px-6 pt-4" style={{ paddingBottom: "max(1.75rem, env(safe-area-inset-bottom, 1.75rem))" }}>
+        <div className="border-t border-sand bg-cream px-6 pt-4" style={{ paddingBottom: "calc(1.25rem + 56px + env(safe-area-inset-bottom, 0px))" }}>
           <button
             onClick={handleNext}
             disabled={!canProceed() || loading}

@@ -62,6 +62,7 @@ const nextConfig: NextConfig = {
               "font-src 'self' data:",
               `connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com ${apiUrl}${isDev ? " ws://localhost:*" : ""}`,
               "frame-src 'none'",
+              "media-src 'self' blob:",
               "object-src 'none'",
               "base-uri 'self'",
             ].join("; "),

@@ -353,8 +353,14 @@ export function CheckInTab() {
       html5QrScannerRef.current = scanner;
 
       await scanner.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 250, height: 250 } },
+        { facingMode: "environment", aspectRatio: { ideal: 1 } },
+        {
+          fps: 10,
+          qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+            const size = Math.min(viewfinderWidth, viewfinderHeight) * 0.7;
+            return { width: Math.floor(size), height: Math.floor(size) };
+          },
+        },
         (decodedText) => {
           processQrData(decodedText);
           // Brief pause to prevent rapid re-scans of the same code

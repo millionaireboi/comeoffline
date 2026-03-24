@@ -1,46 +1,36 @@
 /* eslint-disable no-restricted-globals */
 
 // Firebase Messaging Service Worker
-// importScripts must be called at the top level during installation
+// All scripts and Firebase init must happen at the top level so that
+// push/notificationclick handlers are registered during initial evaluation.
 importScripts("https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js");
 importScripts("https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js");
 
-let messagingInitialized = false;
-
-// Listen for Firebase config from the main thread
-self.addEventListener("message", (event) => {
-  if (event.data && event.data.type === "FIREBASE_CONFIG") {
-    initMessaging(event.data.config);
-  }
+firebase.initializeApp({
+  apiKey: "AIzaSyCCp_gK6gsaJW-zYgnh_ueOw1G2lQcc18U",
+  authDomain: "comeoffline-509fc.firebaseapp.com",
+  projectId: "comeoffline-509fc",
+  storageBucket: "comeoffline-509fc.firebasestorage.app",
+  messagingSenderId: "1081436766173",
+  appId: "1:1081436766173:web:82011fac8a8cd1c7a30034",
 });
 
-function initMessaging(config) {
-  if (messagingInitialized || !config || !config.projectId) return;
+const messaging = firebase.messaging();
 
-  try {
-    firebase.initializeApp(config);
-    const messaging = firebase.messaging();
+// Handle background push notifications
+messaging.onBackgroundMessage((payload) => {
+  const { title, body } = payload.notification || {};
+  if (!title) return;
 
-    // Handle background push notifications
-    messaging.onBackgroundMessage((payload) => {
-      const { title, body } = payload.notification || {};
-      if (!title) return;
-
-      self.registration.showNotification(title, {
-        body: body || "",
-        icon: "/icon-192.png",
-        badge: "/icon-192.png",
-        vibrate: [100, 50, 100],
-        data: payload.data || {},
-        actions: [{ action: "open", title: "Open" }],
-      });
-    });
-
-    messagingInitialized = true;
-  } catch (err) {
-    console.error("[sw] Failed to initialize Firebase messaging:", err);
-  }
-}
+  self.registration.showNotification(title, {
+    body: body || "",
+    icon: "/icon-192.png",
+    badge: "/icon-192.png",
+    vibrate: [100, 50, 100],
+    data: payload.data || {},
+    actions: [{ action: "open", title: "Open" }],
+  });
+});
 
 // Handle notification click — navigate to the app
 self.addEventListener("notificationclick", (event) => {

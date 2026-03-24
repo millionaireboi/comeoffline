@@ -1,4 +1,4 @@
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import type { Request } from "express";
 
 const isDev = process.env.NODE_ENV !== "production";
@@ -10,12 +10,12 @@ const skipInDev = isDev ? () => true : undefined;
 /**
  * Key generator that uses the authenticated user's UID when available,
  * falling back to IP for unauthenticated requests.
- * This prevents authenticated users behind the same IP from sharing a limit.
+ * Uses ipKeyGenerator for IPv6 normalization as required by express-rate-limit v7+.
  */
 function keyByUser(req: Request): string {
   const uid = (req as any).uid;
   if (uid) return `user:${uid}`;
-  return req.ip || "unknown";
+  return ipKeyGenerator(req.ip!);
 }
 
 /**

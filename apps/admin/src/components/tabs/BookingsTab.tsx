@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { formatDate as formatEventDate } from "@comeoffline/ui";
 import { useAuth } from "@/hooks/useAuth";
 import { useApi } from "@/hooks/useApi";
 import { API_URL, instrumentSerif, TICKET_STATUS_COLORS } from "@/lib/constants";
@@ -529,7 +530,7 @@ export function BookingsTab() {
                     {drawerTicket.event_emoji} {drawerTicket.event_title}
                   </p>
                   {drawerTicket.event_date && (
-                    <p className="mt-1 font-mono text-[10px] text-muted">{drawerTicket.event_date}</p>
+                    <p className="mt-1 font-mono text-[10px] text-muted">{formatEventDate(drawerTicket.event_date)}</p>
                   )}
                 </div>
 

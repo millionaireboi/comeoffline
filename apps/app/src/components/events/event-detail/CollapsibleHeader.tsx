@@ -1,5 +1,6 @@
 import { useAnalytics, EVENT_SHARED } from "@comeoffline/analytics";
 import type { Event } from "@comeoffline/types";
+import { formatDate } from "@comeoffline/ui";
 
 interface CollapsibleHeaderProps {
   event: Event;
@@ -39,7 +40,7 @@ export function CollapsibleHeader({
   const spotsLeft = event.total_spots - event.spots_taken;
 
   const chips: Array<{ icon: string | null; text: string; accent?: boolean }> = [
-    { icon: "📅", text: event.date },
+    { icon: "📅", text: formatDate(event.date) },
     { icon: "🕒", text: event.time },
     { icon: "👥", text: `${spotsLeft}/${event.total_spots}` },
   ];

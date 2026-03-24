@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { formatDate } from "@comeoffline/ui";
 import { useAuth } from "@/hooks/useAuth";
 import { API_URL } from "@/lib/constants";
 import { ImageUpload } from "@/components/ImageUpload";
@@ -301,7 +302,7 @@ export function ContentTab() {
             <option value="">Choose an event...</option>
             {events.map((event) => (
               <option key={event.id} value={event.id}>
-                {event.title} ({new Date(event.date).toLocaleDateString()}) • {event.status}
+                {event.title} ({formatDate(event.date)}) • {event.status}
               </option>
             ))}
           </select>

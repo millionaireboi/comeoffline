@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useAnalytics, TICKET_SHARED } from "@comeoffline/analytics";
+import { formatDate } from "@comeoffline/ui";
 import { useAppStore } from "@/store/useAppStore";
 import { Noise } from "@/components/shared/Noise";
 
@@ -78,7 +79,7 @@ export function CountdownScreen() {
           {currentEvent.title} {currentEvent.emoji}
         </h2>
         <p className="font-sans text-sm text-muted">
-          {currentEvent.date} &middot; {currentEvent.time}
+          {formatDate(currentEvent.date)} &middot; {currentEvent.time}
         </p>
       </div>
 

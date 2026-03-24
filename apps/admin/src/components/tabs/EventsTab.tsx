@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { formatDate } from "@comeoffline/ui";
 import { useApi } from "@/hooks/useApi";
 import { apiClient } from "@/lib/apiClient";
 import { instrumentSerif, EVENT_STATUS_COLORS } from "@/lib/constants";
@@ -86,7 +87,7 @@ export function EventsTab() {
                 <div>
                   <p className="font-sans text-base font-medium text-cream">{event.title}</p>
                   <p className="font-mono text-[10px] text-muted">
-                    {event.tag} &middot; {event.date}
+                    {event.tag} &middot; {formatDate(event.date)}
                   </p>
                 </div>
               </div>

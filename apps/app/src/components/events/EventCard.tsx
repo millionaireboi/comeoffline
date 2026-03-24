@@ -1,6 +1,7 @@
 "use client";
 
 import type { Event } from "@comeoffline/types";
+import { formatDate } from "@comeoffline/ui";
 import { SpotsBar } from "@/components/ui/SpotsBar";
 
 interface EventCardProps {
@@ -117,7 +118,7 @@ export function EventCard({ event, index, onOpen }: EventCardProps) {
 
         {/* Meta */}
         <div className="mb-4 flex flex-wrap gap-4">
-          <div className="font-sans text-[13px] text-soft-black">{event.date}</div>
+          <div className="font-sans text-[13px] text-soft-black">{formatDate(event.date)}</div>
           <div className="font-mono text-[11px] text-muted">
             venue drops in {daysUntilVenue}d
           </div>

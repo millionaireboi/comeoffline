@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { formatDate } from "@comeoffline/ui";
 import { useInView } from "@/hooks/useInView";
 import { P, API_URL } from "@/components/shared/P";
 
@@ -38,17 +39,6 @@ export function Events() {
     })();
   }, []);
 
-  const formatDate = (dateStr: string) => {
-    try {
-      return new Date(dateStr).toLocaleDateString("en-IN", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      });
-    } catch {
-      return dateStr;
-    }
-  };
 
   return (
     <section

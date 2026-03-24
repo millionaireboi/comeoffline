@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDate } from "@comeoffline/ui";
 import { useApi } from "@/hooks/useApi";
 import { instrumentSerif } from "@/lib/constants";
 import { TabLoadingSkeleton } from "@/components/Skeleton";
@@ -97,7 +98,7 @@ export function DashboardTab() {
                 <span className="text-xl">{ev.emoji}</span>
                 <div>
                   <div className="text-sm font-medium text-cream">{ev.title}</div>
-                  <div className="font-mono text-[10px] text-muted">{ev.date}</div>
+                  <div className="font-mono text-[10px] text-muted">{formatDate(ev.date)}</div>
                 </div>
               </div>
               <div className="text-right">

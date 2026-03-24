@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { formatDate } from "@comeoffline/ui";
 import { useAuth } from "@/hooks/useAuth";
 import { API_URL, MEMBER_STATUS_COLORS } from "@/lib/constants";
 import { TableRowSkeleton } from "@/components/Skeleton";
@@ -503,7 +504,7 @@ export function MembersTab() {
                                 {evt.status}
                               </span>
                               <p className="font-mono text-[9px] text-muted/50">
-                                {new Date(evt.date).toLocaleDateString()}
+                                {formatDate(evt.date)}
                               </p>
                             </div>
                           </div>

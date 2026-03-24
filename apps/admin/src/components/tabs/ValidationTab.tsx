@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { formatDate } from "@comeoffline/ui";
 import { useAuth } from "@/hooks/useAuth";
 import { instrumentSerif, API_URL } from "@/lib/constants";
 import { TableRowSkeleton } from "@/components/Skeleton";
@@ -135,7 +136,7 @@ export function ValidationTab() {
           <option value="">All events</option>
           {events.map((e) => (
             <option key={e.id} value={e.id}>
-              {e.title} ({new Date(e.date).toLocaleDateString()}) • {e.status}
+              {e.title} ({formatDate(e.date)}) • {e.status}
             </option>
           ))}
         </select>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { formatDate } from "@comeoffline/ui";
 import { useAppStore } from "@/store/useAppStore";
 import { Noise } from "@/components/shared/Noise";
 
@@ -196,7 +197,7 @@ export function VenueReveal() {
                   date
                 </span>
                 <span className="font-sans text-sm font-medium text-near-black">
-                  {currentEvent.date}
+                  {formatDate(currentEvent.date)}
                 </span>
               </div>
               <div className="h-8 w-px bg-sand" />

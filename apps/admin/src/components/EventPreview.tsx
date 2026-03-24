@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import type { Event, TicketTier, PostBookingSection } from "@comeoffline/types";
+import { formatDate } from "@comeoffline/ui";
 
 interface EventPreviewProps {
   event: Event;
@@ -139,7 +140,7 @@ function DetailView({ event }: { event: Event }) {
 
   // Info chips
   const chips: Array<{ icon: string | null; text: string; accent?: boolean }> = [
-    { icon: "📅", text: event.date || "" },
+    { icon: "📅", text: event.date ? formatDate(event.date) : "" },
     { icon: "🕒", text: event.time || "" },
     { icon: "👥", text: `${spotsLeft}/${event.total_spots}` },
   ];
@@ -489,7 +490,7 @@ function CountdownView({ event }: { event: Event }) {
           {event.title || "Event"} {event.emoji}
         </h2>
         <p className="font-sans text-sm text-[#9B8E82]">
-          {event.date} &middot; {event.time}
+          {event.date ? formatDate(event.date) : event.date} &middot; {event.time}
         </p>
       </div>
 

@@ -161,18 +161,20 @@ export function EventCard({ event, index, onOpen }: EventCardProps) {
       </div>
 
       {/* Footer */}
-      <div
-        className="flex items-center gap-2 border-t px-6 py-3"
-        style={{
-          background: "linear-gradient(135deg, #F5EFE6, #FAF6F0)",
-          borderColor: "#E8DDD0",
-        }}
-      >
-        <span className="text-sm">{"\u2713"}</span>
-        <span className="font-mono text-[11px] text-warm-brown">
-          pick-up & drop included
-        </span>
-      </div>
+      {event.pickup_points?.length > 0 && (
+        <div
+          className="flex items-center gap-2 border-t px-6 py-3"
+          style={{
+            background: "linear-gradient(135deg, #F5EFE6, #FAF6F0)",
+            borderColor: "#E8DDD0",
+          }}
+        >
+          <span className="text-sm">{"\u2713"}</span>
+          <span className="font-mono text-[11px] text-warm-brown">
+            pick-up & drop included
+          </span>
+        </div>
+      )}
     </div>
   );
 }

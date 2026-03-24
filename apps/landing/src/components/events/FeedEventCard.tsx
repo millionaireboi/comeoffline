@@ -181,18 +181,20 @@ export function FeedEventCard({ event, index, onOpen }: FeedEventCardProps) {
       </div>
 
       {/* Bottom strip */}
-      <div
-        className="font-mono text-[9px] uppercase tracking-[1px]"
-        style={{
-          background: accent + "08",
-          borderTop: `1px solid ${accent}10`,
-          color: P.muted,
-          textAlign: "center",
-          padding: "7px 0",
-        }}
-      >
-        pick-up &amp; drop included
-      </div>
+      {event.pickup_points?.length > 0 && (
+        <div
+          className="font-mono text-[9px] uppercase tracking-[1px]"
+          style={{
+            background: accent + "08",
+            borderTop: `1px solid ${accent}10`,
+            color: P.muted,
+            textAlign: "center",
+            padding: "7px 0",
+          }}
+        >
+          pick-up &amp; drop included
+        </div>
+      )}
 
       {/* Keyframe injection */}
       <style>{`

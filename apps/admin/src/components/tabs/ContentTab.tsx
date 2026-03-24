@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { formatDate } from "@comeoffline/ui";
 import { useAuth } from "@/hooks/useAuth";
+import { useApi } from "@/hooks/useApi";
 import { API_URL } from "@/lib/constants";
 import { ImageUpload } from "@/components/ImageUpload";
 
@@ -176,8 +177,7 @@ function NotificationComposer() {
 
 export function ContentTab() {
   const { getIdToken } = useAuth();
-  const [events, setEvents] = useState<EventOption[]>([]);
-  const [loadingEvents, setLoadingEvents] = useState(true);
+  const { data: events, loading: loadingEvents } = useApi<EventOption[]>("/api/admin/events");
   const [eventId, setEventId] = useState("");
   const [polaroidUrl, setPolaroidUrl] = useState("");
   const [polaroidCaption, setPolaroidCaption] = useState("");
@@ -189,26 +189,6 @@ export function ContentTab() {
   const [statsDrinks, setStatsDrinks] = useState("");
   const [statsHours, setStatsHours] = useState("");
   const [status, setStatus] = useState("");
-
-  // Fetch events for dropdown
-  useEffect(() => {
-    async function fetchEvents() {
-      try {
-        const token = await getIdToken();
-        if (!token) return;
-        const res = await fetch(`${API_URL}/api/admin/events`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json();
-        if (data.data) setEvents(data.data);
-      } catch (err) {
-        console.error("Failed to fetch events:", err);
-      } finally {
-        setLoadingEvents(false);
-      }
-    }
-    fetchEvents();
-  }, [getIdToken]);
 
   async function addPolaroid() {
     if (!eventId || !polaroidUrl) return;
@@ -289,7 +269,7 @@ export function ContentTab() {
           <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 font-mono text-sm text-muted">
             Loading events...
           </div>
-        ) : events.length === 0 ? (
+        ) : !events || events.length === 0 ? (
           <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 font-mono text-sm text-muted">
             No events found. Create an event first.
           </div>

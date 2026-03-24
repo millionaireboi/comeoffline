@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useApi } from "@/hooks/useApi";
 import { instrumentSerif, API_URL } from "@/lib/constants";
 import type { Event } from "@comeoffline/types";
 
@@ -17,31 +18,14 @@ interface TicketData {
 
 export function CheckInTab() {
   const { getIdToken } = useAuth();
+  const { data: allEvents } = useApi<Event[]>("/api/admin/events");
+  const events = (allEvents || []).filter((e) => e.status === "live" || e.status === "upcoming");
   const [eventId, setEventId] = useState("");
-  const [events, setEvents] = useState<Event[]>([]);
   const [tickets, setTickets] = useState<TicketData[]>([]);
   const [scanResult, setScanResult] = useState<{ success: boolean; message: string; ticket?: TicketData } | null>(null);
   const [manualSearch, setManualSearch] = useState("");
   const [ticketIdInput, setTicketIdInput] = useState("");
   const scannerRef = useRef<HTMLInputElement>(null);
-
-  // Load events
-  useEffect(() => {
-    async function fetchEvents() {
-      try {
-        const token = await getIdToken();
-        if (!token) return;
-        const res = await fetch(`${API_URL}/api/admin/events`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json();
-        if (data.data) setEvents(data.data.filter((e: Event) => e.status === "live" || e.status === "upcoming"));
-      } catch (err) {
-        console.error("Failed to fetch events for check-in:", err);
-      }
-    }
-    fetchEvents();
-  }, [getIdToken]);
 
   // Load tickets for selected event
   useEffect(() => {

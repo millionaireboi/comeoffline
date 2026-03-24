@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { formatDate } from "@comeoffline/ui";
 import { useAuth } from "@/hooks/useAuth";
+import { useApi } from "@/hooks/useApi";
 import { instrumentSerif, API_URL } from "@/lib/constants";
 import { TableRowSkeleton } from "@/components/Skeleton";
 import type { Event } from "@comeoffline/types";
@@ -26,7 +27,7 @@ interface ValidationQueueItem {
 
 export function ValidationTab() {
   const { getIdToken } = useAuth();
-  const [events, setEvents] = useState<Event[]>([]);
+  const { data: events } = useApi<Event[]>("/api/admin/events");
   const [queue, setQueue] = useState<ValidationQueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -34,24 +35,6 @@ export function ValidationTab() {
   const [noteUserId, setNoteUserId] = useState<string | null>(null);
   const [noteText, setNoteText] = useState("");
   const [eventId, setEventId] = useState("");
-
-  // Fetch events for dropdown
-  useEffect(() => {
-    async function fetchEvents() {
-      try {
-        const token = await getIdToken();
-        if (!token) return;
-        const res = await fetch(`${API_URL}/api/admin/events`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json();
-        if (data.data) setEvents(data.data);
-      } catch (err) {
-        console.error("Failed to fetch events for validation:", err);
-      }
-    }
-    fetchEvents();
-  }, [getIdToken]);
 
   const fetchQueue = useCallback(async () => {
     setLoading(true);
@@ -134,7 +117,7 @@ export function ValidationTab() {
           className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 font-mono text-sm text-cream focus:border-caramel/50 focus:outline-none"
         >
           <option value="">All events</option>
-          {events.map((e) => (
+          {(events || []).map((e) => (
             <option key={e.id} value={e.id}>
               {e.title} ({formatDate(e.date)}) • {e.status}
             </option>

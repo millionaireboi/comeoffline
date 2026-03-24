@@ -371,15 +371,12 @@ export function CheckInTab() {
       video.srcObject = stream;
       await video.play();
 
+      // Use native BarcodeDetector if available, otherwise use polyfill (iOS Safari)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const BarcodeDetectorAPI = (window as any).BarcodeDetector;
+      let BarcodeDetectorAPI = (window as any).BarcodeDetector;
       if (!BarcodeDetectorAPI) {
-        // Fallback: load html5-qrcode for older browsers without BarcodeDetector
-        stopCamera();
-        setScanResult({ success: false, message: "QR scanning not supported on this browser. Use the text input instead." });
-        if (scanResultTimeoutRef.current) clearTimeout(scanResultTimeoutRef.current);
-        scanResultTimeoutRef.current = setTimeout(() => setScanResult(null), 5000);
-        return;
+        const { BarcodeDetector: Polyfill } = await import("barcode-detector");
+        BarcodeDetectorAPI = Polyfill;
       }
 
       const detector = new BarcodeDetectorAPI({ formats: ["qr_code"] });

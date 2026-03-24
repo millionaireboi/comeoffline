@@ -44,6 +44,10 @@ interface AppState {
   activeTicket: Ticket | null;
   setActiveTicket: (ticket: Ticket | null) => void;
 
+  // Events feed cache (persists across stage transitions)
+  events: Event[];
+  setEvents: (events: Event[]) => void;
+
   // Profile completion mode (triggered from "finish it" nudge)
   profileCompleteMode: boolean;
   setProfileCompleteMode: (mode: boolean) => void;
@@ -67,6 +71,9 @@ export const useAppStore = create<AppState>((set) => ({
 
   activeTicket: null,
   setActiveTicket: (ticket) => set({ activeTicket: ticket }),
+
+  events: [],
+  setEvents: (events) => set({ events }),
 
   profileCompleteMode: false,
   setProfileCompleteMode: (mode) => set({ profileCompleteMode: mode }),

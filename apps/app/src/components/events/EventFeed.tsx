@@ -16,8 +16,9 @@ export function EventFeed() {
   const { getIdToken } = useAuth();
   const user = useAppStore((s) => s.user);
   const { setCurrentEvent, setActiveRsvp, setActiveTicket, setStage, setProfileCompleteMode } = useAppStore();
-  const [events, setEvents] = useState<Event[]>([]);
-  const [loading, setLoading] = useState(true);
+  const events = useAppStore((s) => s.events);
+  const setEvents = useAppStore((s) => s.setEvents);
+  const [loading, setLoading] = useState(events.length === 0);
   const [detailEvent, setDetailEvent] = useState<Event | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [showQuizGate, setShowQuizGate] = useState(false);

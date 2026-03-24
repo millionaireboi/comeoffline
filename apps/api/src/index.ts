@@ -30,6 +30,7 @@ import adminUploadRouter from "./routes/admin/upload";
 import adminFloorplanRouter from "./routes/admin/floorplan";
 import adminBookingsRouter from "./routes/admin/bookings";
 import webhooksRouter from "./routes/webhooks";
+import { shutdownPostHog } from "./config/posthog";
 
 const app = express();
 
@@ -82,6 +83,12 @@ app.use("/api/webhooks", webhooksRouter);
 
 // Error handling
 app.use(errorHandler);
+
+// Flush PostHog events on shutdown
+process.on("SIGTERM", async () => {
+  await shutdownPostHog();
+  process.exit(0);
+});
 
 app.listen(env.port, () => {
   console.log(`[api] comeoffline API running on port ${env.port}`);

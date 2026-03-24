@@ -1229,6 +1229,8 @@ export function CheckoutWizard({ event, onComplete, onClose, loading }: Checkout
         tier_id: selectedTierId,
         tier_label: selectedTier?.label,
         tier_price: selectedTier?.price,
+        revenue: selectedTier?.price,
+        currency: "INR",
       });
     }
 
@@ -1238,6 +1240,8 @@ export function CheckoutWizard({ event, onComplete, onClose, loading }: Checkout
         tier_id: selectedTierId,
         tier_price: selectedTier?.price,
         total_steps: steps.length,
+        revenue: selectedTier?.price,
+        currency: "INR",
       });
 
       // Compile add-ons from all steps (with seat selections if applicable)

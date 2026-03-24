@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useAnalytics, EVENT_CARD_VIEWED } from "@comeoffline/analytics";
 import { P } from "@/components/shared/P";
 import { SpotsBar } from "@/components/events/SpotsBar";
 
@@ -12,6 +13,30 @@ interface FeedEventCardProps {
 
 export function FeedEventCard({ event, index, onOpen }: FeedEventCardProps) {
   const [hovered, setHovered] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const { track } = useAnalytics();
+  const trackedRef = useRef(false);
+
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && !trackedRef.current) {
+          trackedRef.current = true;
+          track(EVENT_CARD_VIEWED, {
+            event_id: event.id,
+            event_title: event.title,
+            card_index: index,
+          });
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.5 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [event.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const spotsLeft = event.total_spots - event.spots_taken;
   const accent = event.accent || P.caramel;
@@ -28,6 +53,7 @@ export function FeedEventCard({ event, index, onOpen }: FeedEventCardProps) {
 
   return (
     <div
+      ref={cardRef}
       onClick={() => onOpen(event)}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}

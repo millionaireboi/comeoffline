@@ -20,10 +20,18 @@ function PageViewTracker() {
   return null;
 }
 
-export function PostHogProvider({ children }: { children: React.ReactNode }) {
+interface PostHogProviderProps {
+  children: React.ReactNode;
+  appName?: string;
+}
+
+export function PostHogProvider({ children, appName }: PostHogProviderProps) {
   useEffect(() => {
     initPostHog();
-  }, []);
+    if (appName) {
+      posthog.register({ app_name: appName });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <PHProvider client={posthog}>

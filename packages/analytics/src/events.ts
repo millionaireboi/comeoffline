@@ -4,7 +4,6 @@ export const EVENT_DETAIL_OPENED = "event_detail_opened";
 
 // Landing — gate
 export const GATE_OPENED = "gate_opened";
-export const CODE_SUBMITTED = "code_submitted";
 export const CODE_VALIDATED = "code_validated";
 export const CODE_FAILED = "code_failed";
 export const CHATBOT_OPENED = "chatbot_opened";

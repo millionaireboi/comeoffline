@@ -33,6 +33,12 @@ const nextConfig: NextConfig = {
   compiler: {
     removeConsole: process.env.NODE_ENV === 'production',
   },
+  async rewrites() {
+    return [
+      { source: "/ingest/static/:path*", destination: "https://us-assets.i.posthog.com/static/:path*" },
+      { source: "/ingest/:path*", destination: "https://us.i.posthog.com/:path*" },
+    ];
+  },
   async headers() {
     return [
       {
@@ -56,7 +62,7 @@ const nextConfig: NextConfig = {
               "font-src 'self' data:",
               isDev
                 ? "connect-src *"
-                : `connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://us.i.posthog.com https://us-assets.i.posthog.com https://vercel.live wss://ws-us3.pusher.com ${apiUrl}`,
+                : `connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://vercel.live wss://ws-us3.pusher.com ${apiUrl}`,
               "frame-src 'none'",
               "object-src 'none'",
               "base-uri 'self'",

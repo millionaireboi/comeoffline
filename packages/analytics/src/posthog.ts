@@ -7,7 +7,6 @@ export function initPostHog(): void {
   if (_initialized) return;
 
   const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
-  const host = process.env.NEXT_PUBLIC_POSTHOG_HOST;
 
   if (!key) {
     console.warn("[analytics] NEXT_PUBLIC_POSTHOG_KEY not set — PostHog disabled");
@@ -15,10 +14,16 @@ export function initPostHog(): void {
   }
 
   posthog.init(key, {
-    api_host: host || "https://us.i.posthog.com",
+    api_host: "/ingest",
+    ui_host: "https://us.i.posthog.com",
     defaults: "2025-11-30",
     capture_pageview: false, // we fire manual pageviews on route change for SPA accuracy
     capture_pageleave: true,
+    person_profiles: "identified_only",
+    session_recording: {
+      maskAllInputs: true,
+      maskTextSelector: ".sensitive",
+    },
   });
 
   _initialized = true;

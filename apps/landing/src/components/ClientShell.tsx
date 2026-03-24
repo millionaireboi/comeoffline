@@ -18,7 +18,7 @@ export function ClientShell({ children }: { children: React.ReactNode }) {
 
   return (
     <Suspense>
-      <PostHogProvider>
+      <PostHogProvider appName="landing">
         <ChatProvider>
           <TabHeader />
           <div className="overflow-x-hidden">

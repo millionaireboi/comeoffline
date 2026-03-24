@@ -1,6 +1,8 @@
 import { Router, type Request, type Response } from "express";
 import { verifyWebhookSignature } from "../services/razorpay.service";
 import { confirmPayment } from "../services/ticket.service";
+import { posthog } from "../config/posthog";
+import { getDb } from "../config/firebase-admin";
 
 const router = Router();
 
@@ -43,6 +45,30 @@ router.post("/razorpay", async (req: Request, res: Response) => {
 
       console.log(`[webhook] Payment confirmed for ticket: ${ticketId}`);
       const result = await confirmPayment(ticketId);
+
+      if (result.success && posthog) {
+        try {
+          const db = await getDb();
+          const ticketDoc = await db.collection("tickets").doc(ticketId).get();
+          const ticket = ticketDoc.data();
+          if (ticket) {
+            posthog.capture({
+              distinctId: ticket.user_id,
+              event: "checkout_completed_server",
+              properties: {
+                event_id: ticket.event_id,
+                ticket_id: ticketId,
+                tier_id: ticket.tier_id,
+                revenue: ticket.price,
+                currency: "INR",
+                source: "razorpay_webhook",
+              },
+            });
+          }
+        } catch (phErr) {
+          console.warn("[webhook] PostHog capture failed (non-blocking):", phErr);
+        }
+      }
 
       if (!result.success) {
         // Non-retryable errors: ticket already processed or permanently invalid

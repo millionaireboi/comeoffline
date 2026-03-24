@@ -9,6 +9,7 @@ import { P } from "@/components/shared/P";
 const tabs = [
   { label: "for you", href: "/" },
   { label: "events", href: "/events" },
+  { label: "community", href: "/community" },
   { label: "contact", href: "/contact" },
   { label: "for brands", href: "/brands" },
 ];

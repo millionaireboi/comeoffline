@@ -103,7 +103,7 @@ export function EventDetail({ event, onClose, onRsvp, onTicketPurchase, loading 
       <div
         className="relative flex w-full max-w-[430px] flex-col overflow-hidden rounded-t-[28px] bg-cream"
         style={{
-          maxHeight: "92vh",
+          maxHeight: "92dvh",
           animation: "chatSlideIn 0.4s cubic-bezier(0.16,1,0.3,1) both",
         }}
       >

@@ -251,7 +251,7 @@ export function AppEducation() {
       </div>
 
       {/* Bottom */}
-      <div className="relative z-[4] px-7 pb-8">
+      <div className="relative z-[4] px-7" style={{ paddingBottom: "max(2rem, env(safe-area-inset-bottom, 2rem))" }}>
         {isLastCard ? (
           <button
             onClick={handleComplete}

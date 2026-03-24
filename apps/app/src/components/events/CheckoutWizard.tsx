@@ -1337,7 +1337,7 @@ export function CheckoutWizard({ event, onComplete, onClose, loading }: Checkout
 
       {/* Sheet */}
       <div
-        className="relative max-h-[90vh] w-full max-w-[430px] overflow-hidden rounded-t-3xl bg-cream"
+        className="relative max-h-[90dvh] w-full max-w-[430px] overflow-hidden rounded-t-3xl bg-cream"
         style={{ animation: "chatSlideIn 0.4s cubic-bezier(0.16,1,0.3,1) both" }}
       >
         {/* Accent line */}
@@ -1381,7 +1381,7 @@ export function CheckoutWizard({ event, onComplete, onClose, loading }: Checkout
         </div>
 
         {/* Step content */}
-        <div className="max-h-[calc(90vh-220px)] overflow-y-auto px-6 pb-6">
+        <div className="max-h-[calc(90dvh-220px)] overflow-y-auto px-6 pb-6">
           {step.type === "tier" && (
             <TierStep
               tiers={tiers}
@@ -1472,7 +1472,7 @@ export function CheckoutWizard({ event, onComplete, onClose, loading }: Checkout
         )}
 
         {/* CTA */}
-        <div className="border-t border-sand bg-cream px-6 pb-7 pt-4">
+        <div className="border-t border-sand bg-cream px-6 pt-4" style={{ paddingBottom: "max(1.75rem, env(safe-area-inset-bottom, 1.75rem))" }}>
           <button
             onClick={handleNext}
             disabled={!canProceed() || loading}

@@ -116,7 +116,7 @@ export function TheGate({ onSignIn }: { onSignIn?: () => void }) {
   }, [code, status, rejectCount, loginWithToken]);
 
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-gate-black px-6 py-10">
+    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-gate-black px-6 py-10" style={{ paddingBottom: "max(2.5rem, env(safe-area-inset-bottom, 2.5rem))" }}>
       <Noise opacity={0.05} />
 
       {/* Confetti */}
@@ -275,7 +275,7 @@ export function TheGate({ onSignIn }: { onSignIn?: () => void }) {
         </div>
       )}
 
-      <div className="absolute bottom-8 font-mono text-[10px] uppercase tracking-[2px] text-muted/20">
+      <div className="absolute bottom-0 pb-2 font-mono text-[10px] uppercase tracking-[2px] text-muted/20" style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom, 0.5rem))" }}>
         invite only · est. 2026
       </div>
     </div>

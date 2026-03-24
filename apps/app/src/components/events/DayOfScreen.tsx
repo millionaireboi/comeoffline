@@ -15,7 +15,7 @@ export function DayOfScreen() {
     "TBD";
 
   return (
-    <div className="flex min-h-screen flex-col bg-cream px-6 pt-[60px]">
+    <div className="flex min-h-screen flex-col bg-cream px-6 pt-[60px]" style={{ paddingBottom: "max(2rem, env(safe-area-inset-bottom, 2rem))" }}>
       <Noise />
 
       {/* Back to venue */}

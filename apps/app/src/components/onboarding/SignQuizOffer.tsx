@@ -22,7 +22,7 @@ export function SignQuizOffer({ onStartQuiz }: { onStartQuiz: () => void }) {
   }, []);
 
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-gate-black px-8">
+    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-gate-black px-8" style={{ paddingBottom: "max(2rem, env(safe-area-inset-bottom, 2rem))" }}>
       <Noise opacity={0.05} />
       <style>{`
         @keyframes offerFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }

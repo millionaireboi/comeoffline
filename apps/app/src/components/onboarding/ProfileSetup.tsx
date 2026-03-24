@@ -1594,7 +1594,7 @@ export function ProfileSetup() {
       </div>
 
       {/* Bottom CTA */}
-      <div className="relative z-[2] px-7 pb-8 pt-4">
+      <div className="relative z-[2] px-7 pt-4" style={{ paddingBottom: "max(2rem, env(safe-area-inset-bottom, 2rem))" }}>
         {submitError && (
           <p className="mb-3 rounded-[14px] border border-terracotta/20 bg-terracotta/10 px-4 py-3 text-center font-sans text-sm text-terracotta">
             {submitError}

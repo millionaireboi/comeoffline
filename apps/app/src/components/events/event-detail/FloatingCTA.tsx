@@ -32,7 +32,7 @@ export function FloatingCTA({
   const soldOut = spotsLeft === 0;
 
   return (
-    <div className="relative z-[5] shrink-0 px-5 pb-6 pt-3">
+    <div className="relative z-[5] shrink-0 px-5 pt-3" style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom, 1.5rem))" }}>
       {/* Gradient fade */}
       <div className="pointer-events-none absolute -top-6 left-0 right-0 h-6 bg-gradient-to-t from-cream to-transparent" />
 

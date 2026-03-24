@@ -14,7 +14,7 @@ export function GoDarkScreen() {
   }, []);
 
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-near-black px-6 py-10">
+    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-near-black px-6 py-10" style={{ paddingBottom: "max(2.5rem, env(safe-area-inset-bottom, 2.5rem))" }}>
       <Noise opacity={0.04} />
 
       {/* Subtle ambient glow */}
@@ -73,7 +73,7 @@ export function GoDarkScreen() {
         &larr; event info
       </button>
 
-      <div className="absolute bottom-10 font-serif text-base text-muted/15">
+      <div className="absolute bottom-0 pb-3 font-serif text-base text-muted/15" style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0.75rem))" }}>
         come offline
       </div>
     </div>

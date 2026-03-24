@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { FieldValue } from "firebase-admin/firestore";
 import { getDb } from "../config/firebase-admin";
 import { env } from "../config/env";
 import { getPublicEvents } from "./events.service";
@@ -6,9 +7,30 @@ import { withCache } from "../utils/cache";
 
 const genAI = new GoogleGenerativeAI(env.googleAiApiKey);
 
+const MAX_MESSAGE_LENGTH = 1000;
+const MAX_MESSAGES = 30;
+const VALID_ROLES = new Set(["user", "assistant"]);
+
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+}
+
+/** Validate messages array shape and content. Returns error string or null if valid. */
+export function validateMessages(messages: unknown): string | null {
+  if (!messages || !Array.isArray(messages) || messages.length === 0) {
+    return "messages array is required";
+  }
+  if (messages.length > MAX_MESSAGES) {
+    return `too many messages — max ${MAX_MESSAGES}`;
+  }
+  for (const msg of messages) {
+    if (!msg || typeof msg !== "object") return "invalid message format";
+    if (!VALID_ROLES.has(msg.role)) return "invalid message role";
+    if (typeof msg.content !== "string" || !msg.content.trim()) return "message content is required";
+    if (msg.content.length > MAX_MESSAGE_LENGTH) return `message too long — max ${MAX_MESSAGE_LENGTH} characters`;
+  }
+  return null;
 }
 
 /** System prompt for the landing page — onboarding & vibe check */
@@ -182,9 +204,12 @@ export async function chat(
     systemInstruction: systemPrompt,
   });
 
+  // Cap history to last 20 messages to avoid token limits
+  const recent = messages.length > 20 ? messages.slice(-20) : messages;
+
   // Convert messages to Gemini's format, stripping leading model messages
   // (Gemini requires first content to have role 'user')
-  const allHistory = messages.slice(0, -1).map((m) => ({
+  const allHistory = recent.slice(0, -1).map((m) => ({
     role: m.role === "assistant" ? "model" as const : "user" as const,
     parts: [{ text: m.content }],
   }));
@@ -195,48 +220,44 @@ export async function chat(
 
   const chatSession = model.startChat({ history: history.length > 0 ? history : undefined });
 
-  const lastMessage = messages[messages.length - 1];
+  const lastMessage = recent[recent.length - 1];
   const result = await chatSession.sendMessage(lastMessage.content);
   const text = result.response.text();
 
   return text || "hmm, i'm at a loss for words. try again?";
 }
 
-/** Rate limiting: check if user has exceeded message limit */
+/** Rate limiting: check if user has exceeded message limit (atomic) */
 export async function checkRateLimit(userId: string): Promise<boolean> {
   const db = await getDb();
   const key = `rate_limit:${userId}`;
-  const doc = await db.collection("rate_limits").doc(key).get();
+  const ref = db.collection("rate_limits").doc(key);
 
-  if (!doc.exists) {
-    await db.collection("rate_limits").doc(key).set({
-      count: 1,
-      window_start: new Date().toISOString(),
-    });
+  return db.runTransaction(async (tx) => {
+    const doc = await tx.get(ref);
+
+    if (!doc.exists) {
+      tx.set(ref, { count: 1, window_start: new Date().toISOString() });
+      return true;
+    }
+
+    const data = doc.data()!;
+    const windowStart = new Date(data.window_start);
+    const now = new Date();
+    const hoursSinceStart = (now.getTime() - windowStart.getTime()) / (1000 * 60 * 60);
+
+    // Reset window after 1 hour
+    if (hoursSinceStart > 1) {
+      tx.set(ref, { count: 1, window_start: now.toISOString() });
+      return true;
+    }
+
+    // Allow 100 messages per hour
+    if (data.count >= 100) {
+      return false;
+    }
+
+    tx.update(ref, { count: FieldValue.increment(1) });
     return true;
-  }
-
-  const data = doc.data()!;
-  const windowStart = new Date(data.window_start);
-  const now = new Date();
-  const hoursSinceStart = (now.getTime() - windowStart.getTime()) / (1000 * 60 * 60);
-
-  // Reset window after 1 hour
-  if (hoursSinceStart > 1) {
-    await db.collection("rate_limits").doc(key).set({
-      count: 1,
-      window_start: now.toISOString(),
-    });
-    return true;
-  }
-
-  // Allow 100 messages per hour
-  if (data.count >= 100) {
-    return false;
-  }
-
-  await db.collection("rate_limits").doc(key).update({
-    count: data.count + 1,
   });
-  return true;
 }

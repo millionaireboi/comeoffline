@@ -374,6 +374,7 @@ export function ChatBot() {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && send(input)}
             placeholder="say something..."
+            maxLength={500}
             autoComplete="off"
             autoCapitalize="off"
             enterKeyHint="send"

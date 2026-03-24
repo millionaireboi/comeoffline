@@ -42,6 +42,7 @@ publicEventsRouter.get("/:id", async (req, res) => {
 router.get("/", requireAuth, async (_req: AuthRequest, res) => {
   try {
     const events = await getEvents();
+    res.set("Cache-Control", "no-store");
     res.json({ success: true, data: events });
   } catch (err) {
     console.error("[events] list error:", err);
@@ -57,6 +58,7 @@ router.get("/:id", requireAuth, async (req: AuthRequest, res) => {
       res.status(404).json({ success: false, error: "Event not found" });
       return;
     }
+    res.set("Cache-Control", "no-store");
     res.json({ success: true, data: event });
   } catch (err) {
     console.error("[events] get error:", err);

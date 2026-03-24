@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth, type AuthRequest } from "../middleware/auth";
-import { chat, checkRateLimit } from "../services/chat.service";
+import { chat, checkRateLimit, validateMessages } from "../services/chat.service";
 
 const router = Router();
 
@@ -8,8 +8,9 @@ const router = Router();
 router.post("/public", async (req, res) => {
   try {
     const { messages } = req.body;
-    if (!messages || !Array.isArray(messages) || messages.length === 0) {
-      res.status(400).json({ success: false, error: "messages array is required" });
+    const error = validateMessages(messages);
+    if (error) {
+      res.status(400).json({ success: false, error });
       return;
     }
 
@@ -32,9 +33,9 @@ router.post("/public", async (req, res) => {
 router.post("/", requireAuth, async (req: AuthRequest, res) => {
   try {
     const { messages } = req.body;
-
-    if (!messages || !Array.isArray(messages) || messages.length === 0) {
-      res.status(400).json({ success: false, error: "messages array is required" });
+    const error = validateMessages(messages);
+    if (error) {
+      res.status(400).json({ success: false, error });
       return;
     }
 

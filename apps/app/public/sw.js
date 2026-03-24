@@ -51,7 +51,13 @@ self.addEventListener("notificationclick", (event) => {
 // Basic network-first strategy for navigation, skip API & external
 const CACHE_NAME = "comeoffline-v1";
 
-self.addEventListener("install", () => {
+// Pre-cache the app shell for offline support
+const APP_SHELL = ["/", "/manifest.json", "/icon-192.png", "/icon-512.png"];
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)),
+  );
   self.skipWaiting();
 });
 
@@ -74,10 +80,15 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        // Cache successful navigation responses for offline fallback
-        if (response.ok && event.request.mode === "navigate") {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        // Cache successful navigation and static asset responses for offline fallback
+        if (response.ok) {
+          const shouldCache =
+            event.request.mode === "navigate" ||
+            url.pathname.match(/\.(js|css|png|jpg|svg|ico|woff2?)$/);
+          if (shouldCache) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
         }
         return response;
       })

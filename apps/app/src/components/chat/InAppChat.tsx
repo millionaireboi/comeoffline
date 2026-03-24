@@ -30,12 +30,37 @@ export function InAppChat({ onClose }: InAppChatProps) {
   ]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
+
+  // Track online/offline status
+  useEffect(() => {
+    const goOffline = () => setIsOffline(true);
+    const goOnline = () => setIsOffline(false);
+    window.addEventListener("offline", goOffline);
+    window.addEventListener("online", goOnline);
+    return () => {
+      window.removeEventListener("offline", goOffline);
+      window.removeEventListener("online", goOnline);
+    };
+  }, []);
+
+  // Abort in-flight request and lock body scroll on mount/unmount
+  useEffect(() => {
+    const original = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      abortRef.current?.abort();
+      abortRef.current = null;
+      document.body.style.overflow = original;
+    };
+  }, []);
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -47,6 +72,10 @@ export function InAppChat({ onClose }: InAppChatProps) {
       setInput("");
       setSending(true);
 
+      const controller = new AbortController();
+      abortRef.current = controller;
+      const timeout = setTimeout(() => controller.abort(), 15000);
+
       try {
         const token = await getIdToken();
         if (!token) return;
@@ -57,6 +86,7 @@ export function InAppChat({ onClose }: InAppChatProps) {
             method: "POST",
             token,
             body: JSON.stringify({ messages: newMessages }),
+            signal: controller.signal,
           },
         );
 
@@ -64,12 +94,17 @@ export function InAppChat({ onClose }: InAppChatProps) {
           setMessages((prev) => [...prev, { role: "assistant", content: data.data.message }]);
         }
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : "something went wrong";
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: `oops — ${errorMsg}. try again?` },
-        ]);
+        if (err instanceof DOMException && err.name === "AbortError") {
+          setMessages((prev) => [...prev, { role: "assistant", content: "that took too long. try again?" }]);
+        } else {
+          const errorMsg = err instanceof Error ? err.message : "something went wrong";
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content: `oops — ${errorMsg}. try again?` },
+          ]);
+        }
       } finally {
+        clearTimeout(timeout);
         setSending(false);
         inputRef.current?.focus();
       }
@@ -157,6 +192,13 @@ export function InAppChat({ onClose }: InAppChatProps) {
         </div>
       )}
 
+      {/* Offline banner */}
+      {isOffline && (
+        <div className="px-5 py-2 text-center font-mono text-[11px] text-muted/60 bg-white/[0.03]">
+          you&apos;re offline — chat needs internet to work
+        </div>
+      )}
+
       {/* Input */}
       <form
         onSubmit={handleSubmit}
@@ -168,13 +210,14 @@ export function InAppChat({ onClose }: InAppChatProps) {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="say something..."
-            disabled={sending}
+            placeholder={isOffline ? "can't chat while offline..." : "say something..."}
+            maxLength={500}
+            disabled={sending || isOffline}
             className="flex-1 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-sans text-sm text-cream placeholder:text-muted/30 focus:border-caramel/30 focus:outline-none disabled:opacity-50"
           />
           <button
             type="submit"
-            disabled={!input.trim() || sending}
+            disabled={!input.trim() || sending || isOffline}
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-cream font-sans text-sm text-near-black transition-opacity disabled:opacity-30"
           >
             →

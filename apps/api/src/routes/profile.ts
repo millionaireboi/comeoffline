@@ -1,7 +1,9 @@
 import { Router } from "express";
 import { requireAuth, type AuthRequest } from "../middleware/auth";
 import { getUserProfile, updateUserProfile, checkHandleAvailable } from "../services/profile.service";
+import { getEnrichedConnections } from "../services/connections.service";
 import { getStorageService } from "../config/firebase-admin";
+import { CURATED_INTERESTS } from "@comeoffline/types";
 
 const router = Router();
 
@@ -49,7 +51,8 @@ router.put("/me", requireAuth, async (req: AuthRequest, res) => {
   try {
     const {
       name, handle, vibe_tag, instagram_handle, has_seen_welcome, fcm_token,
-      avatar_url, avatar_type, area, age_range, gender, hot_take,
+      avatar_url, avatar_type, area, age_range, gender, hot_take, bio,
+      interests, date_of_birth, show_age,
       drink_of_choice, community_intent, referral_source, has_completed_profile,
       has_completed_onboarding, onboarding_source,
       sign, sign_scores, sign_label, sign_emoji, sign_color, quiz_completed_at,
@@ -103,6 +106,31 @@ router.put("/me", requireAuth, async (req: AuthRequest, res) => {
       updates.gender = gender;
     }
     if (hot_take !== undefined) updates.hot_take = String(hot_take).slice(0, 60);
+    if (bio !== undefined) {
+      if (!strCheck(String(bio), 200)) { res.status(400).json({ success: false, error: "bio must be max 200 characters" }); return; }
+      updates.bio = String(bio);
+    }
+    if (interests !== undefined) {
+      if (!Array.isArray(interests) || interests.length > 8) {
+        res.status(400).json({ success: false, error: "interests must be an array of up to 8 items" });
+        return;
+      }
+      const validInterests = interests.filter((i: string) => (CURATED_INTERESTS as readonly string[]).includes(i));
+      updates.interests = validInterests;
+    }
+    if (date_of_birth !== undefined) {
+      const dob = new Date(date_of_birth);
+      if (isNaN(dob.getTime())) { res.status(400).json({ success: false, error: "Invalid date_of_birth" }); return; }
+      const age = Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+      if (age < 18) { res.status(400).json({ success: false, error: "Must be at least 18 years old" }); return; }
+      updates.date_of_birth = date_of_birth;
+      // Derive age_range for backward compatibility
+      if (age <= 24) updates.age_range = "21-24";
+      else if (age <= 28) updates.age_range = "25-28";
+      else if (age <= 32) updates.age_range = "29-32";
+      else updates.age_range = "33+";
+    }
+    if (show_age !== undefined) updates.show_age = !!show_age;
     if (drink_of_choice !== undefined) updates.drink_of_choice = String(drink_of_choice).slice(0, 100);
     if (community_intent !== undefined) updates.community_intent = String(community_intent).slice(0, 200);
     if (referral_source !== undefined) updates.referral_source = String(referral_source).slice(0, 100);
@@ -177,6 +205,17 @@ router.put("/me", requireAuth, async (req: AuthRequest, res) => {
   } catch (err) {
     console.error("[profile] update error:", err);
     res.status(500).json({ success: false, error: "Failed to update profile" });
+  }
+});
+
+/** GET /api/users/me/connections — Get enriched mutual connections */
+router.get("/me/connections", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const connections = await getEnrichedConnections(req.uid!);
+    res.json({ success: true, data: connections });
+  } catch (err) {
+    console.error("[profile] connections error:", err);
+    res.status(500).json({ success: false, error: "Failed to fetch connections" });
   }
 });
 

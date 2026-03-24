@@ -390,7 +390,14 @@ export function SignQuiz({ onComplete, mode = "onboarding" }: SignQuizProps) {
             we knew it all along tbh {"\u2726"}
           </p>
 
-          {/* CTA */}
+          {/* Spacer for sticky button */}
+          <div className="h-24" />
+        </div>
+      )}
+
+      {/* Sticky CTA for result screen */}
+      {screen === "result" && (
+        <div className="sticky bottom-0 z-10 px-6 pb-8 pt-4" style={{ background: "linear-gradient(to top, #0E0D0B 60%, transparent)" }}>
           <button
             onClick={handleFinish}
             className="w-full rounded-2xl bg-cream py-[18px] font-sans text-base font-medium text-gate-black transition-all duration-300"

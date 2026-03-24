@@ -21,6 +21,10 @@ export function EventFeed() {
   const [actionLoading, setActionLoading] = useState(false);
   const [showQuizGate, setShowQuizGate] = useState(false);
   const [showQuizPrompt, setShowQuizPrompt] = useState(false);
+  const [nudgeDismissed, setNudgeDismissed] = useState(() => {
+    try { return localStorage.getItem("co_profile_nudge_dismissed") === "1"; } catch { return false; }
+  });
+  const profileIncomplete = user && (!user.interests || user.interests.length === 0 || !user.bio);
   const [pendingPurchase, setPendingPurchase] = useState<{
     event: Event;
     tierId: string;
@@ -193,6 +197,30 @@ export function EventFeed() {
             className="rounded-full bg-caramel px-4 py-1.5 font-mono text-[11px] font-medium text-gate-black transition-all active:scale-95"
           >
             take quiz
+          </button>
+        </div>
+      )}
+
+      {/* Profile completion nudge */}
+      {profileIncomplete && !nudgeDismissed && (
+        <div
+          className="flex items-center justify-between border-b px-5 py-3"
+          style={{ background: "rgba(212,165,116,0.06)", borderColor: "rgba(212,165,116,0.12)" }}
+        >
+          <button
+            onClick={() => setStage("profile")}
+            className="flex items-center gap-2.5 text-left"
+          >
+            <span className="text-base">{"\u270F\uFE0F"}</span>
+            <p className="font-sans text-[13px] text-near-black">
+              your profile is almost done — <span className="font-medium text-caramel">finish it</span>
+            </p>
+          </button>
+          <button
+            onClick={() => { setNudgeDismissed(true); try { localStorage.setItem("co_profile_nudge_dismissed", "1"); } catch { /* ignore */ } }}
+            className="px-1 py-1 font-mono text-[11px] text-muted/40"
+          >
+            {"\u2715"}
           </button>
         </div>
       )}

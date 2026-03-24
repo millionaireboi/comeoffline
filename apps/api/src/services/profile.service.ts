@@ -126,7 +126,8 @@ export async function updateUserProfile(
   userId: string,
   updates: Partial<Pick<User,
     | "name" | "handle" | "vibe_tag" | "instagram_handle" | "has_seen_welcome" | "fcm_token"
-    | "avatar_url" | "avatar_type" | "area" | "age_range" | "hot_take"
+    | "avatar_url" | "avatar_type" | "area" | "age_range" | "hot_take" | "bio"
+    | "interests" | "date_of_birth" | "show_age"
     | "drink_of_choice" | "referral_source" | "has_completed_profile"
     | "has_completed_onboarding" | "onboarding_source"
   >>,

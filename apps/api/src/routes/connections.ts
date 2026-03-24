@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth, type AuthRequest } from "../middleware/auth";
-import { getEventAttendees, createConnection } from "../services/connections.service";
+import { getEventAttendees, getEventAttendeePreview, createConnection } from "../services/connections.service";
 
 const router = Router();
 
@@ -8,6 +8,14 @@ const router = Router();
 router.get("/:eventId/attendees", requireAuth, async (req: AuthRequest, res) => {
   try {
     const eventId = req.params.eventId as string;
+    const mode = req.query.mode as string | undefined;
+
+    if (mode === "preview") {
+      const preview = await getEventAttendeePreview(eventId, req.uid!);
+      res.json({ success: true, data: preview });
+      return;
+    }
+
     const attendees = await getEventAttendees(eventId, req.uid!);
     res.json({ success: true, data: attendees });
   } catch (err) {

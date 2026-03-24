@@ -227,9 +227,16 @@ export function TheGate() {
           </div>
 
           {status === "rejected" && (
-            <p className="animate-fadeSlideDown mb-4 text-center font-sans text-sm italic text-terracotta">
-              {rejectMsg}
-            </p>
+            <div className="animate-fadeSlideDown mb-4 text-center">
+              <p className="font-sans text-sm italic text-terracotta">
+                {rejectMsg}
+              </p>
+              {rejectCount >= 2 && (
+                <p className="mt-1.5 font-mono text-[10px] text-muted/40">
+                  double-check the code from your invite link
+                </p>
+              )}
+            </div>
           )}
 
           <button

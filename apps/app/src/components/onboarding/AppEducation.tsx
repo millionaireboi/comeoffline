@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+// ProgressDots removed — using static story bars + next button instead
 import { Noise } from "@/components/shared/Noise";
 import { useAppStore } from "@/store/useAppStore";
 import { useAuth } from "@/hooks/useAuth";
@@ -171,50 +172,29 @@ export function AppEducation() {
     : [EduCardHowItWorks, EduCardRules, EduCardAfter];
 
   const [step, setStep] = useState(0);
-  const [progress, setProgress] = useState(0);
-  const timerRef = useRef<number | null>(null);
 
-  // Auto-advance timer with progress bar
-  useEffect(() => {
-    setProgress(0);
-    const start = Date.now();
-    const duration = 4000;
-
-    const tick = () => {
-      const elapsed = Date.now() - start;
-      const pct = Math.min((elapsed / duration) * 100, 100);
-      setProgress(pct);
-      if (elapsed < duration) {
-        timerRef.current = requestAnimationFrame(tick);
-      } else {
-        if (step < cardComponents.length - 1) {
-          setStep((s) => s + 1);
-        }
-      }
-    };
-
-    timerRef.current = requestAnimationFrame(tick);
-    return () => {
-      if (timerRef.current) cancelAnimationFrame(timerRef.current);
-    };
+  // Swipe gesture support
+  const touchStartX = useRef(0);
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+  }, []);
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    const diff = touchStartX.current - e.changedTouches[0].clientX;
+    if (Math.abs(diff) > 50) {
+      if (diff > 0 && step < cardComponents.length - 1) setStep((s) => s + 1);
+      else if (diff < 0 && step > 0) setStep((s) => s - 1);
+    }
   }, [step, cardComponents.length]);
 
   const goNext = useCallback(() => {
-    if (timerRef.current) cancelAnimationFrame(timerRef.current);
-    if (step < cardComponents.length - 1) {
-      setStep((s) => s + 1);
-    }
+    if (step < cardComponents.length - 1) setStep((s) => s + 1);
   }, [step, cardComponents.length]);
 
   const goPrev = useCallback(() => {
-    if (timerRef.current) cancelAnimationFrame(timerRef.current);
-    if (step > 0) {
-      setStep((s) => s - 1);
-    }
+    if (step > 0) setStep((s) => s - 1);
   }, [step]);
 
   const handleComplete = useCallback(async () => {
-    if (timerRef.current) cancelAnimationFrame(timerRef.current);
     try {
       const token = await getIdToken();
       if (token) {
@@ -226,12 +206,10 @@ export function AppEducation() {
       }
     } catch { /* non-blocking */ }
 
-    // Update Zustand user so useStage transitions to feed
     if (user) {
       setUser({ ...user, has_completed_onboarding: true });
     }
 
-    // Clear onboardingSource from localStorage
     try { localStorage.removeItem("co_onboarding_source"); } catch { /* ignore */ }
   }, [getIdToken, user, setUser]);
 
@@ -239,19 +217,20 @@ export function AppEducation() {
   const isLastCard = step === cardComponents.length - 1;
 
   return (
-    <div className="relative flex min-h-screen flex-col overflow-hidden bg-gate-black">
+    <div
+      className="relative flex min-h-screen flex-col overflow-hidden bg-gate-black"
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
       <Noise opacity={0.05} />
 
-      {/* Story-style progress bars */}
+      {/* Story-style progress bars (static — no auto-advance) */}
       <div className="relative z-[2] flex gap-1 px-5 pt-4">
         {cardComponents.map((_, i) => (
           <div key={i} className="h-[3px] flex-1 overflow-hidden rounded-sm" style={{ background: "rgba(155,142,130,0.13)" }}>
             <div
-              className="h-full rounded-sm bg-caramel"
-              style={{
-                width: i < step ? "100%" : i === step ? `${progress}%` : "0%",
-                transition: i < step ? "width 0.3s ease" : "none",
-              }}
+              className="h-full rounded-sm bg-caramel transition-all duration-300"
+              style={{ width: i <= step ? "100%" : "0%" }}
             />
           </div>
         ))}
@@ -282,7 +261,13 @@ export function AppEducation() {
             {showBrandCards ? "let\u2019s go \u2192" : "show me what\u2019s coming up \u2192"}
           </button>
         ) : (
-          <ProgressDots total={cardComponents.length} current={step} />
+          <button
+            onClick={goNext}
+            className="w-full rounded-2xl border-none py-[18px] font-sans text-base font-medium transition-all duration-300"
+            style={{ background: "#FAF6F0", color: "#0E0D0B", cursor: "pointer" }}
+          >
+            next {"\u2192"}
+          </button>
         )}
         <div className="mt-3 text-center">
           <button

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Noise } from "@/components/shared/Noise";
 import { useAppStore } from "@/store/useAppStore";
 import { useAuth } from "@/hooks/useAuth";
@@ -14,20 +14,9 @@ const rules = [
 ];
 
 export function AcceptanceScreen() {
-  const [phase, setPhase] = useState(0);
+  const phase = 3; // Show everything immediately — animations handle the visual stagger
   const { setUser, user } = useAppStore();
   const { getIdToken } = useAuth();
-
-  useEffect(() => {
-    const t1 = setTimeout(() => setPhase(1), 600);
-    const t2 = setTimeout(() => setPhase(2), 1800);
-    const t3 = setTimeout(() => setPhase(3), 3000);
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearTimeout(t3);
-    };
-  }, []);
 
   const handleContinue = async () => {
     try {

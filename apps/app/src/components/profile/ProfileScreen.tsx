@@ -6,6 +6,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useAppStore } from "@/store/useAppStore";
 import { apiFetch } from "@/lib/api";
 import { SignQuiz } from "@/components/onboarding/SignQuiz";
+import { EditProfileScreen } from "@/components/profile/EditProfileScreen";
+import { ConnectionsList } from "@/components/profile/ConnectionsList";
 import { Noise } from "@/components/shared/Noise";
 
 const AVATAR_GRADIENTS = [
@@ -21,13 +23,18 @@ interface ProfileData {
     id: string;
     name: string;
     handle: string;
-    vibe_tag: string;
+    vibe_tag?: string;
     instagram_handle?: string;
     avatar_url?: string;
     avatar_type?: string;
     area?: string;
     age_range?: string;
+    gender?: string;
     hot_take?: string;
+    bio?: string;
+    interests?: string[];
+    date_of_birth?: string;
+    show_age?: boolean;
     drink_of_choice?: string;
     entry_path: string;
     status: string;
@@ -117,10 +124,9 @@ export function ProfileScreen() {
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [tickets, setTickets] = useState<EnrichedTicket[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(false);
-  const [igHandle, setIgHandle] = useState("");
-  const [saving, setSaving] = useState(false);
   const [showQuizRetake, setShowQuizRetake] = useState(false);
+  const [showEditProfile, setShowEditProfile] = useState(false);
+  const [showConnections, setShowConnections] = useState(false);
   const [expandedTicketId, setExpandedTicketId] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
 
@@ -135,7 +141,6 @@ export function ProfileScreen() {
         ]);
         if (profileRes.data) {
           setProfile(profileRes.data);
-          setIgHandle(profileRes.data.user.instagram_handle || "");
         }
         if (ticketsRes.data) {
           setTickets(ticketsRes.data);
@@ -170,27 +175,6 @@ export function ProfileScreen() {
       alert("Failed to cancel ticket. Please try again.");
     } finally {
       setCancellingId(null);
-    }
-  };
-
-  const handleSaveIg = async () => {
-    setSaving(true);
-    try {
-      const token = await getIdToken();
-      if (!token) return;
-      await apiFetch("/api/users/me", {
-        method: "PUT",
-        token,
-        body: JSON.stringify({ instagram_handle: igHandle }),
-      });
-      setProfile((prev) =>
-        prev ? { ...prev, user: { ...prev.user, instagram_handle: igHandle } } : prev,
-      );
-      setEditing(false);
-    } catch (err) {
-      console.error("Failed to update profile:", err);
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -284,22 +268,47 @@ export function ProfileScreen() {
             </span>
           </div>
 
-          {/* Personality pills (area, age, drink) */}
-          {(profile.user.area || profile.user.age_range || profile.user.drink_of_choice) && (
+          {/* Vibe tag */}
+          {profile.user.vibe_tag && (
+            <p className="mb-4 font-hand text-[13px] italic text-muted">
+              {profile.user.vibe_tag}
+            </p>
+          )}
+
+          {/* Personality pills (area, age, gender, drink) */}
+          {(profile.user.area || profile.user.age_range || profile.user.date_of_birth || profile.user.gender || profile.user.drink_of_choice) && (
             <div className="mb-4 flex flex-wrap items-center gap-1.5">
-              {profile.user.drink_of_choice && (
-                <span className="rounded-full bg-cream px-2.5 py-1 font-mono text-[10px] text-muted">
-                  {profile.user.drink_of_choice}
-                </span>
-              )}
               {profile.user.area && (
                 <span className="rounded-full bg-cream px-2.5 py-1 font-mono text-[10px] text-muted">
                   {profile.user.area}
                 </span>
               )}
-              {profile.user.age_range && (
+              {(() => {
+                if (profile.user.date_of_birth && profile.user.show_age !== false) {
+                  const age = Math.floor((Date.now() - new Date(profile.user.date_of_birth).getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+                  return (
+                    <span className="rounded-full bg-cream px-2.5 py-1 font-mono text-[10px] text-muted">
+                      {age}
+                    </span>
+                  );
+                }
+                if (!profile.user.date_of_birth && profile.user.age_range) {
+                  return (
+                    <span className="rounded-full bg-cream px-2.5 py-1 font-mono text-[10px] text-muted">
+                      {profile.user.age_range}
+                    </span>
+                  );
+                }
+                return null;
+              })()}
+              {profile.user.gender && profile.user.gender !== "prefer not to say" && (
                 <span className="rounded-full bg-cream px-2.5 py-1 font-mono text-[10px] text-muted">
-                  {profile.user.age_range}
+                  {profile.user.gender}
+                </span>
+              )}
+              {profile.user.drink_of_choice && (
+                <span className="rounded-full bg-cream px-2.5 py-1 font-mono text-[10px] text-muted">
+                  {profile.user.drink_of_choice}
                 </span>
               )}
             </div>
@@ -314,56 +323,45 @@ export function ProfileScreen() {
             </div>
           )}
 
-          {/* Instagram handle */}
-          <div className="rounded-[14px] bg-cream p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="mb-0.5 font-mono text-[9px] uppercase tracking-[1.5px] text-muted">
-                  instagram
-                </p>
-                {editing ? (
-                  <div className="flex items-center gap-2">
-                    <span className="font-sans text-sm text-muted">@</span>
-                    <input
-                      type="text"
-                      value={igHandle}
-                      onChange={(e) => setIgHandle(e.target.value)}
-                      className="w-40 border-b border-sand bg-transparent font-sans text-sm text-near-black focus:border-caramel focus:outline-none"
-                      placeholder="your_handle"
-                    />
-                  </div>
-                ) : (
-                  <p className="font-sans text-sm text-near-black">
-                    {profile.user.instagram_handle ? `@${profile.user.instagram_handle}` : "not set"}
-                  </p>
-                )}
-              </div>
-              {editing ? (
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setEditing(false)}
-                    className="font-mono text-[10px] text-muted"
-                  >
-                    cancel
-                  </button>
-                  <button
-                    onClick={handleSaveIg}
-                    disabled={saving}
-                    className="rounded-full bg-near-black px-3 py-1 font-mono text-[10px] text-white"
-                  >
-                    {saving ? "..." : "save"}
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => setEditing(true)}
-                  className="font-mono text-[10px] text-caramel"
-                >
-                  edit
-                </button>
-              )}
+          {/* Bio */}
+          {profile.user.bio && (
+            <div className="mb-4 rounded-[14px] p-4" style={{ background: "rgba(26,23,21,0.03)" }}>
+              <p className="font-sans text-[13px] leading-relaxed text-near-black/80">
+                {profile.user.bio}
+              </p>
             </div>
-          </div>
+          )}
+
+          {/* Interests */}
+          {profile.user.interests && profile.user.interests.length > 0 && (
+            <div className="mb-4 flex flex-wrap gap-1.5">
+              {profile.user.interests.map((interest) => (
+                <span
+                  key={interest}
+                  className="rounded-full px-2.5 py-1 font-mono text-[10px]"
+                  style={{ color: signColor, background: signColor + "12" }}
+                >
+                  {interest}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Instagram handle */}
+          {profile.user.instagram_handle && (
+            <div className="mb-4 rounded-[14px] bg-cream p-4">
+              <p className="mb-0.5 font-mono text-[9px] uppercase tracking-[1.5px] text-muted">instagram</p>
+              <p className="font-sans text-sm text-near-black">@{profile.user.instagram_handle}</p>
+            </div>
+          )}
+
+          {/* Edit profile button */}
+          <button
+            onClick={() => setShowEditProfile(true)}
+            className="w-full rounded-[14px] bg-cream py-3 text-center font-mono text-[11px] text-caramel transition-colors hover:bg-sand/30"
+          >
+            edit profile
+          </button>
 
           {/* Retake quiz button */}
           <button
@@ -383,21 +381,24 @@ export function ProfileScreen() {
       <section className="animate-fadeSlideUp px-5 pt-5" style={{ animationDelay: "0.1s" }}>
         <div className="grid grid-cols-2 gap-2.5">
           {[
-            { value: profile.stats.events_attended, label: "events attended", emoji: "\u{1F3AA}" },
-            { value: profile.stats.connections_made, label: "connections", emoji: "\u{1F91D}" },
-            { value: profile.stats.vouch_codes_earned, label: "codes earned", emoji: "\u2709\uFE0F" },
-            { value: profile.stats.vouch_codes_used, label: "people vouched", emoji: "\u2B50" },
+            { value: profile.stats.events_attended, label: "events attended", emoji: "\u{1F3AA}", action: undefined },
+            { value: profile.stats.connections_made, label: "connections", emoji: "\u{1F91D}", action: () => setShowConnections(true) },
+            { value: profile.stats.vouch_codes_earned, label: "codes earned", emoji: "\u2709\uFE0F", action: undefined },
+            { value: profile.stats.vouch_codes_used, label: "people vouched", emoji: "\u2B50", action: undefined },
           ].map((stat) => (
-            <div
+            <button
               key={stat.label}
-              className="rounded-[16px] bg-white p-4 shadow-[0_1px_3px_rgba(26,23,21,0.04)]"
+              onClick={stat.action}
+              className="rounded-[16px] bg-white p-4 text-left shadow-[0_1px_3px_rgba(26,23,21,0.04)] transition-colors"
+              style={{ cursor: stat.action ? "pointer" : "default" }}
             >
               <span className="mb-1 block text-lg">{stat.emoji}</span>
               <p className="font-serif text-[24px] text-near-black">{stat.value}</p>
               <p className="font-mono text-[9px] uppercase tracking-[1px] text-muted">
                 {stat.label}
+                {stat.action && " \u2192"}
               </p>
-            </div>
+            </button>
           ))}
         </div>
       </section>
@@ -646,6 +647,31 @@ export function ProfileScreen() {
           </button>
         </div>
       </section>
+
+      {/* Connections list overlay */}
+      {showConnections && (
+        <ConnectionsList onClose={() => setShowConnections(false)} />
+      )}
+
+      {/* Edit profile overlay */}
+      {showEditProfile && (
+        <EditProfileScreen
+          user={profile.user}
+          onClose={() => setShowEditProfile(false)}
+          onSave={async () => {
+            setShowEditProfile(false);
+            try {
+              const token = await getIdToken();
+              if (!token) return;
+              const data = await apiFetch<{ success: boolean; data: ProfileData }>(
+                "/api/users/me",
+                { token },
+              );
+              if (data.data) setProfile(data.data);
+            } catch { /* ignore */ }
+          }}
+        />
+      )}
 
       {/* Quiz retake overlay */}
       {showQuizRetake && (

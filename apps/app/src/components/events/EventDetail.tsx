@@ -10,6 +10,7 @@ import { OverviewTab } from "./event-detail/OverviewTab";
 import { TicketsTab } from "./event-detail/TicketsTab";
 import { SeatingTab } from "./event-detail/SeatingTab";
 import { FloatingCTA } from "./event-detail/FloatingCTA";
+import { AttendeeList } from "./AttendeeList";
 
 interface EventDetailProps {
   event: Event;
@@ -33,7 +34,7 @@ export function EventDetail({ event, onClose, onRsvp, onTicketPurchase, loading 
   const tiers = event.ticketing?.tiers || [];
   const hasCheckoutWizard = !!(event.checkout?.enabled && (event.checkout?.steps?.length || 0) > 0);
 
-  const [activeSection, setActiveSection] = useState<"overview" | "tickets" | "seating">("overview");
+  const [activeSection, setActiveSection] = useState<"overview" | "tickets" | "seating" | "attendees">("overview");
   const [scrolled, setScrolled] = useState(false);
   const [selectedTierId, setSelectedTierId] = useState<string | null>(
     tiers.length === 1 && tiers[0].sold < tiers[0].capacity ? tiers[0].id : null,
@@ -66,11 +67,12 @@ export function EventDetail({ event, onClose, onRsvp, onTicketPurchase, loading 
     if (event.seating?.mode && event.seating.mode !== "none") {
       tabs.push({ id: "seating", label: "seating" });
     }
+    tabs.push({ id: "attendees", label: "attendees" });
     return tabs;
   }, [isTicketed, event.seating?.mode]);
 
   const handleTabSwitch = (id: string) => {
-    setActiveSection(id as "overview" | "tickets" | "seating");
+    setActiveSection(id as "overview" | "tickets" | "seating" | "attendees");
     scrollRef.current?.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
   };
 
@@ -156,6 +158,10 @@ export function EventDetail({ event, onClose, onRsvp, onTicketPurchase, loading 
               accent={event.accent || "#D4A574"}
               accentDark={event.accent_dark || "#B8845A"}
             />
+          )}
+
+          {activeSection === "attendees" && (
+            <AttendeeList eventId={event.id} />
           )}
         </div>
 

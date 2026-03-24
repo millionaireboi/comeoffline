@@ -189,6 +189,11 @@ input::placeholder {
   50% { opacity: 0.5; }
 }
 
+@keyframes nudgeDown {
+  0%, 100% { transform: translateY(0); opacity: 0.7; }
+  50% { transform: translateY(6px); opacity: 1; }
+}
+
 /* ═══════════════════════════════════════════
    ANIMATION UTILITY CLASSES
    ═══════════════════════════════════════════ */
@@ -219,4 +224,17 @@ input::placeholder {
 
 .animate-breathe {
   animation: breathe 3s ease infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fadeIn,
+  .animate-fadeSlideUp,
+  .animate-fadeSlideDown,
+  .animate-scaleIn,
+  .animate-slideCardIn,
+  .animate-cardScale,
+  .animate-breathe {
+    animation: none !important;
+    transition: none !important;
+  }
 }

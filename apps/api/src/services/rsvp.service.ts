@@ -26,7 +26,10 @@ export async function createRsvp(
     const event = { id: eventDoc.id, ...eventDoc.data() } as Event;
 
     // Check if event is open for RSVPs
-    if (event.status !== "upcoming") {
+    if (event.status === "announced") {
+      return { success: false, error: "Event is collecting interest — join the waitlist" };
+    }
+    if (event.status !== "upcoming" && event.status !== "listed") {
       return { success: false, error: "Event is not accepting RSVPs" };
     }
 

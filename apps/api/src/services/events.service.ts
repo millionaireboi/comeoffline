@@ -6,7 +6,7 @@ export async function getEvents(): Promise<Event[]> {
   const db = await getDb();
   // Simple orderBy-only query avoids needing a composite index
   const snap = await db.collection("events").orderBy("date", "asc").get();
-  const validStatuses = new Set(["upcoming", "sold_out", "live"]);
+  const validStatuses = new Set(["announced", "upcoming", "listed", "sold_out", "live"]);
 
   return snap.docs
     .map((doc) => ({ id: doc.id, ...doc.data() }) as Event)
@@ -36,7 +36,7 @@ export async function getEventById(eventId: string): Promise<Event | null> {
 export async function getPublicEvents(): Promise<Partial<Event>[]> {
   const db = await getDb();
   const snap = await db.collection("events").orderBy("date", "asc").get();
-  const validStatuses = new Set(["upcoming", "sold_out", "live"]);
+  const validStatuses = new Set(["announced", "upcoming", "listed", "sold_out", "live"]);
 
   return snap.docs
     .map((doc) => ({ id: doc.id, ...doc.data() }) as Event)
@@ -69,7 +69,7 @@ export async function getPublicEvent(eventId: string): Promise<Partial<Event> | 
   if (!doc.exists) return null;
 
   const e = { id: doc.id, ...doc.data() } as Event;
-  const validStatuses = new Set(["upcoming", "sold_out", "live"]);
+  const validStatuses = new Set(["announced", "upcoming", "listed", "sold_out", "live"]);
   if (!validStatuses.has(e.status)) return null;
 
   return {

@@ -31,7 +31,7 @@ export function DashboardTab() {
   ];
 
   const lastEvent = events?.find((e) => e.status === "completed");
-  const upcomingEvents = events?.filter((e) => ["upcoming", "live", "draft"].includes(e.status)) || [];
+  const upcomingEvents = events?.filter((e) => ["announced", "upcoming", "listed", "live", "draft"].includes(e.status)) || [];
 
   if (statsLoading && !stats) {
     return <TabLoadingSkeleton />;

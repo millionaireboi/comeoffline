@@ -108,7 +108,7 @@ export function CheckInTab() {
     dedupingInterval: 2 * 60 * 1000,
     cacheTime: 10 * 60 * 1000,
   });
-  const events = (allEvents || []).filter((e) => e.status === "live" || e.status === "upcoming");
+  const events = (allEvents || []).filter((e) => e.status === "live" || e.status === "upcoming" || e.status === "listed");
   const [eventId, setEventId] = useState("");
   const [tickets, setTickets] = useState<TicketData[]>([]);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);

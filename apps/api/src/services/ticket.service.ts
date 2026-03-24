@@ -49,7 +49,10 @@ export async function createTicket(
 
     const event = eventDoc.data()!;
 
-    if (!["upcoming", "live"].includes(event.status)) {
+    if (event.status === "announced") {
+      return { success: false, error: "Event is collecting interest — join the waitlist" };
+    }
+    if (!["upcoming", "listed", "live"].includes(event.status)) {
       return { success: false, error: "Event is not accepting tickets" };
     }
 

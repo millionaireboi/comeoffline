@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { User, Event, RSVP, Ticket, OnboardingSource } from "@comeoffline/types";
+import type { User, Event, RSVP, Ticket, WaitlistEntry, OnboardingSource } from "@comeoffline/types";
 
 export type AppStage =
   | "install"
@@ -49,6 +49,10 @@ interface AppState {
   events: Event[];
   setEvents: (events: Event[]) => void;
 
+  // Active Waitlist Entry (for announced events)
+  activeWaitlistEntry: WaitlistEntry | null;
+  setActiveWaitlistEntry: (entry: WaitlistEntry | null) => void;
+
   // Profile completion mode (triggered from "finish it" nudge)
   profileCompleteMode: boolean;
   setProfileCompleteMode: (mode: boolean) => void;
@@ -75,6 +79,9 @@ export const useAppStore = create<AppState>((set) => ({
 
   events: [],
   setEvents: (events) => set({ events }),
+
+  activeWaitlistEntry: null,
+  setActiveWaitlistEntry: (entry) => set({ activeWaitlistEntry: entry }),
 
   profileCompleteMode: false,
   setProfileCompleteMode: (mode) => set({ profileCompleteMode: mode }),

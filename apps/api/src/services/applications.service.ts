@@ -147,19 +147,24 @@ export async function getUsers(): Promise<Array<{
     const db = await getDb();
     const usersSnap = await db.collection("users").orderBy("created_at", "desc").get();
 
-    const users = usersSnap.docs.map((doc) => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        name: data.name,
-        handle: data.handle,
-        vibe_tag: data.vibe_tag,
-        entry_path: data.entry_path,
-        status: data.status,
-        created_at: data.created_at,
-        events_count: 0, // Would need to aggregate from RSVPs
-      };
-    });
+    const users = usersSnap.docs
+      .filter((doc) => {
+        const data = doc.data();
+        return data.has_completed_onboarding === true;
+      })
+      .map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          name: data.name,
+          handle: data.handle,
+          vibe_tag: data.vibe_tag,
+          entry_path: data.entry_path,
+          status: data.status,
+          created_at: data.created_at,
+          events_count: 0, // Would need to aggregate from RSVPs
+        };
+      });
 
     // Update cache
     usersCache = { data: users, timestamp: Date.now() };

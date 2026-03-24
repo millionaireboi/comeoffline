@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import type { Event, RSVP, Ticket } from "@comeoffline/types";
+import type { Event, RSVP, Ticket, WaitlistEntry } from "@comeoffline/types";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppStore } from "@/store/useAppStore";
 import { apiFetch } from "@/lib/api";
@@ -15,13 +15,14 @@ import { PullToRefresh } from "@/components/shared/PullToRefresh";
 export function EventFeed() {
   const { getIdToken } = useAuth();
   const user = useAppStore((s) => s.user);
-  const { setCurrentEvent, setActiveRsvp, setActiveTicket, setStage, setProfileCompleteMode } = useAppStore();
+  const { setCurrentEvent, setActiveRsvp, setActiveTicket, setActiveWaitlistEntry, setStage, setProfileCompleteMode } = useAppStore();
   const events = useAppStore((s) => s.events);
   const setEvents = useAppStore((s) => s.setEvents);
   const [loading, setLoading] = useState(events.length === 0);
   const [detailEvent, setDetailEvent] = useState<Event | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [showQuizGate, setShowQuizGate] = useState(false);
+  const activeWaitlistEntry = useAppStore((s) => s.activeWaitlistEntry);
   const [nudgeDismissed, setNudgeDismissed] = useState(() => {
     try { return localStorage.getItem("co_profile_nudge_dismissed") === "1"; } catch { return false; }
   });
@@ -142,6 +143,75 @@ export function EventFeed() {
     [executePurchase],
   );
 
+  // Fetch existing waitlist entry when opening an announced event
+  const openEventDetail = useCallback(
+    async (event: Event) => {
+      setDetailEvent(event);
+      if (event.status === "announced") {
+        try {
+          const token = await getIdToken();
+          if (!token) return;
+          const data = await apiFetch<{ success: boolean; data: WaitlistEntry | null }>(
+            `/api/events/${event.id}/waitlist`,
+            { token },
+          );
+          setActiveWaitlistEntry(data.data || null);
+        } catch {
+          setActiveWaitlistEntry(null);
+        }
+      } else {
+        setActiveWaitlistEntry(null);
+      }
+    },
+    [getIdToken, setActiveWaitlistEntry],
+  );
+
+  // Join waitlist for announced events
+  const handleJoinWaitlist = useCallback(
+    async (event: Event, spotsWanted: number) => {
+      if (actionLoading) return;
+      setActionLoading(true);
+      try {
+        const token = await getIdToken();
+        if (!token) return;
+        const data = await apiFetch<{ success: boolean; data: WaitlistEntry }>(
+          `/api/events/${event.id}/waitlist`,
+          { method: "POST", token, body: JSON.stringify({ spots_wanted: spotsWanted }) },
+        );
+        if (data.data) {
+          setActiveWaitlistEntry(data.data);
+        }
+      } catch (err) {
+        console.error("Join waitlist failed:", err);
+      } finally {
+        setActionLoading(false);
+      }
+    },
+    [actionLoading, getIdToken, setActiveWaitlistEntry],
+  );
+
+  // Leave waitlist
+  const handleLeaveWaitlist = useCallback(
+    async (event: Event, entryId: string) => {
+      if (actionLoading) return;
+      setActionLoading(true);
+      try {
+        const token = await getIdToken();
+        if (!token) return;
+        await apiFetch(`/api/events/${event.id}/waitlist/${entryId}`, {
+          method: "DELETE",
+          token,
+        });
+        setActiveWaitlistEntry(null);
+      } catch (err) {
+        console.error("Leave waitlist failed:", err);
+      } finally {
+        setActionLoading(false);
+      }
+    },
+    [actionLoading, getIdToken, setActiveWaitlistEntry],
+  );
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-cream">
@@ -239,7 +309,7 @@ export function EventFeed() {
       {/* Event cards */}
       <section className="flex flex-col gap-4 px-4">
         {events.map((event, i) => (
-          <EventCard key={event.id} event={event} index={i} onOpen={setDetailEvent} />
+          <EventCard key={event.id} event={event} index={i} onOpen={openEventDetail} />
         ))}
 
         {/* Coming soon placeholder */}
@@ -266,6 +336,8 @@ export function EventFeed() {
           onTicketPurchase={(tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId) =>
             handleTicketPurchase(detailEvent, tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId)
           }
+          onJoinWaitlist={(spotsWanted) => handleJoinWaitlist(detailEvent, spotsWanted)}
+          onLeaveWaitlist={(entryId) => handleLeaveWaitlist(detailEvent, entryId)}
           loading={actionLoading}
         />
       )}

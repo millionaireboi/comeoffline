@@ -28,7 +28,7 @@ export function EventCard({ event, index, onOpen }: EventCardProps) {
       (new Date(event.venue_reveal_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
     ),
   );
-  const priceLabel = getPriceLabel(event);
+  const priceLabel = event.status === "announced" ? "coming soon" : getPriceLabel(event);
   const isTicketed = event.ticketing?.enabled && !event.is_free;
 
   return (
@@ -124,12 +124,37 @@ export function EventCard({ event, index, onOpen }: EventCardProps) {
           </div>
         </div>
 
-        <SpotsBar spotsLeft={spotsLeft} totalSpots={event.total_spots} accent={event.accent_dark} />
+        {event.status === "announced" ? (
+          <div className="flex items-center gap-2">
+            <div
+              className="h-1 flex-1 overflow-hidden rounded-full"
+              style={{ background: (event.accent_dark || "#B8845A") + "15" }}
+            >
+              <div
+                className="h-full rounded-full transition-all"
+                style={{
+                  width: `${Math.min(100, ((event.waitlist_count || 0) / Math.max(event.total_spots, 1)) * 100)}%`,
+                  background: event.accent_dark || "#B8845A",
+                  opacity: 0.6,
+                }}
+              />
+            </div>
+            <span className="shrink-0 font-mono text-[11px] text-muted">
+              {event.waitlist_count || 0} interested
+            </span>
+          </div>
+        ) : (
+          <SpotsBar spotsLeft={spotsLeft} totalSpots={event.total_spots} accent={event.accent_dark} />
+        )}
 
         {/* Actions */}
         <div className="mt-5 flex items-center justify-between">
           <button className="rounded-full bg-near-black px-7 py-3 font-sans text-sm font-medium text-white">
-            {isTicketed ? "get tickets \u2192" : "i\u2019m in \u2192"}
+            {event.status === "announced"
+              ? "i\u2019m interested \u2192"
+              : isTicketed
+                ? "get tickets \u2192"
+                : "i\u2019m in \u2192"}
           </button>
           <span className="font-mono text-[11px] text-muted">tap for details</span>
         </div>

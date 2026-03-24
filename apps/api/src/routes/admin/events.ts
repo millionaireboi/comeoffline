@@ -7,6 +7,7 @@ import {
   updateEvent,
   updateEventStatus,
 } from "../../services/events.service";
+import { getEventWaitlist, notifyAndOpenSales } from "../../services/waitlist.service";
 import { withCache, invalidateCache, isQuotaError } from "../../utils/cache";
 
 const router = Router();
@@ -99,6 +100,37 @@ router.put("/:id/status", requireAdmin, async (req: AuthRequest, res) => {
   } catch (err) {
     console.error("[admin/events] status error:", err);
     res.status(500).json({ success: false, error: "Failed to update status" });
+  }
+});
+
+/** GET /api/admin/events/:id/waitlist — View waitlist entries */
+router.get("/:id/waitlist", requireAdmin, async (req: AuthRequest, res) => {
+  try {
+    const entries = await getEventWaitlist(req.params.id as string);
+    res.json({ success: true, data: entries });
+  } catch (err) {
+    console.error("[admin/events] waitlist error:", err);
+    res.status(500).json({ success: false, error: "Failed to fetch waitlist" });
+  }
+});
+
+/** PUT /api/admin/events/:id/open-sales — Transition announced → listed and notify waitlist */
+router.put("/:id/open-sales", requireAdmin, async (req: AuthRequest, res) => {
+  try {
+    const id = req.params.id as string;
+    const result = await notifyAndOpenSales(id, req.uid!);
+
+    if (!result.success) {
+      res.status(400).json({ success: false, error: result.error });
+      return;
+    }
+
+    invalidateCache("admin-events");
+    invalidateCache(`admin-event-${id}`);
+    res.json({ success: true, data: { sent: result.sent, failed: result.failed } });
+  } catch (err) {
+    console.error("[admin/events] open-sales error:", err);
+    res.status(500).json({ success: false, error: "Failed to open sales" });
   }
 });
 

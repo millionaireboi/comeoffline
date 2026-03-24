@@ -95,7 +95,7 @@ export interface PickupPoint {
   lng?: number;
 }
 
-export type EventStatus = "draft" | "upcoming" | "sold_out" | "live" | "completed";
+export type EventStatus = "draft" | "announced" | "upcoming" | "listed" | "sold_out" | "live" | "completed";
 
 export interface TicketTier {
   id: string; // unique tier ID within event
@@ -283,6 +283,21 @@ export interface Event {
   seating?: SeatingConfig;
   cover_url?: string; // image or video URL for event cover
   cover_type?: "image" | "video"; // media type of the cover
+  waitlist_count?: number; // number of users on the waitlist (announced events)
+}
+
+// ── Waitlist ─────────────────────────────────────
+
+export type WaitlistEntryStatus = "interested" | "notified" | "converted" | "cancelled";
+
+export interface WaitlistEntry {
+  id: string;
+  event_id: string;
+  user_id: string;
+  spots_wanted: number;
+  status: WaitlistEntryStatus;
+  created_at: string;
+  notified_at?: string;
 }
 
 // ── RSVP ──────────────────────────────────────────

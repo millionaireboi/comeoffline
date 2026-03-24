@@ -38,6 +38,13 @@ service cloud.firestore {
         allow update, delete: if isAdmin();
       }
 
+      // Waitlist — users can read own, create own, admins manage
+      match /waitlist/{entryId} {
+        allow read: if isAdmin() || (isAuth() && resource.data.user_id == request.auth.uid);
+        allow create: if isAuth();
+        allow update, delete: if isAdmin();
+      }
+
       // Polaroids — all authenticated can read, admins write
       match /polaroids/{polaroidId} {
         allow read: if isAuth();

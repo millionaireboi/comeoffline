@@ -9,7 +9,9 @@ export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080
 
 export const EVENT_STATUS_COLORS: Record<string, string> = {
   draft: "#7A8B9C",
+  announced: "#8B7EC8",
   upcoming: "#D4A574",
+  listed: "#D4A574",
   live: "#6B7A63",
   sold_out: "#D4836B",
   completed: "#9B8E82",

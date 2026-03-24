@@ -1952,7 +1952,7 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
     } as Event;
   }
 
-  async function handleSubmit(status: "draft" | "upcoming") {
+  async function handleSubmit(status: "draft" | "announced" | "upcoming" | "listed") {
     if (!title.trim()) {
       setError("Title is required");
       return;
@@ -2511,7 +2511,7 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
           />
         </div>
 
-        {/* Action Buttons */}
+        {/* Action Buttons — two rows to avoid overflow on narrow screens */}
         <div className="flex gap-2.5 pt-2">
           <button
             type="button"
@@ -2536,13 +2536,23 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
           >
             {saving ? "saving..." : "draft"}
           </button>
+        </div>
+        <div className="flex gap-2.5 pt-1.5">
           <button
             type="button"
-            onClick={() => handleSubmit("upcoming")}
+            onClick={() => handleSubmit("announced")}
+            disabled={saving}
+            className="flex-1 rounded-xl bg-lavender/20 py-3 font-mono text-[11px] uppercase tracking-[2px] text-lavender transition-colors hover:bg-lavender/30 disabled:opacity-50"
+          >
+            {saving ? "saving..." : "announce"}
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSubmit("listed")}
             disabled={saving}
             className="flex-1 rounded-xl bg-caramel py-3 font-mono text-[11px] uppercase tracking-[2px] text-gate-black transition-colors hover:bg-caramel/90 disabled:opacity-50"
           >
-            {saving ? "saving..." : "publish"}
+            {saving ? "saving..." : "list"}
           </button>
         </div>
       </div>

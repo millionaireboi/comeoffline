@@ -17,6 +17,8 @@ export function EventsTab() {
   const [mode, setMode] = useState<"list" | "create" | "edit">("list");
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
   const [expandedPickups, setExpandedPickups] = useState<string | null>(null);
+  const [expandedWaitlist, setExpandedWaitlist] = useState<string | null>(null);
+  const [waitlistData, setWaitlistData] = useState<Record<string, Array<{ id: string; user_id: string; user_name?: string; spots_wanted: number; status: string; created_at: string }>>>({});
   const [previewEvent, setPreviewEvent] = useState<Event | null>(null);
 
   async function updateStatus(eventId: string, newStatus: string) {
@@ -25,6 +27,35 @@ export function EventsTab() {
       refetch();
     } catch (err) {
       console.error("Status update failed:", err);
+    }
+  }
+
+  async function openSales(eventId: string) {
+    try {
+      const res = await apiClient.put<{ success: boolean; data: { sent: number; failed: number } }>(
+        `/api/admin/events/${eventId}/open-sales`,
+        {},
+      );
+      alert(`Sales opened! Notifications sent: ${res.data.sent}, failed: ${res.data.failed}`);
+      refetch();
+    } catch (err) {
+      console.error("Open sales failed:", err);
+    }
+  }
+
+  async function loadWaitlist(eventId: string) {
+    if (expandedWaitlist === eventId) {
+      setExpandedWaitlist(null);
+      return;
+    }
+    try {
+      const res = await apiClient.get<{ success: boolean; data: Array<{ id: string; user_id: string; user_name?: string; spots_wanted: number; status: string; created_at: string }> }>(
+        `/api/admin/events/${eventId}/waitlist`,
+      );
+      setWaitlistData((prev) => ({ ...prev, [eventId]: res.data }));
+      setExpandedWaitlist(eventId);
+    } catch (err) {
+      console.error("Failed to load waitlist:", err);
     }
   }
 
@@ -109,9 +140,9 @@ export function EventsTab() {
             <div className="mb-3 grid grid-cols-3 gap-2">
               <div className="rounded-lg bg-white/[0.04] p-2.5 text-center">
                 <div className="font-mono text-base font-medium text-cream">
-                  {event.spots_taken}/{event.total_spots}
+                  {event.status === "announced" ? (event.waitlist_count || 0) : `${event.spots_taken}/${event.total_spots}`}
                 </div>
-                <div className="text-[9px] text-muted">rsvps</div>
+                <div className="text-[9px] text-muted">{event.status === "announced" ? "interested" : "rsvps"}</div>
               </div>
               <div className="rounded-lg bg-white/[0.04] p-2.5 text-center">
                 <div className="font-mono text-base font-medium text-muted">—</div>
@@ -161,8 +192,33 @@ export function EventsTab() {
               </div>
             )}
 
+            {/* Waitlist viewer (announced events) */}
+            {event.status === "announced" && (event.waitlist_count || 0) > 0 && (
+              <div className="mb-3">
+                <button
+                  onClick={() => loadWaitlist(event.id)}
+                  className="mb-1.5 font-mono text-[9px] uppercase tracking-[1px] text-muted transition-colors hover:text-cream"
+                >
+                  waitlist ({event.waitlist_count || 0}) {expandedWaitlist === event.id ? "▲" : "▼"}
+                </button>
+                {expandedWaitlist === event.id && waitlistData[event.id] && (
+                  <div className="flex flex-col gap-1">
+                    {waitlistData[event.id].map((entry) => (
+                      <div
+                        key={entry.id}
+                        className="flex justify-between rounded-md bg-white/[0.04] px-2.5 py-1.5 font-mono text-[11px]"
+                      >
+                        <span className="min-w-0 flex-1 truncate text-cream">{entry.user_name || entry.user_id}</span>
+                        <span className="ml-2 shrink-0 text-muted">{entry.spots_wanted} spot{entry.spots_wanted > 1 ? "s" : ""} · {entry.status}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Action buttons */}
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => setPreviewEvent(event)}
                 className="flex-1 rounded-lg bg-white/5 px-3 py-2 font-mono text-[10px] text-cream transition-colors hover:bg-white/10"
@@ -176,14 +232,30 @@ export function EventsTab() {
                 edit
               </button>
               {event.status === "draft" && (
+                <>
+                  <button
+                    onClick={() => updateStatus(event.id, "announced")}
+                    className="flex-1 rounded-lg bg-lavender/15 px-3 py-2 font-mono text-[10px] text-lavender transition-colors hover:bg-lavender/25"
+                  >
+                    announce
+                  </button>
+                  <button
+                    onClick={() => updateStatus(event.id, "listed")}
+                    className="flex-1 rounded-lg bg-caramel/15 px-3 py-2 font-mono text-[10px] text-caramel transition-colors hover:bg-caramel/25"
+                  >
+                    list
+                  </button>
+                </>
+              )}
+              {event.status === "announced" && (
                 <button
-                  onClick={() => updateStatus(event.id, "upcoming")}
+                  onClick={() => openSales(event.id)}
                   className="flex-1 rounded-lg bg-caramel/15 px-3 py-2 font-mono text-[10px] text-caramel transition-colors hover:bg-caramel/25"
                 >
-                  publish
+                  open sales
                 </button>
               )}
-              {event.status === "upcoming" && (
+              {(event.status === "upcoming" || event.status === "listed") && (
                 <button
                   onClick={() => updateStatus(event.id, "live")}
                   className="flex-1 rounded-lg bg-sage/15 px-3 py-2 font-mono text-[10px] text-sage transition-colors hover:bg-sage/25"

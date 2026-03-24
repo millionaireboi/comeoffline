@@ -26,11 +26,15 @@ interface EventDetailProps {
     sectionId?: string,
     spotSeatId?: string,
   ) => void;
+  onJoinWaitlist?: (spotsWanted: number) => void;
+  onLeaveWaitlist?: (entryId: string) => void;
   loading?: boolean;
 }
 
-export function EventDetail({ event, onClose, onRsvp, onTicketPurchase, loading }: EventDetailProps) {
+export function EventDetail({ event, onClose, onRsvp, onTicketPurchase, onJoinWaitlist, onLeaveWaitlist, loading }: EventDetailProps) {
   const user = useAppStore((s) => s.user);
+  const activeWaitlistEntry = useAppStore((s) => s.activeWaitlistEntry);
+  const isAnnounced = event.status === "announced";
   const spotsLeft = event.total_spots - event.spots_taken;
   const isTicketed = !!(event.ticketing?.enabled && !event.is_free);
   const tiers = event.ticketing?.tiers || [];
@@ -65,13 +69,13 @@ export function EventDetail({ event, onClose, onRsvp, onTicketPurchase, loading 
 
   const sectionTabs = useMemo(() => {
     const tabs: Array<{ id: string; label: string }> = [{ id: "overview", label: "overview" }];
-    if (isTicketed) tabs.push({ id: "tickets", label: "tickets" });
-    if (event.seating?.mode && event.seating.mode !== "none") {
+    if (isTicketed && !isAnnounced) tabs.push({ id: "tickets", label: "tickets" });
+    if (event.seating?.mode && event.seating.mode !== "none" && !isAnnounced) {
       tabs.push({ id: "seating", label: "seating" });
     }
-    tabs.push({ id: "attendees", label: "attendees" });
+    if (!isAnnounced) tabs.push({ id: "attendees", label: "attendees" });
     return tabs;
-  }, [isTicketed, event.seating?.mode]);
+  }, [isTicketed, isAnnounced, event.seating?.mode]);
 
   const handleTabSwitch = (id: string) => {
     setActiveSection(id as "overview" | "tickets" | "seating" | "attendees");
@@ -182,6 +186,11 @@ export function EventDetail({ event, onClose, onRsvp, onTicketPurchase, loading 
           accent={event.accent || "#D4A574"}
           accentDark={event.accent_dark || "#B8845A"}
           quizPending={!user?.sign}
+          isAnnounced={isAnnounced}
+          waitlistCount={event.waitlist_count || 0}
+          activeWaitlistEntry={activeWaitlistEntry}
+          onJoinWaitlist={onJoinWaitlist}
+          onLeaveWaitlist={onLeaveWaitlist}
         />
       </div>
 

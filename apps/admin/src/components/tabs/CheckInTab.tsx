@@ -119,8 +119,9 @@ export function CheckInTab() {
   const [failedQueue, setFailedQueue] = useState<QueuedCheckIn[]>(loadFailedQueue);
   const [isOnline, setIsOnline] = useState(typeof navigator !== "undefined" ? navigator.onLine : true);
   const scannerRef = useRef<HTMLInputElement>(null);
-  const cameraContainerRef = useRef<HTMLDivElement>(null);
-  const html5QrScannerRef = useRef<InstanceType<typeof import("html5-qrcode").Html5Qrcode> | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const scanLoopRef = useRef<number>(0);
   const scanResultTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval>>(undefined);
 
@@ -337,78 +338,89 @@ export function CheckInTab() {
     scannerRef.current?.focus();
   };
 
-  // ——— Camera QR scanner ———
+  // ——— Camera QR scanner (native BarcodeDetector + getUserMedia) ———
+  const stopCamera = useCallback(() => {
+    scanLoopRef.current = 0;
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setCameraActive(false);
+  }, []);
+
   const startCamera = useCallback(async () => {
-    if (!cameraContainerRef.current) return;
-
     try {
-      const { Html5Qrcode } = await import("html5-qrcode");
-      const scanner = new Html5Qrcode("qr-camera-viewport");
-      html5QrScannerRef.current = scanner;
-
-      // Request camera permission in the same user-gesture call stack (Safari requirement)
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment" },
       });
-      // Stop the temporary stream — html5-qrcode will open its own
-      stream.getTracks().forEach((t) => t.stop());
-
-      // Now safe to show container and wait for DOM
+      streamRef.current = stream;
       setCameraActive(true);
-      await new Promise((r) => setTimeout(r, 100));
 
-      await scanner.start(
-        { facingMode: "environment", aspectRatio: { ideal: 1 } },
-        {
-          fps: 10,
-          qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
-            const size = Math.min(viewfinderWidth, viewfinderHeight) * 0.7;
-            return { width: Math.floor(size), height: Math.floor(size) };
-          },
-        },
-        (decodedText) => {
-          processQrData(decodedText);
-          // Brief pause to prevent rapid re-scans of the same code
-          scanner.pause(true);
-          setTimeout(() => {
-            try {
-              scanner.resume();
-            } catch {
-              // Scanner may have been stopped
+      // Wait for React to render the video element
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+      const video = videoRef.current;
+      if (!video) {
+        stopCamera();
+        return;
+      }
+
+      video.srcObject = stream;
+      await video.play();
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const BarcodeDetectorAPI = (window as any).BarcodeDetector;
+      if (!BarcodeDetectorAPI) {
+        // Fallback: load html5-qrcode for older browsers without BarcodeDetector
+        stopCamera();
+        setScanResult({ success: false, message: "QR scanning not supported on this browser. Use the text input instead." });
+        if (scanResultTimeoutRef.current) clearTimeout(scanResultTimeoutRef.current);
+        scanResultTimeoutRef.current = setTimeout(() => setScanResult(null), 5000);
+        return;
+      }
+
+      const detector = new BarcodeDetectorAPI({ formats: ["qr_code"] });
+      let paused = false;
+      const loopId = Date.now();
+      scanLoopRef.current = loopId;
+
+      const scan = async () => {
+        if (scanLoopRef.current !== loopId) return;
+        if (!paused && video.readyState >= 2) {
+          try {
+            const barcodes = await detector.detect(video);
+            if (barcodes.length > 0) {
+              processQrData(barcodes[0].rawValue);
+              paused = true;
+              setTimeout(() => {
+                paused = false;
+              }, 2000);
             }
-          }, 2000);
-        },
-        () => {
-          // QR parse error — ignore, camera keeps scanning
-        },
-      );
-    } catch (err) {
-      console.error("Camera start failed:", err);
+          } catch {
+            // Detection error — ignore, keep scanning
+          }
+        }
+        requestAnimationFrame(scan);
+      };
+
+      requestAnimationFrame(scan);
+    } catch {
       setCameraActive(false);
       setScanResult({ success: false, message: "Could not access camera. Check permissions." });
       if (scanResultTimeoutRef.current) clearTimeout(scanResultTimeoutRef.current);
       scanResultTimeoutRef.current = setTimeout(() => setScanResult(null), 5000);
     }
-  }, [processQrData]);
-
-  const stopCamera = useCallback(async () => {
-    if (html5QrScannerRef.current) {
-      try {
-        await html5QrScannerRef.current.stop();
-        html5QrScannerRef.current.clear();
-      } catch {
-        // Already stopped
-      }
-      html5QrScannerRef.current = null;
-    }
-    setCameraActive(false);
-  }, []);
+  }, [processQrData, stopCamera]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (html5QrScannerRef.current) {
-        html5QrScannerRef.current.stop().catch(() => {});
+      scanLoopRef.current = 0;
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
       }
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
       if (scanResultTimeoutRef.current) clearTimeout(scanResultTimeoutRef.current);
@@ -593,11 +605,14 @@ export function CheckInTab() {
             </div>
 
             {/* Camera viewport */}
-            <div
-              ref={cameraContainerRef}
-              className={`overflow-hidden rounded-lg transition-all ${cameraActive ? "mb-3" : "h-0"}`}
-            >
-              <div id="qr-camera-viewport" className="w-full" />
+            <div className={`overflow-hidden rounded-lg transition-all ${cameraActive ? "mb-3" : "h-0"}`}>
+              <video
+                ref={videoRef}
+                playsInline
+                muted
+                className="w-full rounded-lg bg-black"
+                style={{ display: cameraActive ? "block" : "none" }}
+              />
             </div>
 
             {/* Text input fallback */}

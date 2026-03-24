@@ -9,6 +9,7 @@ import {
   createSeedCodes,
 } from "../../services/vouch.service";
 import type { VouchCodeType, VouchCodeRules } from "@comeoffline/types";
+import { withCache, invalidateCache } from "../../utils/cache";
 
 const router = Router();
 
@@ -51,26 +52,17 @@ router.post("/vouch-codes/create", requireAdmin, asyncHandler(async (req: AuthRe
     count,
   });
 
+  invalidateCache("admin-vouch-codes");
   res.json({ success: true, data: codes });
 }));
 
 /** GET /api/admin/vouch-codes — Get all admin codes */
 router.get("/vouch-codes", requireAdmin, asyncHandler(async (_req, res) => {
-  try {
-    const codes = await getAdminCodes();
-    res.json({ success: true, data: codes });
-  } catch (err) {
-    const error = err as Error;
-    if (error.message && error.message.includes('quota')) {
-      res.status(429).json({
-        success: false,
-        error: "Firestore quota exceeded. Data may be cached. Try again in a few minutes.",
-        cached: true,
-      });
-      return;
-    }
-    throw err;
-  }
+  const codes = await withCache(() => getAdminCodes(), {
+    key: "admin-vouch-codes",
+    ttl: 5 * 60 * 1000,
+  });
+  res.json({ success: true, data: codes });
 }));
 
 /** PUT /api/admin/vouch-codes/:id — Update code rules/status */
@@ -90,6 +82,7 @@ router.put("/vouch-codes/:id", requireAdmin, asyncHandler(async (req: AuthReques
   }
 
   await updateCode(codeId, updates as Parameters<typeof updateCode>[1]);
+  invalidateCache("admin-vouch-codes");
   res.json({ success: true });
 }));
 
@@ -97,6 +90,7 @@ router.put("/vouch-codes/:id", requireAdmin, asyncHandler(async (req: AuthReques
 router.delete("/vouch-codes/:id", requireAdmin, asyncHandler(async (req: AuthRequest, res) => {
   const codeId = req.params.id as string;
   await deleteCode(codeId);
+  invalidateCache("admin-vouch-codes");
   res.json({ success: true });
 }));
 

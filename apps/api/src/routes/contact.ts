@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { requireAdmin, type AuthRequest } from "../middleware/auth";
 import { submitContact, getContactSubmissions, markContactRead } from "../services/contact.service";
+import { withCache, invalidateCacheByPrefix, isQuotaError } from "../utils/cache";
 
 const router = Router();
 
@@ -46,11 +47,15 @@ router.post("/", async (req, res) => {
 router.get("/", requireAdmin, async (req: AuthRequest, res) => {
   try {
     const status = req.query.status as string | undefined;
-    const submissions = await getContactSubmissions(status);
+    const submissions = await withCache(() => getContactSubmissions(status), {
+      key: `admin-contact-${status || "all"}`,
+      ttl: 5 * 60 * 1000,
+    });
     res.json({ success: true, data: submissions });
   } catch (err) {
     console.error("[contact] list error:", err);
-    res.status(500).json({ success: false, error: "Failed to fetch" });
+    const s = isQuotaError(err) ? 429 : 500;
+    res.status(s).json({ success: false, error: isQuotaError(err) ? "Firestore quota exceeded. Try again in a few minutes." : "Failed to fetch" });
   }
 });
 
@@ -67,6 +72,7 @@ router.put("/:id/status", requireAdmin, async (req: AuthRequest, res) => {
       res.status(404).json({ success: false, error: "Not found" });
       return;
     }
+    invalidateCacheByPrefix("admin-contact-");
     res.json({ success: true });
   } catch (err) {
     console.error("[contact] update error:", err);

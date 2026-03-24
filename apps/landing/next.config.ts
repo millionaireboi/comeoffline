@@ -51,11 +51,11 @@ const nextConfig: NextConfig = {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+              `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""} https://us-assets.i.posthog.com`,
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob: https://storage.googleapis.com https://*.firebasestorage.googleapis.com",
               "font-src 'self' data:",
-              `connect-src 'self' ${apiUrl}${isDev ? " ws://localhost:*" : ""}`,
+              `connect-src 'self' https://us.i.posthog.com https://us-assets.i.posthog.com ${apiUrl}${isDev ? " ws://localhost:*" : ""}`,
               "frame-src 'none'",
               "object-src 'none'",
               "base-uri 'self'",

@@ -7,12 +7,9 @@ import {
   adminConfirmTicket,
   exportTicketsCSV,
 } from "../../services/bookings.service";
+import { withCache, invalidateCacheByPrefix, isQuotaError } from "../../utils/cache";
 
 const router = Router();
-
-// In-memory cache for bookings stats (5 minute TTL)
-let statsCache: { data: unknown; timestamp: number; key: string } | null = null;
-const STATS_CACHE_TTL = 5 * 60 * 1000;
 
 /** GET /api/admin/bookings — Paginated ticket list with filters */
 router.get("/", requireAdmin, async (req: AuthRequest, res) => {
@@ -29,11 +26,16 @@ router.get("/", requireAdmin, async (req: AuthRequest, res) => {
       limit: Math.min(parseInt(req.query.limit as string) || 50, 200),
     };
 
-    const result = await getFilteredTickets(filters);
+    const cacheKey = `admin-bookings-${Object.keys(filters).sort().map(k => `${k}=${(filters as Record<string, unknown>)[k]}`).join("&")}`;
+    const result = await withCache(() => getFilteredTickets(filters), {
+      key: cacheKey,
+      ttl: 2 * 60 * 1000,
+    });
     res.json({ success: true, data: result });
   } catch (err) {
     console.error("[admin/bookings] list error:", err);
-    res.status(500).json({ success: false, error: "Internal server error" });
+    const s = isQuotaError(err) ? 429 : 500;
+    res.status(s).json({ success: false, error: isQuotaError(err) ? "Firestore quota exceeded. Try again in a few minutes." : "Internal server error" });
   }
 });
 
@@ -41,33 +43,17 @@ router.get("/", requireAdmin, async (req: AuthRequest, res) => {
 router.get("/stats", requireAdmin, async (req: AuthRequest, res) => {
   try {
     const eventId = req.query.event_id as string | undefined;
-    const cacheKey = `stats_${eventId || "all"}`;
 
-    // Return cached data if fresh
-    if (statsCache && statsCache.key === cacheKey && Date.now() - statsCache.timestamp < STATS_CACHE_TTL) {
-      res.json({ success: true, data: statsCache.data, cached: true });
-      return;
-    }
-
-    const stats = await getBookingsStats(eventId);
-
-    statsCache = { data: stats, timestamp: Date.now(), key: cacheKey };
+    const stats = await withCache(
+      () => getBookingsStats(eventId),
+      { key: `admin-bookings-stats-${eventId || "all"}`, ttl: 5 * 60 * 1000 },
+    );
 
     res.json({ success: true, data: stats });
   } catch (err) {
     console.error("[admin/bookings] stats error:", err);
-
-    const error = err as { code?: number; message?: string };
-    if (error.code === 8 || (error.message && error.message.includes("RESOURCE_EXHAUSTED"))) {
-      if (statsCache) {
-        res.json({ success: true, data: statsCache.data, cached: true, stale: true });
-        return;
-      }
-      res.status(429).json({ success: false, error: "Firestore quota exceeded" });
-      return;
-    }
-
-    res.status(500).json({ success: false, error: "Internal server error" });
+    const s = isQuotaError(err) ? 429 : 500;
+    res.status(s).json({ success: false, error: isQuotaError(err) ? "Firestore quota exceeded. Try again in a few minutes." : "Internal server error" });
   }
 });
 
@@ -106,8 +92,8 @@ router.post("/:id/cancel", requireAdmin, async (req: AuthRequest, res) => {
       return;
     }
 
-    // Invalidate stats cache
-    statsCache = null;
+    // Invalidate bookings and stats caches
+    invalidateCacheByPrefix("admin-bookings-");
 
     res.json({ success: true });
   } catch (err) {
@@ -126,8 +112,8 @@ router.post("/:id/confirm", requireAdmin, async (req: AuthRequest, res) => {
       return;
     }
 
-    // Invalidate stats cache
-    statsCache = null;
+    // Invalidate bookings and stats caches
+    invalidateCacheByPrefix("admin-bookings-");
 
     res.json({ success: true });
   } catch (err) {

@@ -7,24 +7,33 @@ import {
   updateEvent,
   updateEventStatus,
 } from "../../services/events.service";
+import { withCache, invalidateCache, isQuotaError } from "../../utils/cache";
 
 const router = Router();
 
 /** GET /api/admin/events — List all events (including drafts) */
 router.get("/", requireAdmin, async (_req: AuthRequest, res) => {
   try {
-    const events = await getAllEvents();
+    const events = await withCache(() => getAllEvents(), {
+      key: "admin-events",
+      ttl: 5 * 60 * 1000,
+    });
     res.json({ success: true, data: events });
   } catch (err) {
     console.error("[admin/events] list error:", err);
-    res.status(500).json({ success: false, error: "Failed to fetch events" });
+    const status = isQuotaError(err) ? 429 : 500;
+    res.status(status).json({ success: false, error: isQuotaError(err) ? "Firestore quota exceeded. Try again in a few minutes." : "Failed to fetch events" });
   }
 });
 
 /** GET /api/admin/events/:id — Get single event */
 router.get("/:id", requireAdmin, async (req: AuthRequest, res) => {
   try {
-    const event = await getEventById(req.params.id as string);
+    const id = req.params.id as string;
+    const event = await withCache(() => getEventById(id), {
+      key: `admin-event-${id}`,
+      ttl: 3 * 60 * 1000,
+    });
     if (!event) {
       res.status(404).json({ success: false, error: "Event not found" });
       return;
@@ -32,7 +41,8 @@ router.get("/:id", requireAdmin, async (req: AuthRequest, res) => {
     res.json({ success: true, data: event });
   } catch (err) {
     console.error("[admin/events] get error:", err);
-    res.status(500).json({ success: false, error: "Failed to fetch event" });
+    const status = isQuotaError(err) ? 429 : 500;
+    res.status(status).json({ success: false, error: isQuotaError(err) ? "Firestore quota exceeded. Try again in a few minutes." : "Failed to fetch event" });
   }
 });
 
@@ -40,6 +50,7 @@ router.get("/:id", requireAdmin, async (req: AuthRequest, res) => {
 router.post("/", requireAdmin, async (req: AuthRequest, res) => {
   try {
     const event = await createEvent(req.body);
+    invalidateCache("admin-events");
     res.status(201).json({ success: true, data: event });
   } catch (err) {
     console.error("[admin/events] create error:", err);
@@ -52,11 +63,14 @@ router.post("/", requireAdmin, async (req: AuthRequest, res) => {
 /** PUT /api/admin/events/:id — Update event */
 router.put("/:id", requireAdmin, async (req: AuthRequest, res) => {
   try {
-    const event = await updateEvent(req.params.id as string, req.body);
+    const id = req.params.id as string;
+    const event = await updateEvent(id, req.body);
     if (!event) {
       res.status(404).json({ success: false, error: "Event not found" });
       return;
     }
+    invalidateCache("admin-events");
+    invalidateCache(`admin-event-${id}`);
     res.json({ success: true, data: event });
   } catch (err) {
     console.error("[admin/events] update error:", err);
@@ -73,11 +87,14 @@ router.put("/:id/status", requireAdmin, async (req: AuthRequest, res) => {
       return;
     }
 
-    const updated = await updateEventStatus(req.params.id as string, status);
+    const id = req.params.id as string;
+    const updated = await updateEventStatus(id, status);
     if (!updated) {
       res.status(404).json({ success: false, error: "Event not found" });
       return;
     }
+    invalidateCache("admin-events");
+    invalidateCache(`admin-event-${id}`);
     res.json({ success: true });
   } catch (err) {
     console.error("[admin/events] status error:", err);

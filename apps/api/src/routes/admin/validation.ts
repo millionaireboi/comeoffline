@@ -4,66 +4,26 @@ import { strictLimiter } from "../../middleware/rateLimit";
 import { getValidationQueue, validateUser, addAdminNote } from "../../services/validation.service";
 import { getPollResults } from "../../services/poll.service";
 import type { ValidationDecision } from "@comeoffline/types";
+import { withCache, invalidateCacheByPrefix, isQuotaError } from "../../utils/cache";
 
 const router = Router();
-
-// In-memory cache for validation queue (2 minute TTL to reduce quota usage)
-let validationQueueCache: Map<string, { data: unknown; timestamp: number }> = new Map();
-const CACHE_TTL = 2 * 60 * 1000; // 2 minutes
 
 /** GET /api/admin/validation-queue — Get provisional users pending validation */
 router.get("/validation-queue", strictLimiter, requireAdmin, async (req: AuthRequest, res) => {
   try {
     const eventId = req.query.event_id as string | undefined;
     const limit = parseInt(req.query.limit as string) || 30;
-    const cacheKey = `${eventId || "all"}_${limit}`;
 
-    // Return cached data if available and fresh
-    const cached = validationQueueCache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-      res.json({
-        success: true,
-        data: cached.data,
-        cached: true,
-      });
-      return;
-    }
-
-    const queue = await getValidationQueue(eventId, limit);
-
-    // Update cache
-    validationQueueCache.set(cacheKey, { data: queue, timestamp: Date.now() });
+    const queue = await withCache(
+      () => getValidationQueue(eventId, limit),
+      { key: `admin-validation-${eventId || "all"}_${limit}`, ttl: 2 * 60 * 1000 },
+    );
 
     res.json({ success: true, data: queue });
   } catch (err) {
     console.error("[validation] queue error:", err);
-
-    const error = err as { code?: number; message?: string };
-
-    // Handle quota exhaustion gracefully
-    if (error.code === 8 || (error.message && error.message.includes("RESOURCE_EXHAUSTED"))) {
-      const cacheKey = (req.query.event_id as string | undefined) || "all";
-      const cached = validationQueueCache.get(cacheKey);
-
-      if (cached) {
-        console.warn("[validation] Quota exceeded, returning stale cache");
-        res.json({
-          success: true,
-          data: cached.data,
-          cached: true,
-          stale: true,
-        });
-        return;
-      }
-
-      res.status(429).json({
-        success: false,
-        error: "Firestore quota exceeded. Try again in a few minutes.",
-      });
-      return;
-    }
-
-    res.status(500).json({ success: false, error: "Internal server error" });
+    const s = isQuotaError(err) ? 429 : 500;
+    res.status(s).json({ success: false, error: isQuotaError(err) ? "Firestore quota exceeded. Try again in a few minutes." : "Internal server error" });
   }
 });
 
@@ -90,7 +50,7 @@ router.put("/users/:id/validate", requireAdmin, async (req: AuthRequest, res) =>
     }
 
     // Invalidate validation queue cache after successful validation
-    validationQueueCache.clear();
+    invalidateCacheByPrefix("admin-validation-");
 
     res.json({ success: true });
   } catch (err) {

@@ -69,7 +69,11 @@ export async function withCache<T>(
       console.warn(`[cache] Quota exhausted globally, returning stale cache for "${key}"`);
       return cached.data;
     }
-    throw new Error('Firestore quota exhausted. System in cooldown. Try again in a few minutes.');
+    const cooldownErr = Object.assign(
+      new Error('Firestore quota exhausted. System in cooldown. Try again in a few minutes.'),
+      { status: 429 },
+    );
+    throw cooldownErr;
   }
 
   try {
@@ -92,8 +96,12 @@ export async function withCache<T>(
         return cached.data;
       }
 
-      // No cache available
-      throw new Error('Firestore quota exceeded. Please try again later.');
+      // No cache available — throw with 429 status so routes can forward it
+      const quotaErr = Object.assign(
+        new Error('Firestore quota exceeded. Please try again later.'),
+        { status: 429 },
+      );
+      throw quotaErr;
     }
 
     // Re-throw other errors
@@ -109,10 +117,30 @@ export function invalidateCache(key: string): void {
 }
 
 /**
+ * Invalidate all cache entries whose key starts with the given prefix
+ */
+export function invalidateCacheByPrefix(prefix: string): void {
+  for (const key of cache.keys()) {
+    if (key.startsWith(prefix)) {
+      cache.delete(key);
+    }
+  }
+}
+
+/**
  * Clear entire cache
  */
 export function clearCache(): void {
   cache.clear();
+}
+
+/**
+ * Check if an error is a quota/rate-limit error thrown by withCache.
+ * Use in route catch blocks to return 429 instead of 500.
+ */
+export function isQuotaError(err: unknown): boolean {
+  const e = err as { status?: number };
+  return e?.status === 429;
 }
 
 /**

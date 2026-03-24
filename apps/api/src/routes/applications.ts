@@ -6,6 +6,7 @@ import {
   approveApplication,
   rejectApplication,
 } from "../services/applications.service";
+import { withCache, invalidateCacheByPrefix, isQuotaError } from "../utils/cache";
 
 const router = Router();
 
@@ -49,11 +50,15 @@ router.post("/", async (req, res) => {
 router.get("/", requireAdmin, async (req: AuthRequest, res) => {
   try {
     const status = req.query.status as string | undefined;
-    const applications = await getApplications(status);
+    const applications = await withCache(() => getApplications(status), {
+      key: `admin-apps-${status || "all"}`,
+      ttl: 3 * 60 * 1000,
+    });
     res.json({ success: true, data: applications });
   } catch (err) {
     console.error("[applications] list error:", err);
-    res.status(500).json({ success: false, error: "Failed to fetch applications" });
+    const s = isQuotaError(err) ? 429 : 500;
+    res.status(s).json({ success: false, error: isQuotaError(err) ? "Firestore quota exceeded. Try again in a few minutes." : "Failed to fetch applications" });
   }
 });
 
@@ -66,6 +71,7 @@ router.put("/:id/approve", requireAdmin, async (req: AuthRequest, res) => {
       res.status(400).json({ success: false, error: result.error });
       return;
     }
+    invalidateCacheByPrefix("admin-apps-");
     res.json({ success: true });
   } catch (err) {
     console.error("[applications] approve error:", err);
@@ -82,6 +88,7 @@ router.put("/:id/reject", requireAdmin, async (req: AuthRequest, res) => {
       res.status(404).json({ success: false, error: "Application not found" });
       return;
     }
+    invalidateCacheByPrefix("admin-apps-");
     res.json({ success: true });
   } catch (err) {
     console.error("[applications] reject error:", err);

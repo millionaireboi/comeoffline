@@ -30,7 +30,7 @@ interface ConfettiPiece {
 
 const CONFETTI_COLORS = ["#D4A574", "#DBBCAC", "#A8B5A0", "#D4836B", "#B8A9C9", "#FAF6F0"];
 
-export function TheGate() {
+export function TheGate({ onSignIn }: { onSignIn?: () => void }) {
   const [code, setCode] = useState("");
   const [status, setStatus] = useState<"idle" | "checking" | "unlocked" | "rejected">("idle");
   const [rejectMsg, setRejectMsg] = useState("");
@@ -265,12 +265,12 @@ export function TheGate() {
           {/* Sign in link */}
           <div className="mt-8 text-center" style={{ animation: "fadeIn 0.5s ease 1.5s both" }}>
             <p className="font-mono text-[11px] text-muted/50">already a member?</p>
-            <a
-              href="/sign-in"
+            <button
+              onClick={onSignIn}
               className="mt-2 inline-block font-mono text-[11px] uppercase tracking-[3px] text-caramel transition-opacity hover:opacity-70"
             >
               sign in
-            </a>
+            </button>
           </div>
         </div>
       )}

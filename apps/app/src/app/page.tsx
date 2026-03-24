@@ -29,6 +29,7 @@ import { SignQuizOffer } from "@/components/onboarding/SignQuizOffer";
 import { SignQuiz } from "@/components/onboarding/SignQuiz";
 import { InAppChat } from "@/components/chat/InAppChat";
 import { BottomNav } from "@/components/shared/BottomNav";
+import { SignInScreen } from "@/components/gates/SignInScreen";
 
 export default function Home() {
   const { loading, getIdToken } = useAuth();
@@ -41,8 +42,14 @@ export default function Home() {
   const user = useAppStore((s) => s.user);
   const [chatOpen, setChatOpen] = useState(false);
   const [quizActive, setQuizActive] = useState(false);
+  const [showSignIn, setShowSignIn] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
   const prevStageRef = useRef(stage);
+
+  // Reset sign-in view when leaving the gate stage (e.g. after successful login)
+  useEffect(() => {
+    if (stage !== "gate") setShowSignIn(false);
+  }, [stage]);
 
   // Scroll-to-top + fade transition on stage change
   useEffect(() => {
@@ -169,7 +176,9 @@ export default function Home() {
   let screen: React.ReactNode;
   switch (stage) {
     case "gate":
-      screen = <TheGate />;
+      screen = showSignIn
+        ? <SignInScreen onBack={() => setShowSignIn(false)} />
+        : <TheGate onSignIn={() => setShowSignIn(true)} />;
       break;
     case "accepted":
       screen = <AcceptanceScreen />;

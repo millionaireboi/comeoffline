@@ -1,35 +1,33 @@
 /* eslint-disable no-restricted-globals */
 
-// Firebase Messaging Service Worker
-// All scripts and Firebase init must happen at the top level so that
-// push/notificationclick handlers are registered during initial evaluation.
-importScripts("https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js");
-importScripts("https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js");
+// Service Worker — handles push notifications and offline caching
+// No Firebase SDK needed here; we handle push events natively.
 
-firebase.initializeApp({
-  apiKey: "AIzaSyCCp_gK6gsaJW-zYgnh_ueOw1G2lQcc18U",
-  authDomain: "comeoffline-509fc.firebaseapp.com",
-  projectId: "comeoffline-509fc",
-  storageBucket: "comeoffline-509fc.firebasestorage.app",
-  messagingSenderId: "1081436766173",
-  appId: "1:1081436766173:web:82011fac8a8cd1c7a30034",
-});
+// Handle incoming push notifications
+self.addEventListener("push", (event) => {
+  if (!event.data) return;
 
-const messaging = firebase.messaging();
+  let payload;
+  try {
+    payload = event.data.json();
+  } catch {
+    return;
+  }
 
-// Handle background push notifications
-messaging.onBackgroundMessage((payload) => {
-  const { title, body } = payload.notification || {};
+  const notification = payload.notification || {};
+  const title = notification.title;
   if (!title) return;
 
-  self.registration.showNotification(title, {
-    body: body || "",
-    icon: "/icon-192.png",
-    badge: "/icon-192.png",
-    vibrate: [100, 50, 100],
-    data: payload.data || {},
-    actions: [{ action: "open", title: "Open" }],
-  });
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: notification.body || "",
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      vibrate: [100, 50, 100],
+      data: payload.data || {},
+      actions: [{ action: "open", title: "Open" }],
+    }),
+  );
 });
 
 // Handle notification click — navigate to the app

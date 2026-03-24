@@ -2,6 +2,7 @@
 
 import { useState, useRef, useMemo } from "react";
 import type { Event } from "@comeoffline/types";
+import { useAppStore } from "@/store/useAppStore";
 import { CheckoutWizard } from "@/components/events/CheckoutWizard";
 import { ExitSurvey } from "@/components/events/ExitSurvey";
 import { CollapsibleHeader } from "./event-detail/CollapsibleHeader";
@@ -29,6 +30,7 @@ interface EventDetailProps {
 }
 
 export function EventDetail({ event, onClose, onRsvp, onTicketPurchase, loading }: EventDetailProps) {
+  const user = useAppStore((s) => s.user);
   const spotsLeft = event.total_spots - event.spots_taken;
   const isTicketed = !!(event.ticketing?.enabled && !event.is_free);
   const tiers = event.ticketing?.tiers || [];
@@ -179,6 +181,7 @@ export function EventDetail({ event, onClose, onRsvp, onTicketPurchase, loading 
           loading={loading}
           accent={event.accent || "#D4A574"}
           accentDark={event.accent_dark || "#B8845A"}
+          quizPending={!user?.sign}
         />
       </div>
 

@@ -13,6 +13,7 @@ interface FloatingCTAProps {
   loading?: boolean;
   accent: string;
   accentDark: string;
+  quizPending?: boolean;
 }
 
 export function FloatingCTA({
@@ -28,6 +29,7 @@ export function FloatingCTA({
   loading,
   accent,
   accentDark,
+  quizPending,
 }: FloatingCTAProps) {
   const soldOut = spotsLeft === 0;
 
@@ -58,6 +60,11 @@ export function FloatingCTA({
           >
             {loading ? "getting your ticket..." : "save me a spot →"}
           </button>
+          {quizPending && (
+            <p className="mt-2 text-center font-mono text-[10px] text-cream/40">
+              ✦ you'll need to take the sign quiz before the event
+            </p>
+          )}
         </div>
       ) : (
         /* Simple button */
@@ -100,6 +107,11 @@ export function FloatingCTA({
                     : "get tickets →"
                 : "i'm in →"}
         </button>
+      )}
+      {quizPending && !soldOut && !(isTicketed && selectedTier && activeSection === "tickets") && (
+        <p className="mt-2 text-center font-mono text-[10px] text-muted/50">
+          ✦ you'll need to take the sign quiz before the event
+        </p>
       )}
     </div>
   );

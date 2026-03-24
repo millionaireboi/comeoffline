@@ -1,12 +1,35 @@
 "use client";
 
+import { useState } from "react";
 import { useAppStore } from "@/store/useAppStore";
+import { SignQuiz } from "@/components/onboarding/SignQuiz";
 import { Noise } from "@/components/shared/Noise";
 
 export function DayOfScreen() {
+  const user = useAppStore((s) => s.user);
   const { currentEvent, activeRsvp, activeTicket, setStage } = useAppStore();
+  const [quizJustCompleted, setQuizJustCompleted] = useState(false);
 
   if (!currentEvent) return null;
+
+  // Hard gate: must complete sign quiz before attending
+  if (!user?.sign && !quizJustCompleted) {
+    return (
+      <div className="flex min-h-screen flex-col bg-gate-black">
+        <div className="flex flex-col items-center justify-center px-6 pt-[80px] pb-8 text-center">
+          <span className="mb-4 text-4xl">✦</span>
+          <h2 className="mb-2 font-serif text-[26px] text-cream">one last thing</h2>
+          <p className="mb-2 max-w-[300px] font-sans text-[14px] leading-[1.6] text-muted">
+            you need your comeoffline sign before you can attend. we use it to seat you with compatible people.
+          </p>
+          <p className="mb-6 font-mono text-[11px] text-caramel">takes 2 mins</p>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          <SignQuiz onComplete={() => setQuizJustCompleted(true)} mode="pre_checkout" />
+        </div>
+      </div>
+    );
+  }
 
   const pickupPoint =
     activeTicket?.pickup_point ||

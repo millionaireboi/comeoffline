@@ -65,6 +65,14 @@ export function GoDarkScreen() {
         </button>
       </div>
 
+      {/* Back to day-of for QR / venue info */}
+      <button
+        onClick={() => setStage("dayof")}
+        className="absolute left-6 top-8 font-mono text-[11px] text-muted/30 transition-colors hover:text-cream"
+      >
+        &larr; event info
+      </button>
+
       <div className="absolute bottom-10 font-serif text-base text-muted/15">
         come offline
       </div>

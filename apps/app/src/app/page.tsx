@@ -1,17 +1,17 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { usePWAInstall } from "@/hooks/usePWAInstall";
 import { useTokenHandoff } from "@/hooks/useTokenHandoff";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useStage } from "@/hooks/useStage";
+import { useNavigationHistory } from "@/hooks/useNavigationHistory";
 import { useAppStore } from "@/store/useAppStore";
 import { apiFetch } from "@/lib/api";
 import type { Ticket, Event } from "@comeoffline/types";
 import { InstallGate } from "@/components/gates/InstallGate";
 import { TheGate } from "@/components/gates/TheGate";
-import { SignInScreen } from "@/components/gates/SignInScreen";
 import { AcceptanceScreen } from "@/components/gates/AcceptanceScreen";
 import { EventFeed } from "@/components/events/EventFeed";
 import { CountdownScreen } from "@/components/events/CountdownScreen";
@@ -36,10 +36,27 @@ export default function Home() {
   const { checking: tokenChecking } = useTokenHandoff();
   usePushNotifications();
   useStage(); // Auto stage transitions based on event dates + ticket/RSVP status
+  useNavigationHistory(); // Browser back button / swipe-back support
   const stage = useAppStore((s) => s.stage);
   const user = useAppStore((s) => s.user);
   const [chatOpen, setChatOpen] = useState(false);
   const [quizActive, setQuizActive] = useState(false);
+  const [transitioning, setTransitioning] = useState(false);
+  const prevStageRef = useRef(stage);
+
+  // Scroll-to-top + fade transition on stage change
+  useEffect(() => {
+    if (prevStageRef.current !== stage) {
+      setTransitioning(true);
+      window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+      // Short fade-in after stage switch
+      const raf = requestAnimationFrame(() => {
+        setTransitioning(false);
+      });
+      prevStageRef.current = stage;
+      return () => cancelAnimationFrame(raf);
+    }
+  }, [stage]);
 
   // Handle return from Razorpay payment
   useEffect(() => {
@@ -51,8 +68,8 @@ export default function Home() {
 
     if (!rzpStatus || !ticketId) return;
 
-    // Clean URL immediately
-    window.history.replaceState({}, "", "/");
+    // Clean URL immediately (preserve stage in history state)
+    window.history.replaceState({ stage: useAppStore.getState().stage }, "", "/");
 
     if (!user) return;
 
@@ -204,7 +221,13 @@ export default function Home() {
 
   return (
     <>
-      {screen}
+      <div
+        key={stage}
+        className="animate-screenIn"
+        style={{ opacity: transitioning ? 0 : undefined }}
+      >
+        {screen}
+      </div>
       {showNav && <BottomNav onChatOpen={() => setChatOpen(true)} />}
       {chatOpen && <InAppChat onClose={() => setChatOpen(false)} />}
     </>

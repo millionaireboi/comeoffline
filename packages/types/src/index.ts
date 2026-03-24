@@ -24,6 +24,7 @@ export interface User {
   name: string;
   handle: string;
   vibe_tag: string;
+  email?: string;
   instagram_handle?: string;
   invite_code_used: string;
   vouched_by?: string;
@@ -59,6 +60,8 @@ export interface User {
   validated_at?: string;
   validated_by?: string;
   events_attended?: number;
+  pin_hash?: string;
+  pin_set_at?: string;
   created_at: string;
 }
 

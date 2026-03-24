@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import type { Badge, Ticket } from "@comeoffline/types";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppStore } from "@/store/useAppStore";
@@ -9,6 +9,7 @@ import { SignQuiz } from "@/components/onboarding/SignQuiz";
 import { EditProfileScreen } from "@/components/profile/EditProfileScreen";
 import { ConnectionsList } from "@/components/profile/ConnectionsList";
 import { Noise } from "@/components/shared/Noise";
+import { PullToRefresh } from "@/components/shared/PullToRefresh";
 
 const AVATAR_GRADIENTS = [
   ["#D4A574", "#C4704D"], ["#B8A9C9", "#8B7BA8"], ["#A8B5A0", "#7A9170"],
@@ -120,39 +121,54 @@ const STATUS_STYLES: Record<string, { color: string; bg: string; label: string }
 
 export function ProfileScreen() {
   const { getIdToken, logout } = useAuth();
-  const { setStage, activeTicket, setActiveTicket } = useAppStore();
+  const { setStage, activeTicket, setActiveTicket, profileCompleteMode, setProfileCompleteMode } = useAppStore();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [tickets, setTickets] = useState<EnrichedTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [showQuizRetake, setShowQuizRetake] = useState(false);
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [showConnections, setShowConnections] = useState(false);
+  const autoOpenedEdit = useRef(false);
   const [expandedTicketId, setExpandedTicketId] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const token = await getIdToken();
-        if (!token) return;
-        const [profileRes, ticketsRes] = await Promise.all([
-          apiFetch<{ success: boolean; data: ProfileData }>("/api/users/me", { token }),
-          apiFetch<{ success: boolean; data: EnrichedTicket[] }>("/api/tickets/mine", { token }),
-        ]);
-        if (profileRes.data) {
-          setProfile(profileRes.data);
-        }
-        if (ticketsRes.data) {
-          setTickets(ticketsRes.data);
-        }
-      } catch (err) {
-        console.error("Failed to load profile:", err);
-      } finally {
-        setLoading(false);
+  const fetchData = useCallback(async () => {
+    try {
+      const token = await getIdToken();
+      if (!token) return;
+      const [profileRes, ticketsRes] = await Promise.all([
+        apiFetch<{ success: boolean; data: ProfileData }>("/api/users/me", { token }),
+        apiFetch<{ success: boolean; data: EnrichedTicket[] }>("/api/tickets/mine", { token }),
+      ]);
+      if (profileRes.data) {
+        setProfile(profileRes.data);
       }
+      if (ticketsRes.data) {
+        setTickets(ticketsRes.data);
+      }
+    } catch (err) {
+      console.error("Failed to load profile:", err);
+    } finally {
+      setLoading(false);
     }
-    fetchData();
   }, [getIdToken]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // Auto-open edit screen when coming from "finish it" nudge
+  useEffect(() => {
+    if (profileCompleteMode && profile && !autoOpenedEdit.current) {
+      autoOpenedEdit.current = true;
+      setShowEditProfile(true);
+    }
+  }, [profileCompleteMode, profile]);
+
+  // Clear completion mode flag when leaving ProfileScreen
+  useEffect(() => {
+    return () => { setProfileCompleteMode(false); };
+  }, [setProfileCompleteMode]);
 
   const handleCancelTicket = async (ticketId: string) => {
     if (!confirm("Cancel this ticket? This can\u2019t be undone.")) return;
@@ -211,7 +227,8 @@ export function ProfileScreen() {
   });
 
   return (
-    <div className="min-h-screen bg-cream pb-[120px]">
+    <>
+    <PullToRefresh onRefresh={fetchData} className="min-h-screen bg-cream pb-[120px]">
       <Noise />
 
       {/* Header with back */}
@@ -648,6 +665,8 @@ export function ProfileScreen() {
         </div>
       </section>
 
+    </PullToRefresh>
+
       {/* Connections list overlay */}
       {showConnections && (
         <ConnectionsList onClose={() => setShowConnections(false)} />
@@ -657,9 +676,10 @@ export function ProfileScreen() {
       {showEditProfile && (
         <EditProfileScreen
           user={profile.user}
-          onClose={() => setShowEditProfile(false)}
+          onClose={() => { setShowEditProfile(false); setProfileCompleteMode(false); }}
           onSave={async () => {
             setShowEditProfile(false);
+            setProfileCompleteMode(false);
             try {
               const token = await getIdToken();
               if (!token) return;
@@ -670,6 +690,7 @@ export function ProfileScreen() {
               if (data.data) setProfile(data.data);
             } catch { /* ignore */ }
           }}
+          highlightIncomplete={profileCompleteMode}
         />
       )}
 
@@ -696,6 +717,6 @@ export function ProfileScreen() {
           />
         </div>
       )}
-    </div>
+    </>
   );
 }

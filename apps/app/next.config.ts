@@ -54,7 +54,9 @@ const nextConfig: NextConfig = {
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob: https://storage.googleapis.com https://*.firebasestorage.googleapis.com",
               "font-src 'self' data:",
-              `connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com ${apiUrl}${isDev ? " ws://localhost:*" : ""}`,
+              isDev
+                ? "connect-src *"
+                : `connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com ${apiUrl}`,
               "frame-src 'none'",
               "object-src 'none'",
               "base-uri 'self'",

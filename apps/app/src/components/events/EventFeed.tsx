@@ -10,11 +10,12 @@ import { EventCard } from "@/components/events/EventCard";
 import { EventDetail } from "@/components/events/EventDetail";
 import { SignQuiz } from "@/components/onboarding/SignQuiz";
 import { Noise } from "@/components/shared/Noise";
+import { PullToRefresh } from "@/components/shared/PullToRefresh";
 
 export function EventFeed() {
   const { getIdToken } = useAuth();
   const user = useAppStore((s) => s.user);
-  const { setCurrentEvent, setActiveRsvp, setActiveTicket, setStage } = useAppStore();
+  const { setCurrentEvent, setActiveRsvp, setActiveTicket, setStage, setProfileCompleteMode } = useAppStore();
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [detailEvent, setDetailEvent] = useState<Event | null>(null);
@@ -36,23 +37,24 @@ export function EventFeed() {
     spotSeatId?: string;
   } | null>(null);
 
-  useEffect(() => {
-    async function fetchEvents() {
-      try {
-        const token = await getIdToken();
-        if (!token) return;
-        const data = await apiFetch<{ success: boolean; data: Event[] }>("/api/events", {
-          token,
-        });
-        if (data.data) setEvents(data.data);
-      } catch (err) {
-        console.error("Failed to load events:", err);
-      } finally {
-        setLoading(false);
-      }
+  const fetchEvents = useCallback(async () => {
+    try {
+      const token = await getIdToken();
+      if (!token) return;
+      const data = await apiFetch<{ success: boolean; data: Event[] }>("/api/events", {
+        token,
+      });
+      if (data.data) setEvents(data.data);
+    } catch (err) {
+      console.error("Failed to load events:", err);
+    } finally {
+      setLoading(false);
     }
-    fetchEvents();
   }, [getIdToken]);
+
+  useEffect(() => {
+    fetchEvents();
+  }, [fetchEvents]);
 
   // Legacy RSVP flow for free events
   const handleRsvp = useCallback(
@@ -177,7 +179,8 @@ export function EventFeed() {
   }
 
   return (
-    <div className="min-h-screen bg-cream pb-[120px]">
+    <>
+    <PullToRefresh onRefresh={fetchEvents} className="min-h-screen bg-cream pb-[120px]">
       <Noise />
 
       {/* Quiz reminder banner — fixed at top if user hasn't taken the quiz */}
@@ -208,7 +211,7 @@ export function EventFeed() {
           style={{ background: "rgba(212,165,116,0.06)", borderColor: "rgba(212,165,116,0.12)" }}
         >
           <button
-            onClick={() => setStage("profile")}
+            onClick={() => { setProfileCompleteMode(true); setStage("profile"); }}
             className="flex items-center gap-2.5 text-left"
           >
             <span className="text-base">{"\u270F\uFE0F"}</span>
@@ -278,6 +281,8 @@ export function EventFeed() {
         </div>
       </section>
 
+    </PullToRefresh>
+
       {/* Detail sheet */}
       {detailEvent && (
         <EventDetail
@@ -334,6 +339,6 @@ export function EventFeed() {
           <SignQuiz onComplete={handleQuizGateComplete} mode={pendingPurchase ? "pre_checkout" : "onboarding"} />
         </div>
       )}
-    </div>
+    </>
   );
 }

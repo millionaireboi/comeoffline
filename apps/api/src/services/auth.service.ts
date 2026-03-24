@@ -5,6 +5,12 @@ import { isCodeUsable, recordCodeUsage } from "./vouch.service";
 import { evaluateVibeCheck } from "./vibe-check.service";
 import type { VouchCode, VouchCodeUsage, DiscoverySource } from "@comeoffline/types";
 
+/** Strip sensitive fields from user data before sending to client */
+function sanitizeUser(data: Record<string, unknown>): Record<string, unknown> {
+  const { pin_hash, pin_set_at, ...safe } = data;
+  return safe;
+}
+
 interface ValidateCodeResult {
   valid: boolean;
   token?: string;
@@ -90,7 +96,7 @@ export async function validateHandoffToken(token: string): Promise<HandoffTokenR
   return {
     valid: true,
     token: firebaseToken,
-    user: userData,
+    user: sanitizeUser(userData),
     has_seen_welcome: (rawData.has_seen_welcome as boolean) ?? false,
     source: tokenData.source as "landing" | "chatbot",
   };
@@ -129,36 +135,54 @@ export async function validateCode(
   if (codeData.uses === undefined) codeData.uses = 0;
   if (!codeData.used_by) codeData.used_by = [];
 
-  // Step 1b: Check if a returning user is signing back in with their original code
-  const existingUserSnap = await db
-    .collection("users")
-    .where("invite_code_used", "==", normalizedCode)
-    .limit(1)
-    .get();
+  // Step 1b: Check if a returning user is signing back in with their original code.
+  // Only safe for single-use codes — for multi-use codes, multiple users share the same
+  // code so we can't know which user is returning. They should use /sign-in instead.
+  if (codeData.rules.max_uses === 1 || codeData.type === "single") {
+    const existingUserSnap = await db
+      .collection("users")
+      .where("invite_code_used", "==", normalizedCode)
+      .limit(1)
+      .get();
 
-  if (!existingUserSnap.empty) {
-    // Returning user — issue a new custom token to sign them back in
-    const existingUserDoc = existingUserSnap.docs[0];
-    const rawData = existingUserDoc.data();
-    const existingUserData = { id: existingUserDoc.id, ...rawData };
-    const token = await auth.createCustomToken(existingUserDoc.id);
-    const handoffToken = await generateHandoffToken(
-      existingUserDoc.id,
-      "landing",
-      rawData.status === "active" ? "active" : "provisional",
-    );
-    return { valid: true, token, handoff_token: handoffToken, user: existingUserData };
+    if (!existingUserSnap.empty) {
+      // Returning user — issue a new custom token to sign them back in
+      const existingUserDoc = existingUserSnap.docs[0];
+      const rawData = existingUserDoc.data();
+      const existingUserData = { id: existingUserDoc.id, ...rawData };
+      const token = await auth.createCustomToken(existingUserDoc.id);
+      const handoffToken = await generateHandoffToken(
+        existingUserDoc.id,
+        "landing",
+        rawData.status === "active" ? "active" : "provisional",
+      );
+      return { valid: true, token, handoff_token: handoffToken, user: sanitizeUser(existingUserData) };
+    }
   }
 
   // New user — check if code is still usable
-  const check = isCodeUsable(codeData);
+  const check = isCodeUsable(codeData, source);
   if (!check.usable) {
     return { valid: false, error: check.reason || "Code is not valid" };
   }
 
   // Step 2: Create Firebase Auth user
   const displayName = name || `user_${Date.now()}`;
-  const userHandle = handle || `@${displayName.toLowerCase().replace(/\s+/g, "_")}`;
+  let userHandle = handle || `@${displayName.toLowerCase().replace(/\s+/g, "_")}`;
+
+  // Ensure handle uniqueness — append random suffix if taken
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const handleSnap = await db
+      .collection("users")
+      .where("handle", "==", userHandle)
+      .limit(1)
+      .get();
+    if (handleSnap.empty) break;
+    const suffix = crypto.randomBytes(2).toString("hex");
+    userHandle = handle
+      ? `${handle}_${suffix}`
+      : `@${displayName.toLowerCase().replace(/\s+/g, "_")}_${suffix}`;
+  }
 
   let firebaseUser;
   try {
@@ -182,7 +206,7 @@ export async function validateCode(
     badges: [],
     status: "active",
     has_seen_welcome: false,
-    referral_source: source || undefined,
+    ...(source && { referral_source: source }),
     created_at: FieldValue.serverTimestamp(),
   };
 
@@ -200,9 +224,23 @@ export async function validateCode(
   };
 
   try {
-    await recordCodeUsage(codeDoc.id, usage);
+    await recordCodeUsage(codeDoc.id, usage, source);
   } catch (err) {
-    // Usage tracking failure shouldn't block user creation
+    const errorMsg = err instanceof Error ? err.message : "";
+    if (errorMsg.startsWith("CODE_DEPLETED:")) {
+      // Code was used up between our check and the transaction — roll back user creation
+      console.warn("[auth] Code depleted during redemption, rolling back user:", firebaseUser.uid);
+      try {
+        await Promise.all([
+          auth.deleteUser(firebaseUser.uid),
+          db.collection("users").doc(firebaseUser.uid).delete(),
+        ]);
+      } catch (rollbackErr) {
+        console.error("[auth] Rollback failed for user:", firebaseUser.uid, rollbackErr);
+      }
+      return { valid: false, error: errorMsg.slice("CODE_DEPLETED:".length) };
+    }
+    // Other usage tracking failures shouldn't block user creation
     console.error("[auth] Failed to record code usage:", err);
   }
 
@@ -329,7 +367,19 @@ async function createChatbotUser(
 ): Promise<ChatbotEntryResult> {
   const db = await getDb();
   const auth = await getAuthService();
-  const userHandle = `@${name.toLowerCase().replace(/\s+/g, "_")}`;
+  let userHandle = `@${name.toLowerCase().replace(/\s+/g, "_")}`;
+
+  // Ensure handle uniqueness — same logic as validateCode path
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const handleSnap = await db
+      .collection("users")
+      .where("handle", "==", userHandle)
+      .limit(1)
+      .get();
+    if (handleSnap.empty) break;
+    const suffix = crypto.randomBytes(2).toString("hex");
+    userHandle = `@${name.toLowerCase().replace(/\s+/g, "_")}_${suffix}`;
+  }
 
   let firebaseUser;
   try {

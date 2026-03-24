@@ -107,9 +107,10 @@ export function InviteCodesTab() {
 
     setCreating(true);
     try {
+      const effectiveCount = customCode.trim() ? 1 : (codeType === "single" ? parseInt(count, 10) : 1);
       await apiClient.post("/api/admin/vouch-codes/create", {
         type: codeType,
-        count: codeType === "single" ? parseInt(count, 10) : 1,
+        count: effectiveCount,
         label: label.trim() || undefined,
         description: description.trim() || undefined,
         custom_code: customCode.trim() || undefined,
@@ -293,21 +294,22 @@ export function InviteCodesTab() {
             </div>
           )}
 
-          {/* Custom code (only for single-code creation) */}
-          {(codeType === "multi" || codeType === "unlimited") && (
-            <div>
-              <label className="mb-2 block font-mono text-[11px] uppercase tracking-[2px] text-muted">
-                custom code (optional)
-              </label>
-              <input
-                type="text"
-                value={customCode}
-                onChange={(e) => setCustomCode(e.target.value.toUpperCase())}
-                placeholder="e.g., COMEOFFLINE"
-                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 font-mono text-sm text-cream placeholder:text-muted/30 focus:border-caramel/50 focus:outline-none"
-              />
-            </div>
-          )}
+          {/* Custom code — available for all types, forces count to 1 */}
+          <div>
+            <label className="mb-2 block font-mono text-[11px] uppercase tracking-[2px] text-muted">
+              custom code (optional)
+            </label>
+            <input
+              type="text"
+              value={customCode}
+              onChange={(e) => setCustomCode(e.target.value.toUpperCase())}
+              placeholder="e.g., COMEOFFLINE"
+              className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 font-mono text-sm text-cream placeholder:text-muted/30 focus:border-caramel/50 focus:outline-none"
+            />
+            {customCode.trim() && codeType === "single" && (
+              <p className="mt-1.5 font-mono text-[10px] text-caramel/70">custom code overrides quantity to 1</p>
+            )}
+          </div>
 
           <div>
             <label className="mb-2 block font-mono text-[11px] uppercase tracking-[2px] text-muted">

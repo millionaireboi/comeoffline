@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useAppStore } from "@/store/useAppStore";
 import { apiFetch } from "@/lib/api";
 import { Noise } from "@/components/shared/Noise";
+import { PullToRefresh } from "@/components/shared/PullToRefresh";
 
 export function VouchScreen() {
   const { track } = useAnalytics();
@@ -19,24 +20,25 @@ export function VouchScreen() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const isProvisional = user?.status === "provisional";
 
-  useEffect(() => {
-    async function fetchCodes() {
-      try {
-        const token = await getIdToken();
-        if (!token) return;
-        const data = await apiFetch<{ success: boolean; data: VouchCode[] }>(
-          "/api/vouch-codes",
-          { token },
-        );
-        if (data.data) setCodes(data.data);
-      } catch (err) {
-        console.error("Failed to load vouch codes:", err);
-      } finally {
-        setLoading(false);
-      }
+  const fetchCodes = useCallback(async () => {
+    try {
+      const token = await getIdToken();
+      if (!token) return;
+      const data = await apiFetch<{ success: boolean; data: VouchCode[] }>(
+        "/api/vouch-codes",
+        { token },
+      );
+      if (data.data) setCodes(data.data);
+    } catch (err) {
+      console.error("Failed to load vouch codes:", err);
+    } finally {
+      setLoading(false);
     }
-    fetchCodes();
   }, [getIdToken]);
+
+  useEffect(() => {
+    fetchCodes();
+  }, [fetchCodes]);
 
   const handleClaim = useCallback(async () => {
     if (!currentEvent) return;
@@ -123,7 +125,7 @@ export function VouchScreen() {
   }
 
   return (
-    <div className="min-h-screen bg-cream pb-[120px]">
+    <PullToRefresh onRefresh={fetchCodes} className="min-h-screen bg-cream pb-[120px]">
       <Noise />
 
       {/* Header */}
@@ -239,7 +241,7 @@ export function VouchScreen() {
           <p className="mt-2 font-mono text-[11px] text-muted">attend events to earn vouch codes</p>
         </section>
       )}
-    </div>
+    </PullToRefresh>
   );
 }
 

@@ -43,6 +43,10 @@ interface AppState {
   // Active Ticket (for ticketed events)
   activeTicket: Ticket | null;
   setActiveTicket: (ticket: Ticket | null) => void;
+
+  // Profile completion mode (triggered from "finish it" nudge)
+  profileCompleteMode: boolean;
+  setProfileCompleteMode: (mode: boolean) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -63,4 +67,7 @@ export const useAppStore = create<AppState>((set) => ({
 
   activeTicket: null,
   setActiveTicket: (ticket) => set({ activeTicket: ticket }),
+
+  profileCompleteMode: false,
+  setProfileCompleteMode: (mode) => set({ profileCompleteMode: mode }),
 }));

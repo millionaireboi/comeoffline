@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import type { Memories, Polaroid, OverheardQuote } from "@comeoffline/types";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppStore } from "@/store/useAppStore";
 import { apiFetch } from "@/lib/api";
 import { Noise } from "@/components/shared/Noise";
+import { PullToRefresh } from "@/components/shared/PullToRefresh";
 
 const STAT_LABELS: Record<string, { emoji: string; label: string }> = {
   attended: { emoji: "👥", label: "attended" },
@@ -21,25 +22,26 @@ export function MemoriesScreen() {
   const [loading, setLoading] = useState(true);
   const [selectedPhoto, setSelectedPhoto] = useState<Polaroid | null>(null);
 
-  useEffect(() => {
-    async function fetchMemories() {
-      if (!currentEvent) return;
-      try {
-        const token = await getIdToken();
-        if (!token) return;
-        const data = await apiFetch<{ success: boolean; data: Memories }>(
-          `/api/events/${currentEvent.id}/memories`,
-          { token },
-        );
-        if (data.data) setMemories(data.data);
-      } catch (err) {
-        console.error("Failed to load memories:", err);
-      } finally {
-        setLoading(false);
-      }
+  const fetchMemories = useCallback(async () => {
+    if (!currentEvent) return;
+    try {
+      const token = await getIdToken();
+      if (!token) return;
+      const data = await apiFetch<{ success: boolean; data: Memories }>(
+        `/api/events/${currentEvent.id}/memories`,
+        { token },
+      );
+      if (data.data) setMemories(data.data);
+    } catch (err) {
+      console.error("Failed to load memories:", err);
+    } finally {
+      setLoading(false);
     }
-    fetchMemories();
   }, [currentEvent, getIdToken]);
+
+  useEffect(() => {
+    fetchMemories();
+  }, [fetchMemories]);
 
   if (!currentEvent) return null;
 
@@ -54,11 +56,18 @@ export function MemoriesScreen() {
   }
 
   return (
-    <div className="min-h-screen bg-cream pb-[140px]">
+    <>
+    <PullToRefresh onRefresh={fetchMemories} className="min-h-screen bg-cream pb-[140px]">
       <Noise />
 
       {/* Header */}
       <section className="px-5 pb-6 pt-10">
+        <button
+          onClick={() => setStage("feed")}
+          className="mb-4 font-mono text-[11px] text-muted transition-colors hover:text-near-black"
+        >
+          &larr; events
+        </button>
         <p className="mb-3 font-mono text-[10px] uppercase tracking-[3px] text-muted">
           the morning after
         </p>
@@ -184,6 +193,8 @@ export function MemoriesScreen() {
         </button>
       </section>
 
+    </PullToRefresh>
+
       {/* Photo lightbox */}
       {selectedPhoto && (
         <div className="animate-fadeIn fixed inset-0 z-[500] flex items-center justify-center bg-[rgba(10,9,7,0.85)]">
@@ -210,7 +221,7 @@ export function MemoriesScreen() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 

@@ -194,6 +194,16 @@ input::placeholder {
   50% { transform: translateY(6px); opacity: 1; }
 }
 
+@keyframes screenIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes ptrSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 /* ═══════════════════════════════════════════
    ANIMATION UTILITY CLASSES
    ═══════════════════════════════════════════ */
@@ -226,6 +236,10 @@ input::placeholder {
   animation: breathe 3s ease infinite;
 }
 
+.animate-screenIn {
+  animation: screenIn 0.25s ease both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-fadeIn,
   .animate-fadeSlideUp,
@@ -233,7 +247,8 @@ input::placeholder {
   .animate-scaleIn,
   .animate-slideCardIn,
   .animate-cardScale,
-  .animate-breathe {
+  .animate-breathe,
+  .animate-screenIn {
     animation: none !important;
     transition: none !important;
   }

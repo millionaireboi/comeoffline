@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useAppStore } from "@/store/useAppStore";
 import { apiFetch } from "@/lib/api";
 import { Noise } from "@/components/shared/Noise";
+import { PullToRefresh } from "@/components/shared/PullToRefresh";
 
 interface AttendeeInfo {
   id: string;
@@ -63,25 +64,26 @@ export function ReconnectScreen() {
     return () => clearInterval(interval);
   }, [currentEvent]);
 
-  useEffect(() => {
-    async function fetchAttendees() {
-      if (!currentEvent) return;
-      try {
-        const token = await getIdToken();
-        if (!token) return;
-        const data = await apiFetch<{ success: boolean; data: AttendeeInfo[] }>(
-          `/api/events/${currentEvent.id}/attendees`,
-          { token },
-        );
-        if (data.data) setAttendees(data.data);
-      } catch (err) {
-        console.error("Failed to load attendees:", err);
-      } finally {
-        setLoading(false);
-      }
+  const fetchAttendees = useCallback(async () => {
+    if (!currentEvent) return;
+    try {
+      const token = await getIdToken();
+      if (!token) return;
+      const data = await apiFetch<{ success: boolean; data: AttendeeInfo[] }>(
+        `/api/events/${currentEvent.id}/attendees`,
+        { token },
+      );
+      if (data.data) setAttendees(data.data);
+    } catch (err) {
+      console.error("Failed to load attendees:", err);
+    } finally {
+      setLoading(false);
     }
-    fetchAttendees();
   }, [currentEvent, getIdToken]);
+
+  useEffect(() => {
+    fetchAttendees();
+  }, [fetchAttendees]);
 
   const handleConnect = useCallback(
     async (attendee: AttendeeInfo) => {
@@ -139,7 +141,8 @@ export function ReconnectScreen() {
   }
 
   return (
-    <div className="min-h-screen bg-cream pb-[120px]">
+    <>
+    <PullToRefresh onRefresh={fetchAttendees} className="min-h-screen bg-cream pb-[120px]">
       <Noise />
 
       {/* Header */}
@@ -278,6 +281,8 @@ export function ReconnectScreen() {
         )}
       </section>
 
+    </PullToRefresh>
+
       {/* Mutual match modal */}
       {mutualMatch && (
         <div className="animate-fadeIn fixed inset-0 z-[500] flex items-center justify-center bg-[rgba(10,9,7,0.7)] backdrop-blur-sm">
@@ -313,6 +318,6 @@ export function ReconnectScreen() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

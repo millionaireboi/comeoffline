@@ -55,6 +55,14 @@ export function CountdownScreen() {
     <div className="animate-fadeIn min-h-screen bg-cream px-5 pb-[120px] pt-[60px]">
       <Noise />
 
+      {/* Back to feed */}
+      <button
+        onClick={() => setStage("feed")}
+        className="animate-fadeIn mb-4 font-mono text-[11px] text-muted transition-colors hover:text-near-black"
+      >
+        &larr; events
+      </button>
+
       {/* Header */}
       <div className="animate-fadeSlideUp mb-12 text-center" style={{ animationDelay: "0.1s" }}>
         <div className="mb-6 inline-flex items-center gap-2 rounded-full bg-sage/20 px-4 py-2">

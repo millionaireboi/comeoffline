@@ -123,4 +123,23 @@ router.post("/:id/notes", requireAdmin, asyncHandler(async (req: AuthRequest, re
   res.json({ success: true, data: { id: ref.id, ...data, created_at: new Date().toISOString() } });
 }));
 
+/** POST /api/admin/members/:id/reset-pin — Reset a member's PIN (admin only) */
+router.post("/:id/reset-pin", requireAdmin, asyncHandler(async (req: AuthRequest, res) => {
+  const userId = req.params.id as string;
+  const db = await getDb();
+
+  const userDoc = await db.collection("users").doc(userId).get();
+  if (!userDoc.exists) {
+    res.status(404).json({ success: false, error: "Member not found" });
+    return;
+  }
+
+  await db.collection("users").doc(userId).update({
+    pin_hash: FieldValue.delete(),
+    pin_set_at: FieldValue.delete(),
+  });
+
+  res.json({ success: true });
+}));
+
 export default router;

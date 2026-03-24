@@ -83,7 +83,7 @@ export function InAppChat({ onClose }: InAppChatProps) {
   };
 
   return (
-    <div className="animate-fadeIn fixed inset-0 z-[600] flex flex-col bg-gate-black">
+    <div className="animate-fadeIn fixed inset-0 z-[600] flex flex-col bg-gate-black" style={{ padding: "env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)" }}>
       {/* Header */}
       <div className="flex items-center justify-between border-b border-white/5 px-5 py-4">
         <div>

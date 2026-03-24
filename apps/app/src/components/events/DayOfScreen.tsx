@@ -15,10 +15,19 @@ export function DayOfScreen() {
     "TBD";
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-cream px-6 pt-[60px]">
+    <div className="flex min-h-screen flex-col bg-cream px-6 pt-[60px]">
       <Noise />
 
-      <div className="animate-fadeSlideUp w-full max-w-[340px] text-center">
+      {/* Back to venue */}
+      <button
+        onClick={() => setStage("reveal")}
+        className="animate-fadeIn mb-4 self-start font-mono text-[11px] text-muted transition-colors hover:text-near-black"
+      >
+        &larr; venue details
+      </button>
+
+      <div className="animate-fadeSlideUp flex flex-1 flex-col items-center justify-center">
+      <div className="w-full max-w-[340px] text-center">
         {/* Live badge */}
         <div className="mb-8 inline-flex items-center gap-2 rounded-full bg-terracotta/10 px-4 py-2">
           <div
@@ -116,6 +125,7 @@ export function DayOfScreen() {
         <p className="mt-5 font-mono text-[11px] text-muted/40">
           see you on the other side &#x270C;&#xFE0F;
         </p>
+      </div>
       </div>
     </div>
   );

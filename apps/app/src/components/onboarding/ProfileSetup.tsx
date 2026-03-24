@@ -68,6 +68,9 @@ interface ProfileDraft {
   vibeTag: string;
   intent: string;
   source: string;
+  email: string;
+  pin: string;
+  pinConfirm: string;
 }
 
 const STORAGE_KEY_PREFIX = "co_profile_setup_";
@@ -341,17 +344,21 @@ function HandleCard({ name, value, onChange, userId }: { name: string; value: st
 }
 
 // Card 4: Instagram
-function InstagramCard({ value, onChange, prefilled }: { value: string; onChange: (v: string) => void; prefilled: boolean }) {
+function InstagramCard({ value, onChange, email, onChangeEmail, prefilled }: {
+  value: string; onChange: (v: string) => void;
+  email: string; onChangeEmail: (v: string) => void;
+  prefilled: boolean;
+}) {
   return (
     <CardShell animKey="insta">
       <h2 className="mb-2 font-serif text-[28px] font-normal text-cream">
         drop your insta
         {prefilled && <MicroLabel />}
       </h2>
-      <p className="mb-8 font-sans text-[13px] leading-relaxed text-muted">
+      <p className="mb-6 font-sans text-[13px] leading-relaxed text-muted">
         we use this to verify your profile. only revealed on mutual match after events.
       </p>
-      <div className="relative">
+      <div className="relative mb-8">
         <span className="absolute left-4 top-1/2 -translate-y-1/2 font-mono text-base" style={{ color: "rgba(155,142,130,0.25)" }}>@</span>
         <input
           type="text"
@@ -362,6 +369,24 @@ function InstagramCard({ value, onChange, prefilled }: { value: string; onChange
           style={{ border: "1.5px solid rgba(155,142,130,0.13)" }}
         />
       </div>
+
+      <h2 className="mb-2 font-serif text-[22px] font-normal text-cream">your email</h2>
+      <p className="mb-4 font-sans text-[13px] text-muted">
+        for account recovery only. we&apos;ll never spam you.
+      </p>
+      <input
+        type="email"
+        value={email}
+        onChange={(e) => onChangeEmail(e.target.value.slice(0, 254))}
+        placeholder="you@example.com"
+        autoComplete="email"
+        autoCapitalize="none"
+        className="w-full rounded-2xl bg-gate-dark py-[18px] px-4 font-sans text-base text-cream outline-none transition-all duration-300 placeholder:text-muted/20"
+        style={{ border: `1.5px solid ${email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? "rgba(196,112,77,0.4)" : "rgba(155,142,130,0.13)"}` }}
+      />
+      {email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && (
+        <p className="mt-1.5 font-sans text-[11px] text-terracotta/70">enter a valid email</p>
+      )}
     </CardShell>
   );
 }
@@ -1118,6 +1143,66 @@ function IntentSourceCard({ intent, source, onChangeIntent, onChangeSource }: {
   );
 }
 
+// PIN Setup Card
+function PinSetupCard({ pin, pinConfirm, onChangePin, onChangePinConfirm }: {
+  pin: string; pinConfirm: string;
+  onChangePin: (v: string) => void; onChangePinConfirm: (v: string) => void;
+}) {
+  const pinMatch = pin.length === 4 && pin === pinConfirm;
+  const showMismatch = pinConfirm.length === 4 && pin !== pinConfirm;
+
+  return (
+    <CardShell animKey="pin">
+      <h2 className="mb-2 font-serif text-[22px] font-normal text-cream">set a 4-digit PIN</h2>
+      <p className="mb-6 font-sans text-[13px] text-muted">you&apos;ll need this to sign back in. don&apos;t forget it.</p>
+
+      <div className="mb-4">
+        <label className="mb-2 block font-mono text-[10px] uppercase tracking-[2px] text-muted/60">pin</label>
+        <input
+          type="password"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          maxLength={4}
+          value={pin}
+          onChange={(e) => onChangePin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+          placeholder="••••"
+          autoComplete="new-password"
+          className="w-full rounded-[14px] border border-white/10 bg-white/5 px-5 py-4 text-center font-mono text-2xl tracking-[12px] text-cream placeholder:text-muted/20 focus:border-caramel/50 focus:outline-none"
+        />
+      </div>
+
+      <div className="mb-4">
+        <label className="mb-2 block font-mono text-[10px] uppercase tracking-[2px] text-muted/60">confirm pin</label>
+        <input
+          type="password"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          maxLength={4}
+          value={pinConfirm}
+          onChange={(e) => onChangePinConfirm(e.target.value.replace(/\D/g, "").slice(0, 4))}
+          placeholder="••••"
+          autoComplete="new-password"
+          className="w-full rounded-[14px] border bg-white/5 px-5 py-4 text-center font-mono text-2xl tracking-[12px] text-cream placeholder:text-muted/20 focus:outline-none"
+          style={{
+            borderColor: showMismatch ? "rgba(196,112,77,0.5)" : pinMatch ? "rgba(168,181,160,0.5)" : "rgba(255,255,255,0.1)",
+          }}
+        />
+      </div>
+
+      {showMismatch && (
+        <p className="mt-1 font-sans text-[12px] text-terracotta" style={{ animation: "fadeIn 0.3s" }}>
+          PINs don&apos;t match
+        </p>
+      )}
+      {pinMatch && (
+        <p className="mt-1 font-sans text-[12px] text-sage" style={{ animation: "fadeIn 0.3s" }}>
+          looks good {"\u2713"}
+        </p>
+      )}
+    </CardShell>
+  );
+}
+
 // Interactive Confirm Card
 function InteractiveConfirmCard({ profile, onEditField }: { profile: ProfileDraft; onEditField: (step: number) => void }) {
   const grad = profile.avatar?.type === "gradient" && profile.avatar.index !== undefined
@@ -1225,11 +1310,12 @@ export function ProfileSetup() {
   const { user, setUser, onboardingSource } = useAppStore();
   const { getIdToken } = useAuth();
   const isChatbot = onboardingSource === "landing_chatbot";
-  const totalSteps = 10;
+  const totalSteps = 11;
 
   // Initialize draft from user data (for chatbot pre-fill)
   const [step, setStep] = useState(0);
   const [submitError, setSubmitError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const [profile, setProfile] = useState<ProfileDraft>(() => ({
     avatar: null,
     name: isChatbot && user?.name ? user.name : "",
@@ -1245,6 +1331,9 @@ export function ProfileSetup() {
     vibeTag: "",
     intent: "",
     source: "",
+    email: "",
+    pin: "",
+    pinConfirm: "",
   }));
 
   // Restore step position from localStorage on mount
@@ -1287,7 +1376,8 @@ export function ProfileSetup() {
       case 6: return true; // personality all optional
       case 7: return profile.interests.length >= 1; // interests
       case 8: return profile.intent.length > 0; // intent + source (source optional)
-      case 9: return true; // confirm
+      case 9: return profile.pin.length === 4 && profile.pin === profile.pinConfirm; // PIN
+      case 10: return true; // confirm
       default: return false;
     }
   };
@@ -1306,6 +1396,7 @@ export function ProfileSetup() {
       if (currentProfile.name.trim()) updates.name = currentProfile.name.trim();
       if (currentProfile.handle) updates.handle = currentProfile.handle;
       if (currentProfile.instagram) updates.instagram_handle = currentProfile.instagram.replace(/^@/, "");
+      if (currentProfile.email) updates.email = currentProfile.email;
       if (currentProfile.area) updates.area = currentProfile.area;
       if (currentProfile.dob) updates.date_of_birth = currentProfile.dob;
       if (currentProfile.dob) updates.show_age = currentProfile.showAge;
@@ -1329,9 +1420,9 @@ export function ProfileSetup() {
           method: "PUT",
           token,
           body: JSON.stringify(updates),
-        }).catch(() => { /* non-blocking */ });
+        }).catch((err: unknown) => { console.warn("[ProfileSetup] partial save failed:", err); });
       }
-    } catch { /* non-blocking */ }
+    } catch (err) { console.warn("[ProfileSetup] partial save error:", err); }
   }, [getIdToken, user?.id]);
 
   const next = async () => {
@@ -1354,9 +1445,12 @@ export function ProfileSetup() {
   };
 
   const submitProfile = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    setSubmitError("");
     try {
       const token = await getIdToken();
-      if (!token) return;
+      if (!token) { setSubmitting(false); return; }
 
       const updates: Record<string, unknown> = {
         name: profile.name.trim() || user?.name || "new face",
@@ -1365,6 +1459,7 @@ export function ProfileSetup() {
       };
 
       if (profile.instagram) updates.instagram_handle = profile.instagram.replace(/^@/, "");
+      if (profile.email) updates.email = profile.email;
       if (profile.area) updates.area = profile.area;
       if (profile.dob) {
         updates.date_of_birth = profile.dob;
@@ -1396,7 +1491,16 @@ export function ProfileSetup() {
         body: JSON.stringify(updates),
       });
 
-      // Update Zustand user so useStage transitions to app_education
+      // Set PIN (separate endpoint — never stored in profile payload)
+      if (profile.pin && profile.pin.length === 4) {
+        await apiFetch("/api/users/me/pin", {
+          method: "POST",
+          token,
+          body: JSON.stringify({ pin: profile.pin }),
+        });
+      }
+
+      // Only update Zustand AFTER API confirms success
       if (user) {
         setUser({
           ...user,
@@ -1427,6 +1531,8 @@ export function ProfileSetup() {
     } catch (err) {
       console.error("[ProfileSetup] submit error:", err);
       setSubmitError("something went wrong. tap confirm to try again.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -1437,18 +1543,19 @@ export function ProfileSetup() {
       case 2: return <NameHandleCard name={profile.name} handle={profile.handle} onChangeName={update("name") as (v: string) => void} onChangeHandle={update("handle") as (v: string) => void} prefilled={isChatbot && !!user?.name} userId={user?.id} />;
       case 3: return <DobPickerCard dob={profile.dob} showAge={profile.showAge} onChangeDob={update("dob") as (v: string) => void} onChangeShowAge={update("showAge") as (v: boolean) => void} />;
       case 4: return <GenderAreaCard gender={profile.gender} area={profile.area} onChangeGender={update("gender") as (v: string) => void} onChangeArea={update("area") as (v: string) => void} />;
-      case 5: return <InstagramCard value={profile.instagram} onChange={update("instagram") as (v: string) => void} prefilled={isChatbot && !!user?.instagram_handle} />;
+      case 5: return <InstagramCard value={profile.instagram} onChange={update("instagram") as (v: string) => void} email={profile.email} onChangeEmail={update("email") as (v: string) => void} prefilled={isChatbot && !!user?.instagram_handle} />;
       case 6: return <PersonalityCard hotTake={profile.hotTake} bio={profile.bio} vibeTag={profile.vibeTag} onChangeHotTake={update("hotTake") as (v: string) => void} onChangeBio={update("bio") as (v: string) => void} onChangeVibeTag={update("vibeTag") as (v: string) => void} prefilled={isChatbot} />;
       case 7: return <InterestsCard value={profile.interests} onChange={update("interests") as (v: string[]) => void} />;
       case 8: return <IntentSourceCard intent={profile.intent} source={profile.source} onChangeIntent={update("intent") as (v: string) => void} onChangeSource={update("source") as (v: string) => void} />;
-      case 9: return <InteractiveConfirmCard profile={profile} onEditField={(s) => setStep(s)} />;
+      case 9: return <PinSetupCard pin={profile.pin} pinConfirm={profile.pinConfirm} onChangePin={update("pin") as (v: string) => void} onChangePinConfirm={update("pinConfirm") as (v: string) => void} />;
+      case 10: return <InteractiveConfirmCard profile={profile} onEditField={(s) => setStep(s)} />;
       default: return null;
     }
   };
 
   const getButtonLabel = () => {
     if (step === 0) return "let\u2019s go \u2192";
-    if (step === 9) return "that\u2019s me \u2192";
+    if (step === 10) return "that\u2019s me \u2192";
     // Optional fields: show "skip" when empty
     if (step === 1 && !profile.avatar) return "skip \u2192";
     if (step === 5 && !profile.instagram) return "skip \u2192";
@@ -1493,14 +1600,16 @@ export function ProfileSetup() {
             {submitError}
           </p>
         )}
-        <NextButton onClick={next} disabled={!canProceed()} label={getButtonLabel()} />
+        <NextButton onClick={next} disabled={!canProceed() || submitting} label={submitting ? "saving..." : getButtonLabel()} />
         {step >= 3 && step < 9 && (
           <button
             onClick={async () => {
-              // Save whatever is filled and skip to feed
+              if (submitting) return;
+              setSubmitting(true);
+              setSubmitError("");
               try {
                 const token = await getIdToken();
-                if (!token) return;
+                if (!token) { setSubmitting(false); return; }
                 const updates: Record<string, unknown> = {
                   name: profile.name.trim() || user?.name || "new face",
                   handle: profile.handle || user?.handle || "",
@@ -1531,18 +1640,23 @@ export function ProfileSetup() {
                   }
                 }
                 await apiFetch("/api/users/me", { method: "PUT", token, body: JSON.stringify(updates) });
+                // Only update Zustand AFTER API confirms success
                 if (user) {
                   setUser({ ...user, ...updates, has_completed_profile: true, has_completed_onboarding: true } as typeof user);
                 }
                 if (user?.id) localStorage.removeItem(STORAGE_KEY_PREFIX + user.id);
               } catch (err) {
                 console.error("[ProfileSetup] finish later error:", err);
+                setSubmitError("couldn\u2019t save. check your connection and try again.");
+              } finally {
+                setSubmitting(false);
               }
             }}
+            disabled={submitting}
             className="mt-3 w-full border-none bg-transparent py-2 font-mono text-[11px] text-muted/40 transition-colors hover:text-muted/60"
-            style={{ cursor: "pointer" }}
+            style={{ cursor: submitting ? "wait" : "pointer", opacity: submitting ? 0.5 : 1 }}
           >
-            finish later {"\u2192"}
+            {submitting ? "saving..." : "finish later \u2192"}
           </button>
         )}
       </div>

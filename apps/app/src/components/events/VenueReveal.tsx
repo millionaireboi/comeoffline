@@ -86,8 +86,18 @@ export function VenueReveal() {
   if (!currentEvent) return null;
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-cream px-5 pb-[120px] pt-[60px]">
+    <div className="flex min-h-screen flex-col bg-cream px-5 pb-[120px] pt-[60px]">
       <Noise />
+
+      {/* Back to countdown */}
+      <button
+        onClick={() => setStage("countdown")}
+        className="animate-fadeIn mb-4 self-start font-mono text-[11px] text-muted transition-colors hover:text-near-black"
+      >
+        &larr; countdown
+      </button>
+
+      <div className="flex flex-1 flex-col items-center justify-center">
 
       {phase === "sealed" && (
         <div className="animate-fadeSlideUp w-full max-w-[360px] text-center">
@@ -212,6 +222,7 @@ export function VenueReveal() {
           </button>
         </div>
       )}
+      </div>
     </div>
   );
 }

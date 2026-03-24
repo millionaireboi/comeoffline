@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { CURATED_INTERESTS } from "@comeoffline/types";
 import { useAuth } from "@/hooks/useAuth";
 import { apiFetch } from "@/lib/api";
@@ -36,13 +36,15 @@ interface EditProfileProps {
   };
   onSave: () => void;
   onClose: () => void;
+  highlightIncomplete?: boolean;
 }
 
-export function EditProfileScreen({ user, onSave, onClose }: EditProfileProps) {
+export function EditProfileScreen({ user, onSave, onClose, highlightIncomplete }: EditProfileProps) {
   const { getIdToken } = useAuth();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const firstIncompleteRef = useRef<HTMLDivElement>(null);
 
   // Form state
   const [name, setName] = useState(user.name || "");
@@ -59,6 +61,30 @@ export function EditProfileScreen({ user, onSave, onClose }: EditProfileProps) {
   const [igHandle, setIgHandle] = useState(user.instagram_handle || "");
   const [showAge, setShowAge] = useState(user.show_age !== false);
   const [drinkOfChoice, setDrinkOfChoice] = useState(user.drink_of_choice || "");
+
+  // Compute incomplete fields from live form state so highlights update as user types
+  // Key order matches visual layout order for correct scroll-to-first behavior
+  const incompleteFields = highlightIncomplete ? {
+    bio: !bio.trim(),
+    hotTake: !hotTake.trim(),
+    vibeTag: !vibeTag.trim(),
+    interests: interests.length === 0,
+    area: !area.trim(),
+    instagram: !igHandle.trim(),
+  } : {};
+  const incompleteCount = Object.values(incompleteFields).filter(Boolean).length;
+  const firstIncompleteField = Object.entries(incompleteFields).find(([, v]) => v)?.[0];
+  const scrolledRef = useRef(false);
+
+  // Auto-scroll to first incomplete field
+  useEffect(() => {
+    if (highlightIncomplete && firstIncompleteRef.current && !scrolledRef.current) {
+      scrolledRef.current = true;
+      setTimeout(() => {
+        firstIncompleteRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 300);
+    }
+  }, [highlightIncomplete]);
 
   const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -192,7 +218,9 @@ export function EditProfileScreen({ user, onSave, onClose }: EditProfileProps) {
         <button onClick={onClose} className="font-mono text-[11px] text-muted">
           cancel
         </button>
-        <span className="font-mono text-[10px] uppercase tracking-[2px] text-muted">edit profile</span>
+        <span className="font-mono text-[10px] uppercase tracking-[2px] text-muted">
+          {highlightIncomplete ? "complete profile" : "edit profile"}
+        </span>
         <button
           onClick={handleSave}
           disabled={saving}
@@ -205,6 +233,14 @@ export function EditProfileScreen({ user, onSave, onClose }: EditProfileProps) {
       {error && (
         <div className="mx-5 mt-2 rounded-xl border border-terracotta/20 bg-terracotta/10 px-4 py-3 text-center font-sans text-sm text-terracotta">
           {error}
+        </div>
+      )}
+
+      {highlightIncomplete && incompleteCount > 0 && !saving && (
+        <div className="mx-5 mt-3 rounded-xl border border-caramel/20 bg-caramel/[0.08] px-4 py-3 text-center">
+          <p className="font-sans text-[13px] text-cream/80">
+            {incompleteCount === 1 ? "1 field" : `${incompleteCount} fields`} left to complete your profile
+          </p>
         </div>
       )}
 
@@ -256,7 +292,7 @@ export function EditProfileScreen({ user, onSave, onClose }: EditProfileProps) {
         </FieldSection>
 
         {/* Bio */}
-        <FieldSection label="bio">
+        <FieldSection label="bio" incomplete={!!incompleteFields.bio} innerRef={firstIncompleteField === "bio" ? firstIncompleteRef : undefined}>
           <textarea
             value={bio}
             onChange={(e) => setBio(e.target.value.slice(0, 200))}
@@ -269,7 +305,7 @@ export function EditProfileScreen({ user, onSave, onClose }: EditProfileProps) {
         </FieldSection>
 
         {/* Hot Take */}
-        <FieldSection label="hot take">
+        <FieldSection label="hot take" incomplete={!!incompleteFields.hotTake} innerRef={firstIncompleteField === "hotTake" ? firstIncompleteRef : undefined}>
           <input
             type="text"
             value={hotTake}
@@ -282,7 +318,7 @@ export function EditProfileScreen({ user, onSave, onClose }: EditProfileProps) {
         </FieldSection>
 
         {/* Vibe Tag */}
-        <FieldSection label="vibe tag">
+        <FieldSection label="vibe tag" incomplete={!!incompleteFields.vibeTag} innerRef={firstIncompleteField === "vibeTag" ? firstIncompleteRef : undefined}>
           <input
             type="text"
             value={vibeTag}
@@ -294,7 +330,7 @@ export function EditProfileScreen({ user, onSave, onClose }: EditProfileProps) {
         </FieldSection>
 
         {/* Interests */}
-        <FieldSection label={`interests (${interests.length}/8)`}>
+        <FieldSection label={`interests (${interests.length}/8)`} incomplete={!!incompleteFields.interests} innerRef={firstIncompleteField === "interests" ? firstIncompleteRef : undefined}>
           <div className="flex flex-wrap gap-2">
             {(CURATED_INTERESTS as readonly string[]).map((interest) => {
               const selected = interests.includes(interest);
@@ -318,7 +354,7 @@ export function EditProfileScreen({ user, onSave, onClose }: EditProfileProps) {
         </FieldSection>
 
         {/* Area */}
-        <FieldSection label="area">
+        <FieldSection label="area" incomplete={!!incompleteFields.area} innerRef={firstIncompleteField === "area" ? firstIncompleteRef : undefined}>
           <div className="flex flex-wrap gap-2">
             {AREA_OPTIONS.map((a) => (
               <button
@@ -361,7 +397,7 @@ export function EditProfileScreen({ user, onSave, onClose }: EditProfileProps) {
         </FieldSection>
 
         {/* Instagram */}
-        <FieldSection label="instagram">
+        <FieldSection label="instagram" incomplete={!!incompleteFields.instagram} innerRef={firstIncompleteField === "instagram" ? firstIncompleteRef : undefined}>
           <div className="relative">
             <span className="absolute left-4 top-1/2 -translate-y-1/2 font-mono text-sm text-muted/30">@</span>
             <input
@@ -411,13 +447,20 @@ export function EditProfileScreen({ user, onSave, onClose }: EditProfileProps) {
   );
 }
 
-function FieldSection({ label, children }: { label: string; children: React.ReactNode }) {
+const FieldSection = ({ label, children, incomplete, innerRef }: { label: string; children: React.ReactNode; incomplete?: boolean; innerRef?: React.Ref<HTMLDivElement> }) => {
   return (
-    <div className="mb-6">
-      <label className="mb-2 block font-mono text-[10px] uppercase tracking-[2px] text-muted">
-        {label}
-      </label>
+    <div ref={innerRef} className={`mb-6 rounded-2xl transition-all ${incomplete ? "bg-caramel/[0.06] -mx-3 px-3 py-3 ring-1 ring-caramel/20" : ""}`}>
+      <div className="flex items-center gap-2">
+        <label className="mb-2 block font-mono text-[10px] uppercase tracking-[2px] text-muted">
+          {label}
+        </label>
+        {incomplete && (
+          <span className="mb-2 rounded-full bg-caramel/15 px-2 py-0.5 font-mono text-[9px] text-caramel">
+            needs filling
+          </span>
+        )}
+      </div>
       {children}
     </div>
   );
-}
+};

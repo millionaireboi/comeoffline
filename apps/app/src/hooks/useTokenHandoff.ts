@@ -43,7 +43,7 @@ export function useTokenHandoff() {
 
     // Clean URL immediately (security: don't leave token visible)
     const cleanUrl = window.location.pathname;
-    window.history.replaceState({}, "", cleanUrl);
+    window.history.replaceState({ stage: "gate" }, "", cleanUrl);
 
     (async () => {
       const controller = new AbortController();

@@ -149,6 +149,20 @@ export function SignQuiz({ onComplete, mode = "onboarding" }: SignQuizProps) {
         <div className="relative z-[2] flex min-h-screen flex-col px-6">
           {/* Progress */}
           <div className="pb-8 pt-6">
+            {/* Back to previous question */}
+            {currentQ > 0 && (
+              <button
+                onClick={() => {
+                  if (!animating) {
+                    setSelected(null);
+                    setCurrentQ((q) => q - 1);
+                  }
+                }}
+                className="mb-4 font-mono text-[11px] text-muted transition-colors hover:text-cream"
+              >
+                &larr; back
+              </button>
+            )}
             <div className="mb-5 flex items-center gap-3">
               <div className="h-0.5 flex-1 overflow-hidden rounded-full" style={{ background: "rgba(155,142,130,0.19)" }}>
                 <div

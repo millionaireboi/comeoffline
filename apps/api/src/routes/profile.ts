@@ -4,6 +4,7 @@ import { getUserProfile, updateUserProfile, checkHandleAvailable } from "../serv
 import { getEnrichedConnections } from "../services/connections.service";
 import { getStorageService } from "../config/firebase-admin";
 import { CURATED_INTERESTS } from "@comeoffline/types";
+import { isValidPin, hashPin } from "../services/pin.service";
 
 const router = Router();
 
@@ -50,7 +51,7 @@ router.get("/me", requireAuth, async (req: AuthRequest, res) => {
 router.put("/me", requireAuth, async (req: AuthRequest, res) => {
   try {
     const {
-      name, handle, vibe_tag, instagram_handle, has_seen_welcome, fcm_token,
+      name, handle, vibe_tag, email, instagram_handle, has_seen_welcome, fcm_token,
       avatar_url, avatar_type, area, age_range, gender, hot_take, bio,
       interests, date_of_birth, show_age,
       drink_of_choice, community_intent, referral_source, has_completed_profile,
@@ -74,6 +75,12 @@ router.put("/me", requireAuth, async (req: AuthRequest, res) => {
     if (vibe_tag) {
       if (!strCheck(vibe_tag, 50)) { res.status(400).json({ success: false, error: "vibe_tag must be max 50 characters" }); return; }
       updates.vibe_tag = vibe_tag;
+    }
+    if (email !== undefined) {
+      if (email !== "" && (typeof email !== "string" || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
+        res.status(400).json({ success: false, error: "Invalid email address" }); return;
+      }
+      updates.email = email;
     }
     if (instagram_handle !== undefined) {
       if (instagram_handle !== "" && !strCheck(instagram_handle, 30)) { res.status(400).json({ success: false, error: "instagram_handle must be max 30 characters" }); return; }
@@ -205,6 +212,29 @@ router.put("/me", requireAuth, async (req: AuthRequest, res) => {
   } catch (err) {
     console.error("[profile] update error:", err);
     res.status(500).json({ success: false, error: "Failed to update profile" });
+  }
+});
+
+/** POST /api/users/me/pin — Set or update the user's 4-digit PIN */
+router.post("/me/pin", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const { pin } = req.body;
+
+    if (!pin || typeof pin !== "string" || !isValidPin(pin)) {
+      res.status(400).json({ success: false, error: "PIN must be exactly 4 digits" });
+      return;
+    }
+
+    const pinHash = await hashPin(pin);
+    await updateUserProfile(req.uid!, {
+      pin_hash: pinHash,
+      pin_set_at: new Date().toISOString(),
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("[profile] set-pin error:", err);
+    res.status(500).json({ success: false, error: "Failed to set PIN" });
   }
 });
 

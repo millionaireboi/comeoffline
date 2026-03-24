@@ -29,7 +29,7 @@ async function generateUniqueCode(db: Firestore, prefix = "OFF"): Promise<string
 }
 
 /** Check if a code is currently usable (not expired, not paused, not depleted) */
-export function isCodeUsable(code: VouchCode): { usable: boolean; reason?: string } {
+export function isCodeUsable(code: VouchCode, source?: string): { usable: boolean; reason?: string } {
   if (code.status === "paused") return { usable: false, reason: "Code is paused" };
   if (code.status === "expired") return { usable: false, reason: "Code has expired" };
   if (code.status === "depleted") return { usable: false, reason: "Code has reached max uses" };
@@ -46,6 +46,12 @@ export function isCodeUsable(code: VouchCode): { usable: boolean; reason?: strin
 
   if (code.rules.max_uses !== null && code.uses >= code.rules.max_uses) {
     return { usable: false, reason: "Code has reached max uses" };
+  }
+
+  if (code.rules.allowed_sources && code.rules.allowed_sources.length > 0 && source) {
+    if (!code.rules.allowed_sources.includes(source as import("@comeoffline/types").DiscoverySource)) {
+      return { usable: false, reason: "Code is not valid for this source" };
+    }
   }
 
   return { usable: true };
@@ -177,10 +183,12 @@ export async function deleteCode(codeId: string): Promise<void> {
   invalidateCache();
 }
 
-/** Record a code usage — called from auth.service when someone redeems a code */
+/** Record a code usage — called from auth.service when someone redeems a code.
+ *  Re-checks usability inside the transaction to prevent over-redemption under concurrency. */
 export async function recordCodeUsage(
   codeId: string,
   usage: VouchCodeUsage,
+  source?: string,
 ): Promise<void> {
   const db = await getDb();
   const ref = db.collection("vouch_codes").doc(codeId);
@@ -190,6 +198,19 @@ export async function recordCodeUsage(
     if (!doc.exists) throw new Error("Code not found");
 
     const data = doc.data() as VouchCode;
+
+    // Migrate legacy fields for the check
+    if (!data.type) data.type = "single";
+    if (!data.rules) data.rules = { max_uses: 1 };
+    if (data.uses === undefined) data.uses = 0;
+    if (!data.used_by) data.used_by = [];
+
+    // Atomic usability re-check — prevents over-redemption
+    const check = isCodeUsable(data as VouchCode, source);
+    if (!check.usable) {
+      throw new Error(`CODE_DEPLETED:${check.reason || "Code is no longer valid"}`);
+    }
+
     const newUses = data.uses + 1;
     const newUsedBy = [...data.used_by, usage];
 

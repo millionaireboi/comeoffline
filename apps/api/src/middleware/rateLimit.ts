@@ -1,4 +1,5 @@
 import rateLimit from "express-rate-limit";
+import type { Request } from "express";
 
 const isDev = process.env.NODE_ENV !== "production";
 
@@ -7,13 +8,25 @@ const isDev = process.env.NODE_ENV !== "production";
 const skipInDev = isDev ? () => true : undefined;
 
 /**
+ * Key generator that uses the authenticated user's UID when available,
+ * falling back to IP for unauthenticated requests.
+ * This prevents authenticated users behind the same IP from sharing a limit.
+ */
+function keyByUser(req: Request): string {
+  const uid = (req as any).uid;
+  if (uid) return `user:${uid}`;
+  return req.ip || "unknown";
+}
+
+/**
  * General API rate limiter
- * - 500 requests per 15 minutes per IP
+ * - 1500 requests per 15 minutes per user/IP
  * - Skipped in development
  */
 export const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 500,
+  limit: 1500,
+  keyGenerator: keyByUser,
   skip: skipInDev,
   message: {
     success: false,
@@ -25,11 +38,12 @@ export const generalLimiter = rateLimit({
 
 /**
  * Strict rate limiter for expensive operations
- * - 10 requests per 15 minutes per IP
+ * - 10 requests per 15 minutes per user/IP
  */
 export const strictLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 10,
+  keyGenerator: keyByUser,
   skip: skipInDev,
   message: {
     success: false,
@@ -90,11 +104,13 @@ export const formLimiter = rateLimit({
 
 /**
  * Admin rate limiter
- * - 500 requests per 15 minutes per IP
+ * - 2000 requests per 15 minutes per user
+ * - Higher limit since admin panels are data-heavy
  */
 export const adminLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 500,
+  limit: 2000,
+  keyGenerator: keyByUser,
   skip: skipInDev,
   message: {
     success: false,

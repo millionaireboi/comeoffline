@@ -15,7 +15,7 @@ interface FetchOptions extends RequestInit {
   retries?: number;
 }
 
-const RETRYABLE_STATUSES = new Set([429, 502, 503, 504]);
+const RETRYABLE_STATUSES = new Set([502, 503, 504]);
 
 export async function apiFetch<T = unknown>(
   path: string,

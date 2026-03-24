@@ -1,27 +1,24 @@
 /* eslint-disable no-restricted-globals */
 
 // Firebase Messaging Service Worker
-// Config is injected via message from the main thread before messaging is used.
+// importScripts must be called at the top level during installation
+importScripts("https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js");
+importScripts("https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js");
 
-let firebaseConfig = null;
 let messagingInitialized = false;
 
 // Listen for Firebase config from the main thread
 self.addEventListener("message", (event) => {
   if (event.data && event.data.type === "FIREBASE_CONFIG") {
-    firebaseConfig = event.data.config;
-    initMessaging();
+    initMessaging(event.data.config);
   }
 });
 
-function initMessaging() {
-  if (messagingInitialized || !firebaseConfig || !firebaseConfig.projectId) return;
+function initMessaging(config) {
+  if (messagingInitialized || !config || !config.projectId) return;
 
   try {
-    importScripts("https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js");
-    importScripts("https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js");
-
-    firebase.initializeApp(firebaseConfig);
+    firebase.initializeApp(config);
     const messaging = firebase.messaging();
 
     // Handle background push notifications

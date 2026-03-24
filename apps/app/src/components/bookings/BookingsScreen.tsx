@@ -21,7 +21,7 @@ const STATUS_STYLES: Record<string, { color: string; bg: string; label: string }
 
 export function BookingsScreen() {
   const { getIdToken } = useAuth();
-  const { setStage, setActiveTicket, setCurrentEvent, activeTicket } = useAppStore();
+  const { setStage, setActiveTicket, setCurrentEvent, setNavigationOrigin, activeTicket } = useAppStore();
   const [tickets, setTickets] = useState<EnrichedTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedTicketId, setExpandedTicketId] = useState<string | null>(null);
@@ -61,6 +61,7 @@ export function BookingsScreen() {
       // Set both event and ticket, then explicitly navigate to countdown.
       // useStage's determineEventStage will refine to the correct sub-stage
       // (countdown/reveal/dayof/memories) on the next recalculation cycle.
+      setNavigationOrigin("bookings");
       setCurrentEvent(eventRes.data);
       setActiveTicket(ticket);
       setStage("countdown");

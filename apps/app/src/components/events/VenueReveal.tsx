@@ -8,7 +8,7 @@ import { Noise } from "@/components/shared/Noise";
 type Phase = "sealed" | "revealing" | "revealed";
 
 export function VenueReveal() {
-  const { currentEvent, setStage } = useAppStore();
+  const { currentEvent, navigationOrigin, setStage, setNavigationOrigin } = useAppStore();
   const [phase, setPhase] = useState<Phase>("sealed");
   const [scratchPct, setScratchPct] = useState(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -90,12 +90,16 @@ export function VenueReveal() {
     <div className="flex min-h-screen flex-col bg-cream px-5 pb-[120px] pt-[60px]">
       <Noise />
 
-      {/* Back to countdown */}
+      {/* Back */}
       <button
-        onClick={() => setStage("countdown")}
+        onClick={() => {
+          const dest = navigationOrigin === "bookings" ? "bookings" : "countdown";
+          setNavigationOrigin(null);
+          setStage(dest);
+        }}
         className="animate-fadeIn mb-4 self-start font-mono text-[11px] text-muted transition-colors hover:text-near-black"
       >
-        &larr; countdown
+        &larr; {navigationOrigin === "bookings" ? "bookings" : "countdown"}
       </button>
 
       <div className="flex flex-1 flex-col items-center justify-center">

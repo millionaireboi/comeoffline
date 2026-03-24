@@ -27,7 +27,12 @@ interface AppState {
 
   // Navigation
   stage: AppStage;
+  previousStage: AppStage | null;
   setStage: (stage: AppStage) => void;
+
+  // Tracks where user explicitly navigated from (survives auto-transitions)
+  navigationOrigin: AppStage | null;
+  setNavigationOrigin: (origin: AppStage | null) => void;
 
   // Onboarding source (tracks which entry path the user came from)
   onboardingSource: OnboardingSource | null;
@@ -63,7 +68,11 @@ export const useAppStore = create<AppState>((set) => ({
   setUser: (user) => set({ user }),
 
   stage: "gate",
-  setStage: (stage) => set({ stage }),
+  previousStage: null,
+  setStage: (stage) => set((state) => ({ stage, previousStage: state.stage })),
+
+  navigationOrigin: null,
+  setNavigationOrigin: (origin) => set({ navigationOrigin: origin }),
 
   onboardingSource: null,
   setOnboardingSource: (source) => set({ onboardingSource: source }),

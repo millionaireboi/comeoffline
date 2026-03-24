@@ -6,6 +6,10 @@ import { formatDate } from "@comeoffline/ui";
 import { useAppStore } from "@/store/useAppStore";
 import { SignQuiz } from "@/components/onboarding/SignQuiz";
 import { Noise } from "@/components/shared/Noise";
+import { IncludesSection } from "@/components/events/event-detail/IncludesSection";
+import { DressCodeCard } from "@/components/events/event-detail/DressCodeCard";
+import { ScheduleSection } from "@/components/events/event-detail/ScheduleSection";
+import { OrganizerMessage } from "@/components/events/event-detail/OrganizerMessage";
 
 const disconnectQuotes = [
   { text: "the best things in life aren\u2019t on a screen.", author: "\u2014 literally everyone\u2019s grandma" },
@@ -38,7 +42,7 @@ function useCountdown(targetDate: string) {
 export function CountdownScreen() {
   const { track } = useAnalytics();
   const user = useAppStore((s) => s.user);
-  const { currentEvent, activeTicket, setStage } = useAppStore();
+  const { currentEvent, activeTicket, navigationOrigin, setStage, setNavigationOrigin } = useAppStore();
   const [showQuiz, setShowQuiz] = useState(false);
   const [quote] = useState(
     () => disconnectQuotes[Math.floor(Math.random() * disconnectQuotes.length)],
@@ -59,12 +63,16 @@ export function CountdownScreen() {
     <div className="animate-fadeIn min-h-screen bg-cream px-5 pb-[120px] pt-[60px]">
       <Noise />
 
-      {/* Back to feed */}
+      {/* Back */}
       <button
-        onClick={() => setStage("feed")}
+        onClick={() => {
+          const dest = navigationOrigin === "bookings" ? "bookings" : "feed";
+          setNavigationOrigin(null);
+          setStage(dest);
+        }}
         className="animate-fadeIn mb-4 font-mono text-[11px] text-muted transition-colors hover:text-near-black"
       >
-        &larr; events
+        &larr; {navigationOrigin === "bookings" ? "bookings" : "events"}
       </button>
 
       {/* Header */}
@@ -285,6 +293,60 @@ export function CountdownScreen() {
         <p className="mb-1 font-sans text-sm font-medium text-warm-brown">venue sealed</p>
         <p className="font-mono text-[11px] text-muted">tap to peek (demo)</p>
       </button>
+
+      {/* Event details — what to expect */}
+      {currentEvent.description && (
+        <div
+          className="animate-fadeSlideUp mb-5 rounded-[20px] border border-sand bg-white p-5"
+          style={{ animationDelay: "0.55s" }}
+        >
+          <span className="mb-3 block font-mono text-[10px] uppercase tracking-[2px] text-muted">
+            about this event
+          </span>
+          <p className="font-sans text-[14px] leading-[1.75] text-warm-brown">
+            {currentEvent.description}
+          </p>
+        </div>
+      )}
+
+      {currentEvent.includes && currentEvent.includes.length > 0 && (
+        <div className="animate-fadeSlideUp mb-0" style={{ animationDelay: "0.6s" }}>
+          <IncludesSection
+            includes={currentEvent.includes}
+            accent={currentEvent.accent || "#D4A574"}
+            accentDark={currentEvent.accent_dark || "#B8845A"}
+          />
+        </div>
+      )}
+
+      {currentEvent.dress_code && (
+        <div className="animate-fadeSlideUp mb-0" style={{ animationDelay: "0.65s" }}>
+          <DressCodeCard
+            dressCode={currentEvent.dress_code}
+            accent={currentEvent.accent || "#D4A574"}
+            accentDark={currentEvent.accent_dark || "#B8845A"}
+          />
+        </div>
+      )}
+
+      {currentEvent.post_booking?.sections && (
+        <div className="animate-fadeSlideUp mb-5" style={{ animationDelay: "0.7s" }}>
+          <ScheduleSection
+            sections={currentEvent.post_booking.sections}
+            accent={currentEvent.accent || "#D4A574"}
+            accentDark={currentEvent.accent_dark || "#B8845A"}
+          />
+        </div>
+      )}
+
+      {currentEvent.post_booking?.custom_message && (
+        <div className="animate-fadeSlideUp mb-0" style={{ animationDelay: "0.75s" }}>
+          <OrganizerMessage
+            message={currentEvent.post_booking.custom_message}
+            accent={currentEvent.accent || "#D4A574"}
+          />
+        </div>
+      )}
 
       {/* Quiz overlay */}
       {showQuiz && (

@@ -210,7 +210,7 @@ export function EditProfileScreen({ user, onSave, onClose, highlightIncomplete }
   };
 
   return (
-    <div className="fixed inset-0 z-[500] overflow-y-auto bg-gate-black">
+    <div className="fixed inset-0 z-[500] overflow-y-auto bg-gate-black" style={{ paddingBottom: "calc(56px + env(safe-area-inset-bottom, 0px))" }}>
       <Noise opacity={0.05} />
 
       {/* Header */}

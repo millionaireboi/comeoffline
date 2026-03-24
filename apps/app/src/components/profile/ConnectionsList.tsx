@@ -56,7 +56,7 @@ export function ConnectionsList({ onClose }: { onClose: () => void }) {
   }, [getIdToken]);
 
   return (
-    <div className="fixed inset-0 z-[500] overflow-y-auto bg-cream">
+    <div className="fixed inset-0 z-[500] overflow-y-auto bg-cream" style={{ paddingBottom: "calc(56px + env(safe-area-inset-bottom, 0px))" }}>
       <Noise />
 
       {/* Header */}

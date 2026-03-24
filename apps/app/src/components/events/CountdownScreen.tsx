@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useAnalytics, TICKET_SHARED } from "@comeoffline/analytics";
 import { formatDate } from "@comeoffline/ui";
 import { useAppStore } from "@/store/useAppStore";
+import { SignQuiz } from "@/components/onboarding/SignQuiz";
 import { Noise } from "@/components/shared/Noise";
 
 const disconnectQuotes = [
@@ -36,7 +37,9 @@ function useCountdown(targetDate: string) {
 
 export function CountdownScreen() {
   const { track } = useAnalytics();
+  const user = useAppStore((s) => s.user);
   const { currentEvent, activeTicket, setStage } = useAppStore();
+  const [showQuiz, setShowQuiz] = useState(false);
   const [quote] = useState(
     () => disconnectQuotes[Math.floor(Math.random() * disconnectQuotes.length)],
   );
@@ -167,6 +170,31 @@ export function CountdownScreen() {
         </button>
       </div>
 
+      {/* Sign quiz reminder — must complete before attending */}
+      {!user?.sign && (
+        <div
+          className="animate-fadeSlideUp mb-5 rounded-[20px] p-5"
+          style={{ animationDelay: "0.19s", background: "linear-gradient(135deg, #1A1714, #2A2520)", border: "1px solid rgba(212,165,116,0.2)" }}
+        >
+          <div className="flex items-center gap-3 mb-3">
+            <span className="text-2xl">✦</span>
+            <div>
+              <p className="font-sans text-[15px] font-medium text-cream">find your comeoffline sign</p>
+              <p className="font-mono text-[11px] text-muted mt-0.5">required before attending the event</p>
+            </div>
+          </div>
+          <p className="font-sans text-[13px] leading-[1.6] text-muted mb-4">
+            we use your sign to seat you with compatible people. takes 2 mins — do it anytime before the event.
+          </p>
+          <button
+            onClick={() => setShowQuiz(true)}
+            className="w-full rounded-full bg-caramel py-3 font-sans text-[14px] font-medium text-gate-black transition-all active:scale-95"
+          >
+            take the quiz →
+          </button>
+        </div>
+      )}
+
       {/* Countdown card */}
       <div
         className="animate-fadeSlideUp mb-5 rounded-3xl bg-white p-8 shadow-[0_2px_12px_rgba(26,23,21,0.04),0_8px_32px_rgba(26,23,21,0.06)]"
@@ -257,6 +285,21 @@ export function CountdownScreen() {
         <p className="mb-1 font-sans text-sm font-medium text-warm-brown">venue sealed</p>
         <p className="font-mono text-[11px] text-muted">tap to peek (demo)</p>
       </button>
+
+      {/* Quiz overlay */}
+      {showQuiz && (
+        <div className="fixed inset-0 z-[600] overflow-y-auto" style={{ paddingBottom: "calc(56px + env(safe-area-inset-bottom, 0px))" }}>
+          {/* Close button */}
+          <button
+            onClick={() => setShowQuiz(false)}
+            className="fixed right-5 z-[610] flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-sm text-cream backdrop-blur-sm"
+            style={{ top: "calc(1.25rem + env(safe-area-inset-top, 0px))" }}
+          >
+            ✕
+          </button>
+          <SignQuiz onComplete={() => setShowQuiz(false)} mode="pre_checkout" />
+        </div>
+      )}
     </div>
   );
 }

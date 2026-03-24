@@ -696,7 +696,15 @@ export function ProfileScreen() {
 
       {/* Quiz retake overlay */}
       {showQuizRetake && (
-        <div className="fixed inset-0 z-[600]">
+        <div className="fixed inset-0 z-[600] overflow-y-auto" style={{ paddingBottom: "calc(56px + env(safe-area-inset-bottom, 0px))" }}>
+          {/* Close button */}
+          <button
+            onClick={() => setShowQuizRetake(false)}
+            className="fixed right-5 z-[610] flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-sm text-cream backdrop-blur-sm"
+            style={{ top: "calc(1.25rem + env(safe-area-inset-top, 0px))" }}
+          >
+            ✕
+          </button>
           <SignQuiz
             onComplete={() => {
               setShowQuizRetake(false);

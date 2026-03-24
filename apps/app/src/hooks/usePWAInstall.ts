@@ -13,7 +13,10 @@ export function usePWAInstall() {
       window.matchMedia("(display-mode: standalone)").matches ||
       (window.navigator as unknown as Record<string, unknown>).standalone === true;
 
-    setIsStandalone(standalone || process.env.NODE_ENV === "development");
+    // Skip install gate on desktop — it's only relevant for mobile
+    const isDesktop = !/Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+    setIsStandalone(standalone || isDesktop || process.env.NODE_ENV === "development");
 
     // Detect iOS
     const iOS = /iPad|iPhone|iPod/.test(navigator.userAgent);

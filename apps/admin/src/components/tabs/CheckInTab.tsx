@@ -338,6 +338,12 @@ export function CheckInTab() {
   const startCamera = useCallback(async () => {
     if (!cameraContainerRef.current) return;
 
+    // Show container first so the viewport has dimensions for the video feed
+    setCameraActive(true);
+
+    // Wait for the DOM to update before starting the scanner
+    await new Promise((r) => setTimeout(r, 100));
+
     try {
       const { Html5Qrcode } = await import("html5-qrcode");
       const scanner = new Html5Qrcode("qr-camera-viewport");
@@ -362,10 +368,9 @@ export function CheckInTab() {
           // QR parse error — ignore, camera keeps scanning
         },
       );
-
-      setCameraActive(true);
     } catch (err) {
       console.error("Camera start failed:", err);
+      setCameraActive(false);
       setScanResult({ success: false, message: "Could not access camera. Check permissions." });
       if (scanResultTimeoutRef.current) clearTimeout(scanResultTimeoutRef.current);
       scanResultTimeoutRef.current = setTimeout(() => setScanResult(null), 5000);

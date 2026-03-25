@@ -221,7 +221,22 @@ export function Hero() {
               </button>
             </div>
 
-            <div className="mt-6" style={{ animation: "fadeIn 1s ease 0.8s both" }}>
+            {/* Returning member sign-in */}
+            <a
+              href={`${APP_URL}/sign-in`}
+              className="mt-3.5 flex w-full items-center justify-between rounded-[18px] p-5 transition-all duration-300"
+              style={{ border: `1px solid ${P.muted}20`, background: P.cream + "04", animation: "fadeSlideUp 0.6s ease 0.3s both" }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = P.cream + "08"; e.currentTarget.style.borderColor = P.muted + "35"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = P.cream + "04"; e.currentTarget.style.borderColor = P.muted + "20"; }}
+            >
+              <div>
+                <span className="mb-1 block font-sans text-[15px] font-medium text-cream">already a member?</span>
+                <span className="font-sans text-xs" style={{ color: P.muted + "70" }}>sign in with your handle + PIN</span>
+              </div>
+              <span className="ml-3 font-mono text-[13px] uppercase tracking-[2px]" style={{ color: P.caramel }}>sign in →</span>
+            </a>
+
+            <div className="mt-4" style={{ animation: "fadeIn 1s ease 0.8s both" }}>
               <SocialTicker />
             </div>
           </div>

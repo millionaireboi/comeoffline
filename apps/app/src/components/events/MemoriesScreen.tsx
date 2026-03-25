@@ -16,17 +16,19 @@ const STAT_LABELS: Record<string, { emoji: string; label: string }> = {
 };
 
 export function MemoriesScreen() {
-  const { getIdToken } = useAuth();
+  const { getIdToken, loading: authLoading } = useAuth();
   const { currentEvent, setStage } = useAppStore();
   const [memories, setMemories] = useState<Memories | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState<Polaroid | null>(null);
 
   const fetchMemories = useCallback(async () => {
     if (!currentEvent) return;
+    setError(false);
     try {
       const token = await getIdToken();
-      if (!token) return;
+      if (!token) { setError(true); setLoading(false); return; }
       const data = await apiFetch<{ success: boolean; data: Memories }>(
         `/api/events/${currentEvent.id}/memories`,
         { token },
@@ -34,14 +36,15 @@ export function MemoriesScreen() {
       if (data.data) setMemories(data.data);
     } catch (err) {
       console.error("Failed to load memories:", err);
+      setError(true);
     } finally {
       setLoading(false);
     }
   }, [currentEvent, getIdToken]);
 
   useEffect(() => {
-    fetchMemories();
-  }, [fetchMemories]);
+    if (!authLoading) fetchMemories();
+  }, [authLoading, fetchMemories]);
 
   if (!currentEvent) return null;
 
@@ -51,6 +54,22 @@ export function MemoriesScreen() {
         <div className="animate-fadeIn text-center">
           <p className="font-mono text-[11px] uppercase tracking-[3px] text-muted">loading memories...</p>
         </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-cream px-8 text-center">
+        <span className="mb-4 text-4xl">{"\u{1F614}"}</span>
+        <p className="mb-2 font-serif text-xl text-near-black">couldn&apos;t load memories</p>
+        <p className="mb-6 font-sans text-sm text-muted">check your connection and try again.</p>
+        <button
+          onClick={fetchMemories}
+          className="rounded-full bg-near-black px-6 py-2.5 font-mono text-[11px] text-white"
+        >
+          retry
+        </button>
       </div>
     );
   }

@@ -43,10 +43,11 @@ function getTimeRemaining(eventDate: string): { hours: number; minutes: number; 
 }
 
 export function ReconnectScreen() {
-  const { getIdToken } = useAuth();
+  const { getIdToken, loading: authLoading } = useAuth();
   const { currentEvent, setStage } = useAppStore();
   const [attendees, setAttendees] = useState<AttendeeInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [connectingId, setConnectingId] = useState<string | null>(null);
   const [mutualMatch, setMutualMatch] = useState<AttendeeInfo | null>(null);
   const [timeLeft, setTimeLeft] = useState({ hours: 0, minutes: 0, expired: false });
@@ -66,9 +67,10 @@ export function ReconnectScreen() {
 
   const fetchAttendees = useCallback(async () => {
     if (!currentEvent) return;
+    setError(false);
     try {
       const token = await getIdToken();
-      if (!token) return;
+      if (!token) { setError(true); setLoading(false); return; }
       const data = await apiFetch<{ success: boolean; data: AttendeeInfo[] }>(
         `/api/events/${currentEvent.id}/attendees`,
         { token },
@@ -76,14 +78,15 @@ export function ReconnectScreen() {
       if (data.data) setAttendees(data.data);
     } catch (err) {
       console.error("Failed to load attendees:", err);
+      setError(true);
     } finally {
       setLoading(false);
     }
   }, [currentEvent, getIdToken]);
 
   useEffect(() => {
-    fetchAttendees();
-  }, [fetchAttendees]);
+    if (!authLoading) fetchAttendees();
+  }, [authLoading, fetchAttendees]);
 
   const handleConnect = useCallback(
     async (attendee: AttendeeInfo) => {
@@ -136,6 +139,22 @@ export function ReconnectScreen() {
         <div className="animate-fadeIn text-center">
           <p className="font-mono text-[11px] uppercase tracking-[3px] text-muted">finding your people...</p>
         </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-cream px-8 text-center">
+        <span className="mb-4 text-4xl">{"\u{1F614}"}</span>
+        <p className="mb-2 font-serif text-xl text-near-black">couldn&apos;t load attendees</p>
+        <p className="mb-6 font-sans text-sm text-muted">check your connection and try again.</p>
+        <button
+          onClick={fetchAttendees}
+          className="rounded-full bg-near-black px-6 py-2.5 font-mono text-[11px] text-white"
+        >
+          retry
+        </button>
       </div>
     );
   }

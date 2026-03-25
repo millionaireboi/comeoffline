@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { apiFetch } from "@/lib/api";
 
@@ -24,33 +24,51 @@ interface AttendeePreview {
 }
 
 export function AttendeeList({ eventId }: { eventId: string }) {
-  const { getIdToken } = useAuth();
+  const { getIdToken, loading: authLoading } = useAuth();
   const [attendees, setAttendees] = useState<AttendeePreview[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  const fetchAttendees = useCallback(async () => {
+    setError(false);
+    try {
+      const token = await getIdToken();
+      if (!token) { setError(true); setLoading(false); return; }
+      const res = await apiFetch<{ success: boolean; data: AttendeePreview[] }>(
+        `/api/events/${eventId}/attendees?mode=preview`,
+        { token },
+      );
+      if (res.data) setAttendees(res.data);
+    } catch (err) {
+      console.error("Failed to load attendees:", err);
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, [eventId, getIdToken]);
 
   useEffect(() => {
-    async function fetch() {
-      try {
-        const token = await getIdToken();
-        if (!token) return;
-        const res = await apiFetch<{ success: boolean; data: AttendeePreview[] }>(
-          `/api/events/${eventId}/attendees?mode=preview`,
-          { token },
-        );
-        if (res.data) setAttendees(res.data);
-      } catch (err) {
-        console.error("Failed to load attendees:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetch();
-  }, [eventId, getIdToken]);
+    if (!authLoading) fetchAttendees();
+  }, [authLoading, fetchAttendees]);
 
   if (loading) {
     return (
       <div className="py-6 text-center">
         <p className="font-mono text-[11px] text-muted">loading attendees...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-[14px] bg-white/50 p-6 text-center">
+        <p className="mb-2 font-sans text-sm text-muted">couldn&apos;t load attendees</p>
+        <button
+          onClick={fetchAttendees}
+          className="font-mono text-[11px] text-caramel"
+        >
+          tap to retry
+        </button>
       </div>
     );
   }

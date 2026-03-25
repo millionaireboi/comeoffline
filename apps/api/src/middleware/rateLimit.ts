@@ -54,12 +54,12 @@ export const strictLimiter = rateLimit({
 });
 
 /**
- * Sign-in rate limiter — very strict to prevent handle guessing
- * - 5 sign-in attempts per 15 minutes per IP
+ * Sign-in rate limiter — prevent brute-force but allow real users to retry
+ * - 15 sign-in attempts per 15 minutes per IP
  */
 export const signInLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 5,
+  limit: 15,
   skip: skipInDev,
   message: {
     success: false,

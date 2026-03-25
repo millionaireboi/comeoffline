@@ -11,19 +11,21 @@ import { PullToRefresh } from "@/components/shared/PullToRefresh";
 
 export function VouchScreen() {
   const { track } = useAnalytics();
-  const { getIdToken } = useAuth();
+  const { getIdToken, loading: authLoading } = useAuth();
   const { currentEvent, user, setStage } = useAppStore();
   const [codes, setCodes] = useState<VouchCode[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [claiming, setClaiming] = useState(false);
   const [revealedIds, setRevealedIds] = useState<Set<string>>(new Set());
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const isProvisional = user?.status === "provisional";
 
   const fetchCodes = useCallback(async () => {
+    setError(false);
     try {
       const token = await getIdToken();
-      if (!token) return;
+      if (!token) { setError(true); setLoading(false); return; }
       const data = await apiFetch<{ success: boolean; data: VouchCode[] }>(
         "/api/vouch-codes",
         { token },
@@ -31,14 +33,15 @@ export function VouchScreen() {
       if (data.data) setCodes(data.data);
     } catch (err) {
       console.error("Failed to load vouch codes:", err);
+      setError(true);
     } finally {
       setLoading(false);
     }
   }, [getIdToken]);
 
   useEffect(() => {
-    fetchCodes();
-  }, [fetchCodes]);
+    if (!authLoading) fetchCodes();
+  }, [authLoading, fetchCodes]);
 
   const handleClaim = useCallback(async () => {
     if (!currentEvent) return;
@@ -120,6 +123,22 @@ export function VouchScreen() {
         <div className="animate-fadeIn text-center">
           <p className="font-mono text-[11px] uppercase tracking-[3px] text-muted">loading codes...</p>
         </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-cream px-8 text-center">
+        <span className="mb-4 text-4xl">{"\u{1F614}"}</span>
+        <p className="mb-2 font-serif text-xl text-near-black">couldn&apos;t load codes</p>
+        <p className="mb-6 font-sans text-sm text-muted">check your connection and try again.</p>
+        <button
+          onClick={fetchCodes}
+          className="rounded-full bg-near-black px-6 py-2.5 font-mono text-[11px] text-white"
+        >
+          retry
+        </button>
       </div>
     );
   }

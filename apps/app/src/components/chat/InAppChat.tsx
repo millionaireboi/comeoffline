@@ -78,7 +78,10 @@ export function InAppChat({ onClose }: InAppChatProps) {
 
       try {
         const token = await getIdToken();
-        if (!token) return;
+        if (!token) {
+          setMessages((prev) => [...prev, { role: "assistant", content: "couldn't authenticate. try closing and reopening the chat." }]);
+          return;
+        }
 
         const data = await apiFetch<{ success: boolean; data: { message: string }; error?: string }>(
           "/api/chat",
@@ -97,10 +100,13 @@ export function InAppChat({ onClose }: InAppChatProps) {
         if (err instanceof DOMException && err.name === "AbortError") {
           setMessages((prev) => [...prev, { role: "assistant", content: "that took too long. try again?" }]);
         } else {
-          const errorMsg = err instanceof Error ? err.message : "something went wrong";
+          const msg = err instanceof Error ? err.message : "";
+          const userFriendly = msg.includes("Too many") ? "too many messages. wait a bit and try again."
+            : msg.includes("Failed to fetch") || msg.includes("timeout") ? "can't reach the server. check your connection."
+            : "something went wrong. try again?";
           setMessages((prev) => [
             ...prev,
-            { role: "assistant", content: `oops — ${errorMsg}. try again?` },
+            { role: "assistant", content: userFriendly },
           ]);
         }
       } finally {

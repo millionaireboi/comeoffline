@@ -20,30 +20,34 @@ const STATUS_STYLES: Record<string, { color: string; bg: string; label: string }
 };
 
 export function BookingsScreen() {
-  const { getIdToken } = useAuth();
+  const { getIdToken, loading: authLoading } = useAuth();
   const { setStage, setActiveTicket, setCurrentEvent, setNavigationOrigin, activeTicket } = useAppStore();
   const [tickets, setTickets] = useState<EnrichedTicket[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
   const [expandedTicketId, setExpandedTicketId] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [viewingId, setViewingId] = useState<string | null>(null);
 
   const fetchTickets = useCallback(async () => {
+    setFetchError(false);
     try {
       const token = await getIdToken();
-      if (!token) return;
+      if (!token) { setFetchError(true); setLoading(false); return; }
       const res = await apiFetch<{ success: boolean; data: EnrichedTicket[] }>("/api/tickets/mine", { token });
       if (res.data) setTickets(res.data);
     } catch (err) {
       console.error("Failed to load bookings:", err);
+      setFetchError(true);
     } finally {
       setLoading(false);
     }
   }, [getIdToken]);
 
+  // Wait for auth to finish loading before fetching bookings
   useEffect(() => {
-    fetchTickets();
-  }, [fetchTickets]);
+    if (!authLoading) fetchTickets();
+  }, [authLoading, fetchTickets]);
 
   const handleViewBooking = async (ticket: EnrichedTicket) => {
     setViewingId(ticket.id);
@@ -116,6 +120,22 @@ export function BookingsScreen() {
         <div className="animate-fadeIn text-center">
           <p className="font-mono text-[11px] uppercase tracking-[3px] text-muted">loading bookings...</p>
         </div>
+      </div>
+    );
+  }
+
+  if (fetchError && tickets.length === 0) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-cream px-8 text-center">
+        <span className="mb-4 text-4xl">{"\u{1F614}"}</span>
+        <p className="mb-2 font-serif text-xl text-near-black">couldn&apos;t load bookings</p>
+        <p className="mb-6 font-sans text-sm text-muted">check your connection and try again.</p>
+        <button
+          onClick={() => { setLoading(true); fetchTickets(); }}
+          className="rounded-full bg-near-black px-6 py-2.5 font-mono text-[11px] text-white"
+        >
+          retry
+        </button>
       </div>
     );
   }

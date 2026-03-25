@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { apiFetch } from "@/lib/api";
 import { Noise } from "@/components/shared/Noise";
@@ -32,28 +32,32 @@ interface EnrichedConnection {
 }
 
 export function ConnectionsList({ onClose }: { onClose: () => void }) {
-  const { getIdToken } = useAuth();
+  const { getIdToken, loading: authLoading } = useAuth();
   const [connections, setConnections] = useState<EnrichedConnection[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  const fetchConnections = useCallback(async () => {
+    setError(false);
+    try {
+      const token = await getIdToken();
+      if (!token) { setError(true); setLoading(false); return; }
+      const res = await apiFetch<{ success: boolean; data: EnrichedConnection[] }>(
+        "/api/users/me/connections",
+        { token },
+      );
+      if (res.data) setConnections(res.data);
+    } catch (err) {
+      console.error("Failed to load connections:", err);
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, [getIdToken]);
 
   useEffect(() => {
-    async function fetch() {
-      try {
-        const token = await getIdToken();
-        if (!token) return;
-        const res = await apiFetch<{ success: boolean; data: EnrichedConnection[] }>(
-          "/api/users/me/connections",
-          { token },
-        );
-        if (res.data) setConnections(res.data);
-      } catch (err) {
-        console.error("Failed to load connections:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetch();
-  }, [getIdToken]);
+    if (!authLoading) fetchConnections();
+  }, [authLoading, fetchConnections]);
 
   return (
     <div className="fixed inset-0 z-[500] overflow-y-auto bg-cream" style={{ paddingBottom: "calc(56px + env(safe-area-inset-bottom, 0px))" }}>
@@ -75,7 +79,21 @@ export function ConnectionsList({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        {!loading && connections.length === 0 && (
+        {!loading && error && (
+          <div className="py-12 text-center">
+            <span className="mb-3 block text-4xl">{"\u{1F614}"}</span>
+            <p className="mb-1 font-serif text-xl text-near-black">couldn&apos;t load connections</p>
+            <p className="mb-4 font-sans text-sm text-muted">check your connection and try again.</p>
+            <button
+              onClick={fetchConnections}
+              className="rounded-full bg-near-black px-6 py-2.5 font-mono text-[11px] text-white"
+            >
+              retry
+            </button>
+          </div>
+        )}
+
+        {!loading && !error && connections.length === 0 && (
           <div className="py-12 text-center">
             <span className="mb-3 block text-4xl">{"\u{1F91D}"}</span>
             <p className="mb-1 font-serif text-xl text-near-black">no connections yet</p>

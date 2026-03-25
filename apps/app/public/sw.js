@@ -3,6 +3,10 @@
 // Service Worker — handles push notifications and offline caching
 // No Firebase SDK needed here; we handle push events natively.
 
+// Bump this version on every deploy to bust stale caches
+const CACHE_VERSION = 2;
+const CACHE_NAME = `comeoffline-v${CACHE_VERSION}`;
+
 // Handle incoming push notifications
 self.addEventListener("push", (event) => {
   if (!event.data) return;
@@ -48,9 +52,6 @@ self.addEventListener("notificationclick", (event) => {
   );
 });
 
-// Basic network-first strategy for navigation, skip API & external
-const CACHE_NAME = "comeoffline-v1";
-
 // Pre-cache the app shell for offline support
 const APP_SHELL = ["/", "/manifest.json", "/icon-192.png", "/icon-512.png"];
 
@@ -58,15 +59,18 @@ self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)),
   );
+  // Activate immediately — don't wait for old tabs to close
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
+    // Delete ALL old caches (any name that isn't the current version)
     caches.keys().then((keys) =>
       Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))),
     ),
   );
+  // Take control of all open tabs immediately
   self.clients.claim();
 });
 
@@ -76,22 +80,38 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (url.pathname.startsWith("/api") || url.origin !== self.location.origin) return;
 
-  // Network-first: try network, fall back to cache for offline support
-  event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        // Cache successful navigation and static asset responses for offline fallback
-        if (response.ok) {
-          const shouldCache =
-            event.request.mode === "navigate" ||
-            url.pathname.match(/\.(js|css|png|jpg|svg|ico|woff2?)$/);
-          if (shouldCache) {
+  // Navigation requests (HTML pages) — always network-first, never serve stale HTML
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response.ok) {
             const clone = response.clone();
             caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
           }
-        }
-        return response;
-      })
-      .catch(() => caches.match(event.request)),
-  );
+          return response;
+        })
+        .catch(() => caches.match(event.request).then((cached) => cached || caches.match("/"))),
+    );
+    return;
+  }
+
+  // Static assets — network-first with cache fallback
+  const isStaticAsset = url.pathname.match(/\.(js|css|png|jpg|svg|ico|woff2?)$/);
+  if (isStaticAsset) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request)),
+    );
+    return;
+  }
+
+  // Everything else — network only, don't cache
 });

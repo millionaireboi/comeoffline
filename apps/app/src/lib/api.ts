@@ -60,6 +60,10 @@ export async function apiFetch<T = unknown>(
       }
 
       if (!res.ok) {
+        // Preserve rate-limit info so callers can detect it
+        if (res.status === 429) {
+          throw new Error(data.error || "Too many requests. Please try again later.");
+        }
         throw new Error(data.error || `API error: ${res.status}`);
       }
 

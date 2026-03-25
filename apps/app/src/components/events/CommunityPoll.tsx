@@ -21,34 +21,39 @@ interface PollData {
 }
 
 export function CommunityPoll() {
-  const { getIdToken } = useAuth();
+  const { getIdToken, loading: authLoading } = useAuth();
   const { currentEvent, setStage } = useAppStore();
   const [poll, setPoll] = useState<PollData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [votes, setVotes] = useState<Array<{ subject_id: string; vibed: boolean }>>([]);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState(false);
+
+  const fetchPoll = useCallback(async () => {
+    if (!currentEvent) return;
+    setFetchError(false);
+    try {
+      const token = await getIdToken();
+      if (!token) { setFetchError(true); setLoading(false); return; }
+      const data = await apiFetch<{ success: boolean; data: PollData }>(
+        `/api/events/${currentEvent.id}/poll`,
+        { token },
+      );
+      if (data.data) setPoll(data.data);
+    } catch (err) {
+      console.error("Failed to load poll:", err);
+      setFetchError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, [getIdToken, currentEvent]);
 
   useEffect(() => {
-    async function fetchPoll() {
-      if (!currentEvent) return;
-      try {
-        const token = await getIdToken();
-        if (!token) return;
-        const data = await apiFetch<{ success: boolean; data: PollData }>(
-          `/api/events/${currentEvent.id}/poll`,
-          { token },
-        );
-        if (data.data) setPoll(data.data);
-      } catch (err) {
-        console.error("Failed to load poll:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchPoll();
-  }, [getIdToken, currentEvent]);
+    if (!authLoading) fetchPoll();
+  }, [authLoading, fetchPoll]);
 
   const handleVote = useCallback(
     (vibed: boolean) => {
@@ -65,9 +70,10 @@ export function CommunityPoll() {
   const handleSubmit = useCallback(async () => {
     if (!currentEvent || !poll) return;
     setSubmitting(true);
+    setSubmitError(false);
     try {
       const token = await getIdToken();
-      if (!token) return;
+      if (!token) { setSubmitError(true); setSubmitting(false); return; }
       await apiFetch(`/api/events/${currentEvent.id}/community-poll`, {
         method: "POST",
         token,
@@ -76,6 +82,7 @@ export function CommunityPoll() {
       setSubmitted(true);
     } catch (err) {
       console.error("Failed to submit poll:", err);
+      setSubmitError(true);
     } finally {
       setSubmitting(false);
     }
@@ -85,6 +92,23 @@ export function CommunityPoll() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-cream">
         <p className="font-mono text-[11px] uppercase tracking-[3px] text-muted">loading poll...</p>
+      </div>
+    );
+  }
+
+  if (fetchError) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-cream px-8 text-center">
+        <Noise />
+        <span className="mb-4 text-4xl">{"\u{1F614}"}</span>
+        <p className="mb-2 font-serif text-xl text-near-black">couldn&apos;t load poll</p>
+        <p className="mb-6 font-sans text-sm text-muted">check your connection and try again.</p>
+        <button
+          onClick={fetchPoll}
+          className="rounded-full bg-near-black px-6 py-2.5 font-mono text-[11px] text-white"
+        >
+          retry
+        </button>
       </div>
     );
   }
@@ -230,13 +254,18 @@ export function CommunityPoll() {
           <p className="mb-6 font-serif text-xl text-near-black">
             all done! ready to submit?
           </p>
+          {submitError && (
+            <p className="mb-4 font-sans text-sm text-terracotta">
+              failed to submit. check your connection and try again.
+            </p>
+          )}
           <button
             onClick={handleSubmit}
             disabled={submitting}
             className="rounded-full bg-near-black px-10 py-4 font-sans text-base font-medium text-white transition-all hover:-translate-y-0.5"
             style={{ opacity: submitting ? 0.6 : 1 }}
           >
-            {submitting ? "submitting..." : "submit votes"}
+            {submitting ? "submitting..." : submitError ? "retry" : "submit votes"}
           </button>
         </section>
       )}

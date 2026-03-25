@@ -83,6 +83,8 @@ export function SignInScreen({ onBack }: { onBack: () => void }) {
 
       if (msg.includes("Failed to fetch") || msg.includes("NetworkError") || msg.includes("timeout")) {
         setError("can't reach the server. check your connection.");
+      } else if (msg.includes("Too many")) {
+        setError("too many attempts. wait 15 minutes and try again.");
       } else if (msg.includes("PIN is required") || msg.includes("needs_pin")) {
         setStep("pin");
         setPin("");

@@ -121,7 +121,7 @@ const STATUS_STYLES: Record<string, { color: string; bg: string; label: string }
 };
 
 export function ProfileScreen() {
-  const { getIdToken, logout } = useAuth();
+  const { getIdToken, logout, loading: authLoading } = useAuth();
   const { setStage, activeTicket, setActiveTicket, profileCompleteMode, setProfileCompleteMode } = useAppStore();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [tickets, setTickets] = useState<EnrichedTicket[]>([]);
@@ -136,7 +136,7 @@ export function ProfileScreen() {
   const fetchData = useCallback(async () => {
     try {
       const token = await getIdToken();
-      if (!token) return;
+      if (!token) { setLoading(false); return; }
       const [profileRes, ticketsRes] = await Promise.all([
         apiFetch<{ success: boolean; data: ProfileData }>("/api/users/me", { token }),
         apiFetch<{ success: boolean; data: EnrichedTicket[] }>("/api/tickets/mine", { token }),
@@ -154,9 +154,10 @@ export function ProfileScreen() {
     }
   }, [getIdToken]);
 
+  // Wait for auth to finish loading before fetching profile data
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (!authLoading) fetchData();
+  }, [authLoading, fetchData]);
 
   // Auto-open edit screen when coming from "finish it" nudge
   useEffect(() => {
@@ -212,7 +213,7 @@ export function ProfileScreen() {
         <p className="mb-2 font-serif text-xl text-near-black">couldn&apos;t load profile</p>
         <p className="mb-6 font-sans text-sm text-muted">check your connection and try again.</p>
         <button
-          onClick={() => window.location.reload()}
+          onClick={() => { setLoading(true); fetchData(); }}
           className="rounded-full bg-near-black px-6 py-2.5 font-mono text-[11px] text-white"
         >
           retry

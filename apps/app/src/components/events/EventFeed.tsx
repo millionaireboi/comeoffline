@@ -13,12 +13,13 @@ import { Noise } from "@/components/shared/Noise";
 import { PullToRefresh } from "@/components/shared/PullToRefresh";
 
 export function EventFeed() {
-  const { getIdToken } = useAuth();
+  const { getIdToken, loading: authLoading } = useAuth();
   const user = useAppStore((s) => s.user);
   const { setCurrentEvent, setActiveRsvp, setActiveTicket, setActiveWaitlistEntry, setStage, setProfileCompleteMode } = useAppStore();
   const events = useAppStore((s) => s.events);
   const setEvents = useAppStore((s) => s.setEvents);
   const [loading, setLoading] = useState(events.length === 0);
+  const [fetchError, setFetchError] = useState(false);
   const [detailEvent, setDetailEvent] = useState<Event | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [showQuizGate, setShowQuizGate] = useState(false);
@@ -29,23 +30,26 @@ export function EventFeed() {
   const profileIncomplete = user && (!user.interests || user.interests.length === 0 || !user.bio);
 
   const fetchEvents = useCallback(async () => {
+    setFetchError(false);
     try {
       const token = await getIdToken();
-      if (!token) return;
+      if (!token) { setFetchError(true); setLoading(false); return; }
       const data = await apiFetch<{ success: boolean; data: Event[] }>("/api/events", {
         token,
       });
       if (data.data) setEvents(data.data);
     } catch (err) {
       console.error("Failed to load events:", err);
+      setFetchError(true);
     } finally {
       setLoading(false);
     }
   }, [getIdToken]);
 
+  // Wait for auth to finish loading before fetching events
   useEffect(() => {
-    fetchEvents();
-  }, [fetchEvents]);
+    if (!authLoading) fetchEvents();
+  }, [authLoading, fetchEvents]);
 
   // Legacy RSVP flow for free events
   const handleRsvp = useCallback(
@@ -218,6 +222,22 @@ export function EventFeed() {
         <div className="animate-fadeIn text-center">
           <p className="font-mono text-[11px] uppercase tracking-[3px] text-muted">loading events...</p>
         </div>
+      </div>
+    );
+  }
+
+  if (fetchError && events.length === 0) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-cream px-8 text-center">
+        <span className="mb-4 text-4xl">{"\u{1F614}"}</span>
+        <p className="mb-2 font-serif text-xl text-near-black">couldn&apos;t load events</p>
+        <p className="mb-6 font-sans text-sm text-muted">check your connection and try again.</p>
+        <button
+          onClick={fetchEvents}
+          className="rounded-full bg-near-black px-6 py-2.5 font-mono text-[11px] text-white"
+        >
+          retry
+        </button>
       </div>
     );
   }

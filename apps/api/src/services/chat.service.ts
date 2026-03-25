@@ -5,7 +5,7 @@ import { env } from "../config/env";
 import { getPublicEvents } from "./events.service";
 import { withCache } from "../utils/cache";
 
-const genAI = new GoogleGenerativeAI(env.googleAiApiKey);
+const genAI = env.googleAiApiKey ? new GoogleGenerativeAI(env.googleAiApiKey) : null;
 
 const MAX_MESSAGE_LENGTH = 1000;
 const MAX_MESSAGES = 30;
@@ -198,6 +198,8 @@ export async function chat(
 ): Promise<string> {
   const isInApp = !!userId;
   const systemPrompt = await getSystemPrompt(isInApp);
+
+  if (!genAI) throw new Error("Chat is not available — AI API key not configured");
 
   const model = genAI.getGenerativeModel({
     model: "gemini-2.0-flash",

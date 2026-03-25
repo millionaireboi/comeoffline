@@ -3,8 +3,8 @@
 // Service Worker — handles push notifications and offline caching
 // No Firebase SDK needed here; we handle push events natively.
 
-// Bump this version on every deploy to bust stale caches
-const CACHE_VERSION = 2;
+// Bump this on each deploy (or automate via CI: sed -i "s/CACHE_VERSION = .*/CACHE_VERSION = '$(date +%s)';/" sw.js)
+const CACHE_VERSION = "20260325";
 const CACHE_NAME = `comeoffline-v${CACHE_VERSION}`;
 
 // Handle incoming push notifications

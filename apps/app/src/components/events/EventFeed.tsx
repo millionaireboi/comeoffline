@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { Event, RSVP, Ticket, WaitlistEntry } from "@comeoffline/types";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppStore } from "@/store/useAppStore";
@@ -15,25 +15,44 @@ import { PullToRefresh } from "@/components/shared/PullToRefresh";
 export function EventFeed() {
   const { getIdToken, loading: authLoading } = useAuth();
   const user = useAppStore((s) => s.user);
-  const { setCurrentEvent, setActiveRsvp, setActiveTicket, setActiveWaitlistEntry, setStage, setProfileCompleteMode } = useAppStore();
+  const { setCurrentEvent, setActiveRsvp, setActiveTicket, setActiveWaitlistEntry, setStage, setProfileCompleteMode, showToast } = useAppStore();
   const events = useAppStore((s) => s.events);
   const setEvents = useAppStore((s) => s.setEvents);
   const [loading, setLoading] = useState(events.length === 0);
   const [fetchError, setFetchError] = useState(false);
   const [detailEvent, setDetailEvent] = useState<Event | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const actionLockRef = useRef(false);
   const [showQuizGate, setShowQuizGate] = useState(false);
   const activeWaitlistEntry = useAppStore((s) => s.activeWaitlistEntry);
   const [nudgeDismissed, setNudgeDismissed] = useState(() => {
     try { return localStorage.getItem("co_profile_nudge_dismissed") === "1"; } catch { return false; }
   });
-  const profileIncomplete = user && (!user.interests || user.interests.length === 0 || !user.bio);
+  const profileIncomplete = user && (
+    !user.bio || !user.hot_take || !user.vibe_tag
+    || !user.interests || user.interests.length === 0
+    || !user.area || !user.instagram_handle
+  );
+
+  const tokenRetryCount = useRef(0);
 
   const fetchEvents = useCallback(async () => {
     setFetchError(false);
     try {
       const token = await getIdToken();
-      if (!token) { setFetchError(true); setLoading(false); return; }
+      if (!token) {
+        // Auth may still be settling — retry up to 3 times with increasing delay
+        if (tokenRetryCount.current < 3) {
+          const delay = (tokenRetryCount.current + 1) * 1500;
+          tokenRetryCount.current++;
+          setTimeout(() => fetchEvents(), delay);
+          return;
+        }
+        setFetchError(true);
+        setLoading(false);
+        return;
+      }
+      tokenRetryCount.current = 0;
       const data = await apiFetch<{ success: boolean; data: Event[] }>("/api/events", {
         token,
       });
@@ -54,11 +73,12 @@ export function EventFeed() {
   // Legacy RSVP flow for free events
   const handleRsvp = useCallback(
     async (event: Event) => {
-      if (actionLoading) return;
+      if (actionLockRef.current) return;
+      actionLockRef.current = true;
       setActionLoading(true);
       try {
         const token = await getIdToken();
-        if (!token) return;
+        if (!token) { showToast("please sign in again.", "error"); return; }
         const data = await apiFetch<{ success: boolean; data: RSVP }>(`/api/events/${event.id}/rsvp`, {
           method: "POST",
           token,
@@ -66,15 +86,18 @@ export function EventFeed() {
         if (data.data) {
           setCurrentEvent(event);
           setActiveRsvp(data.data);
+          showToast("you're in!", "success");
           setStage("countdown");
         }
       } catch (err) {
         console.error("RSVP failed:", err);
+        showToast("couldn't complete rsvp. try again.", "error");
       } finally {
+        actionLockRef.current = false;
         setActionLoading(false);
       }
     },
-    [actionLoading, getIdToken, setCurrentEvent, setActiveRsvp, setStage],
+    [getIdToken, setCurrentEvent, setActiveRsvp, setStage],
   );
 
   // Actually execute a ticket purchase (called directly or after quiz gate)
@@ -89,11 +112,12 @@ export function EventFeed() {
       sectionId?: string,
       spotSeatId?: string,
     ) => {
-      if (actionLoading) return;
+      if (actionLockRef.current) return;
+      actionLockRef.current = true;
       setActionLoading(true);
       try {
         const token = await getIdToken();
-        if (!token) return;
+        if (!token) { showToast("please sign in again.", "error"); return; }
         const data = await apiFetch<{ success: boolean; data: Ticket }>("/api/tickets/create", {
           method: "POST",
           token,
@@ -123,11 +147,13 @@ export function EventFeed() {
         }
       } catch (err) {
         console.error("Ticket purchase failed:", err);
+        showToast("couldn't complete purchase. try again.", "error");
       } finally {
+        actionLockRef.current = false;
         setActionLoading(false);
       }
     },
-    [actionLoading, getIdToken, setCurrentEvent, setActiveTicket, setStage],
+    [getIdToken, setCurrentEvent, setActiveTicket, setStage],
   );
 
   // Ticket purchase flow — quiz is no longer required before booking
@@ -173,47 +199,55 @@ export function EventFeed() {
   // Join waitlist for announced events
   const handleJoinWaitlist = useCallback(
     async (event: Event, spotsWanted: number) => {
-      if (actionLoading) return;
+      if (actionLockRef.current) return;
+      actionLockRef.current = true;
       setActionLoading(true);
       try {
         const token = await getIdToken();
-        if (!token) return;
+        if (!token) { showToast("please sign in again.", "error"); return; }
         const data = await apiFetch<{ success: boolean; data: WaitlistEntry }>(
           `/api/events/${event.id}/waitlist`,
           { method: "POST", token, body: JSON.stringify({ spots_wanted: spotsWanted }) },
         );
         if (data.data) {
           setActiveWaitlistEntry(data.data);
+          showToast("you're on the waitlist!", "success");
         }
       } catch (err) {
         console.error("Join waitlist failed:", err);
+        showToast("couldn't join waitlist. try again.", "error");
       } finally {
+        actionLockRef.current = false;
         setActionLoading(false);
       }
     },
-    [actionLoading, getIdToken, setActiveWaitlistEntry],
+    [getIdToken, setActiveWaitlistEntry],
   );
 
   // Leave waitlist
   const handleLeaveWaitlist = useCallback(
     async (event: Event, entryId: string) => {
-      if (actionLoading) return;
+      if (actionLockRef.current) return;
+      actionLockRef.current = true;
       setActionLoading(true);
       try {
         const token = await getIdToken();
-        if (!token) return;
+        if (!token) { showToast("please sign in again.", "error"); return; }
         await apiFetch(`/api/events/${event.id}/waitlist/${entryId}`, {
           method: "DELETE",
           token,
         });
         setActiveWaitlistEntry(null);
+        showToast("removed from waitlist.", "info");
       } catch (err) {
         console.error("Leave waitlist failed:", err);
+        showToast("couldn't leave waitlist. try again.", "error");
       } finally {
+        actionLockRef.current = false;
         setActionLoading(false);
       }
     },
-    [actionLoading, getIdToken, setActiveWaitlistEntry],
+    [getIdToken, setActiveWaitlistEntry],
   );
 
   if (loading) {

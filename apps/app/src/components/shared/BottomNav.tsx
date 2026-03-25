@@ -6,10 +6,22 @@ interface BottomNavProps {
   onChatOpen: () => void;
 }
 
+// Stages that are tied to a specific event and should clear event context when leaving
+const EVENT_STAGES = new Set(["countdown", "reveal", "dayof", "godark", "memories", "reconnect"]);
+
 export function BottomNav({ onChatOpen }: BottomNavProps) {
-  const { stage, setStage } = useAppStore();
+  const { stage, setStage, setCurrentEvent, setActiveTicket, setNavigationOrigin } = useAppStore();
 
   const isActive = (s: string) => stage === s;
+
+  const navigateTo = (dest: "feed" | "bookings" | "profile") => {
+    if (EVENT_STAGES.has(stage)) {
+      setCurrentEvent(null);
+      setActiveTicket(null);
+      setNavigationOrigin(null);
+    }
+    setStage(dest);
+  };
 
   return (
     <nav
@@ -19,7 +31,7 @@ export function BottomNav({ onChatOpen }: BottomNavProps) {
       <div className="mx-auto flex max-w-[430px] items-center justify-around px-2 py-2">
         {/* Events */}
         <button
-          onClick={() => setStage("feed")}
+          onClick={() => navigateTo("feed")}
           className={`flex flex-col items-center gap-0.5 px-4 py-1.5 transition-colors ${
             isActive("feed") ? "text-near-black" : "text-muted"
           }`}
@@ -30,7 +42,7 @@ export function BottomNav({ onChatOpen }: BottomNavProps) {
 
         {/* Bookings */}
         <button
-          onClick={() => setStage("bookings")}
+          onClick={() => navigateTo("bookings")}
           className={`flex flex-col items-center gap-0.5 px-4 py-1.5 transition-colors ${
             isActive("bookings") ? "text-near-black" : "text-muted"
           }`}
@@ -50,7 +62,7 @@ export function BottomNav({ onChatOpen }: BottomNavProps) {
 
         {/* Profile */}
         <button
-          onClick={() => setStage("profile")}
+          onClick={() => navigateTo("profile")}
           className={`flex flex-col items-center gap-0.5 px-4 py-1.5 transition-colors ${
             isActive("profile") ? "text-near-black" : "text-muted"
           }`}

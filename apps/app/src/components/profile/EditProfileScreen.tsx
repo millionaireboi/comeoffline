@@ -5,6 +5,7 @@ import { CURATED_INTERESTS } from "@comeoffline/types";
 import { useAuth } from "@/hooks/useAuth";
 import { apiFetch } from "@/lib/api";
 import { Noise } from "@/components/shared/Noise";
+import AvatarCropModal from "@/components/shared/AvatarCropModal";
 
 const AVATAR_GRADIENTS = [
   ["#D4A574", "#C4704D"], ["#B8A9C9", "#8B7BA8"], ["#A8B5A0", "#7A9170"],
@@ -51,6 +52,7 @@ export function EditProfileScreen({ user, onSave, onClose, highlightIncomplete }
   const [avatarUrl, setAvatarUrl] = useState(user.avatar_url || "");
   const [avatarType, setAvatarType] = useState(user.avatar_type || "");
   const [newAvatarDataUrl, setNewAvatarDataUrl] = useState<string | null>(null);
+  const [rawImageUrl, setRawImageUrl] = useState<string | null>(null);
   const [area, setArea] = useState(user.area || "");
   const [customArea, setCustomArea] = useState(!AREA_OPTIONS.includes(user.area || "") ? (user.area || "") : "");
   const [showCustomArea, setShowCustomArea] = useState(!AREA_OPTIONS.includes(user.area || "") && !!user.area);
@@ -94,7 +96,7 @@ export function EditProfileScreen({ user, onSave, onClose, highlightIncomplete }
     reader.onload = () => {
       img.onload = () => {
         const canvas = document.createElement("canvas");
-        const maxSize = 800;
+        const maxSize = 1200;
         let w = img.width, h = img.height;
         if (w > maxSize || h > maxSize) {
           const ratio = Math.min(maxSize / w, maxSize / h);
@@ -104,9 +106,7 @@ export function EditProfileScreen({ user, onSave, onClose, highlightIncomplete }
         canvas.width = w;
         canvas.height = h;
         canvas.getContext("2d")!.drawImage(img, 0, 0, w, h);
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
-        setNewAvatarDataUrl(dataUrl);
-        setAvatarType("uploaded");
+        setRawImageUrl(canvas.toDataURL("image/jpeg", 0.9));
       };
       img.src = reader.result as string;
     };
@@ -210,11 +210,11 @@ export function EditProfileScreen({ user, onSave, onClose, highlightIncomplete }
   };
 
   return (
-    <div className="fixed inset-0 z-[500] overflow-y-auto bg-gate-black" style={{ paddingBottom: "calc(56px + env(safe-area-inset-bottom, 0px))" }}>
+    <div className="fixed inset-0 z-[500] overflow-y-auto bg-gate-black">
       <Noise opacity={0.05} />
 
       {/* Header */}
-      <div className="sticky top-0 z-10 flex items-center justify-between bg-gate-black/95 px-5 pb-3 pt-5 backdrop-blur-sm">
+      <div className="sticky top-0 z-10 flex items-center justify-between bg-gate-black/95 px-5 pb-3 backdrop-blur-sm" style={{ paddingTop: "calc(12px + env(safe-area-inset-top, 0px))" }}>
         <button onClick={onClose} className="font-mono text-[11px] text-muted">
           cancel
         </button>
@@ -244,7 +244,7 @@ export function EditProfileScreen({ user, onSave, onClose, highlightIncomplete }
         </div>
       )}
 
-      <div className="px-5 pb-24 pt-4">
+      <div className="px-5 pt-4" style={{ paddingBottom: "calc(80px + env(safe-area-inset-bottom, 0px))" }}>
         {/* Avatar section */}
         <section className="mb-8 text-center">
           <div className="mb-4 flex justify-center">{renderAvatarPreview()}</div>
@@ -443,6 +443,22 @@ export function EditProfileScreen({ user, onSave, onClose, highlightIncomplete }
           />
         </FieldSection>
       </div>
+
+      {rawImageUrl && (
+        <AvatarCropModal
+          imageUrl={rawImageUrl}
+          onConfirm={(croppedDataUrl) => {
+            setNewAvatarDataUrl(croppedDataUrl);
+            setAvatarType("uploaded");
+            setRawImageUrl(null);
+          }}
+          onRetake={() => {
+            setRawImageUrl(null);
+            if (fileRef.current) fileRef.current.value = "";
+            fileRef.current?.click();
+          }}
+        />
+      )}
     </div>
   );
 }

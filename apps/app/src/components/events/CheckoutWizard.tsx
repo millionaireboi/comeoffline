@@ -982,7 +982,7 @@ export function CheckoutWizard({ event, onComplete, onClose, loading }: Checkout
   );
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<string | null>(null);
   const [selectedPickup, setSelectedPickup] = useState<string | null>(
-    event.pickup_points.length === 1 ? event.pickup_points[0].name : null,
+    event.pickup_points?.length === 1 ? event.pickup_points[0].name : null,
   );
   // Per-step addon selections: { [stepId]: { [addonId]: quantity } }
   const [addonSelections, setAddonSelections] = useState<Record<string, Record<string, number>>>({});
@@ -1283,15 +1283,22 @@ export function CheckoutWizard({ event, onComplete, onClose, loading }: Checkout
     }
   };
 
+  const hasMadeSelections = currentStep > 0 || selectedTierId !== null;
+
+  const confirmClose = () => {
+    if (hasMadeSelections && !window.confirm("leave checkout? your selections won\u2019t be saved.")) return;
+    track(CHECKOUT_ABANDONED, {
+      event_id: event.id,
+      last_step_type: step?.type === "checkout" ? step.stepData?.type : step?.type,
+      last_step_index: currentStep,
+      selected_tier_id: selectedTierId,
+    });
+    onClose();
+  };
+
   const handleBack = () => {
     if (currentStep === 0) {
-      track(CHECKOUT_ABANDONED, {
-        event_id: event.id,
-        last_step_type: step?.type === "checkout" ? step.stepData?.type : step?.type,
-        last_step_index: currentStep,
-        selected_tier_id: selectedTierId,
-      });
-      onClose();
+      confirmClose();
     } else {
       setCurrentStep((prev) => prev - 1);
     }
@@ -1328,10 +1335,7 @@ export function CheckoutWizard({ event, onComplete, onClose, loading }: Checkout
     <div className="animate-fadeIn fixed inset-0 z-[500] flex items-end justify-center">
       {/* Backdrop */}
       <div
-        onClick={() => {
-          track(CHECKOUT_ABANDONED, { event_id: event.id, step: currentStep, method: "backdrop" });
-          onClose();
-        }}
+        onClick={confirmClose}
         className="absolute inset-0 bg-[rgba(10,9,7,0.5)] backdrop-blur-sm"
       />
 

@@ -189,6 +189,19 @@ app.listen(env.port, () => {
           oldDedupes.docs.forEach((d) => batch.delete(d.ref));
           await batch.commit().catch((e) => console.warn("[cleanup] Dedup cleanup failed:", e));
         }
+
+        // Clean up expired handoff tokens (older than 1h, generous buffer over 15min TTL)
+        const handoffExpiry = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+        const oldHandoffs = await db
+          .collection("handoff_tokens")
+          .where("expires_at", "<", handoffExpiry)
+          .limit(200)
+          .get();
+        if (!oldHandoffs.empty) {
+          const batch2 = db.batch();
+          oldHandoffs.docs.forEach((d) => batch2.delete(d.ref));
+          await batch2.commit().catch((e) => console.warn("[cleanup] Handoff token cleanup failed:", e));
+        }
       } finally {
         // Release lock
         await lockRef.delete().catch(() => {});

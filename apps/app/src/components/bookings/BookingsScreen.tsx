@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { Ticket, Event } from "@comeoffline/types";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppStore } from "@/store/useAppStore";
@@ -21,19 +21,30 @@ const STATUS_STYLES: Record<string, { color: string; bg: string; label: string }
 
 export function BookingsScreen() {
   const { getIdToken, loading: authLoading } = useAuth();
-  const { setStage, setActiveTicket, setCurrentEvent, setNavigationOrigin, activeTicket } = useAppStore();
+  const { setStage, setActiveTicket, setCurrentEvent, setNavigationOrigin, activeTicket, showToast } = useAppStore();
   const [tickets, setTickets] = useState<EnrichedTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
   const [expandedTicketId, setExpandedTicketId] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
   const [viewingId, setViewingId] = useState<string | null>(null);
+
+  const actionLockRef = useRef(false);
+  const tokenRetried = useRef(false);
 
   const fetchTickets = useCallback(async () => {
     setFetchError(false);
     try {
       const token = await getIdToken();
-      if (!token) { setFetchError(true); setLoading(false); return; }
+      if (!token) {
+        if (!tokenRetried.current) {
+          tokenRetried.current = true;
+          setTimeout(() => fetchTickets(), 1500);
+          return;
+        }
+        setFetchError(true); setLoading(false); return;
+      }
       const res = await apiFetch<{ success: boolean; data: EnrichedTicket[] }>("/api/tickets/mine", { token });
       if (res.data) setTickets(res.data);
     } catch (err) {
@@ -50,6 +61,8 @@ export function BookingsScreen() {
   }, [authLoading, fetchTickets]);
 
   const handleViewBooking = async (ticket: EnrichedTicket) => {
+    if (actionLockRef.current) return;
+    actionLockRef.current = true;
     setViewingId(ticket.id);
     try {
       const token = await getIdToken();
@@ -59,7 +72,7 @@ export function BookingsScreen() {
         { token },
       );
       if (!eventRes.data) {
-        alert("Couldn\u2019t load event details. Please try again.");
+        showToast("couldn't load event details.", "error");
         return;
       }
       // Set both event and ticket, then explicitly navigate to countdown.
@@ -71,18 +84,21 @@ export function BookingsScreen() {
       setStage("countdown");
     } catch (err) {
       console.error("Failed to load event:", err);
-      alert("Couldn\u2019t load event details. Check your connection.");
+      showToast("couldn't load event. check connection.", "error");
     } finally {
+      actionLockRef.current = false;
       setViewingId(null);
     }
   };
 
   const handleCancelTicket = async (ticketId: string) => {
-    if (!confirm("Cancel this ticket? This can\u2019t be undone.")) return;
+    if (actionLockRef.current) return;
+    actionLockRef.current = true;
     setCancellingId(ticketId);
+    setConfirmCancelId(null);
     try {
       const token = await getIdToken();
-      if (!token) return;
+      if (!token) { showToast("please sign in again.", "error"); setCancellingId(null); return; }
       await apiFetch(`/api/tickets/${ticketId}`, { method: "DELETE", token });
       setTickets((prev) =>
         prev.map((t) => t.id === ticketId ? { ...t, status: "cancelled" as const } : t),
@@ -91,10 +107,12 @@ export function BookingsScreen() {
         setActiveTicket(null);
         setCurrentEvent(null);
       }
+      showToast("ticket cancelled.", "info");
     } catch (err) {
       console.error("Failed to cancel ticket:", err);
-      alert("Failed to cancel ticket. Please try again.");
+      showToast("couldn't cancel ticket. try again.", "error");
     } finally {
+      actionLockRef.current = false;
       setCancellingId(null);
     }
   };
@@ -116,9 +134,15 @@ export function BookingsScreen() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-cream">
-        <div className="animate-fadeIn text-center">
-          <p className="font-mono text-[11px] uppercase tracking-[3px] text-muted">loading bookings...</p>
+      <div className="min-h-screen bg-cream px-4 pt-8">
+        <div className="animate-pulse space-y-4">
+          <div className="px-1">
+            <div className="mb-2 h-3 w-20 rounded bg-sand/40" />
+            <div className="h-8 w-32 rounded bg-sand/30" />
+          </div>
+          <div className="mt-6 h-[88px] rounded-[18px] bg-sand/25" />
+          <div className="h-[88px] rounded-[18px] bg-sand/20" />
+          <div className="h-[88px] rounded-[18px] bg-sand/15" />
         </div>
       </div>
     );
@@ -305,17 +329,38 @@ export function BookingsScreen() {
                             disabled={isViewing}
                             className="w-full rounded-xl bg-near-black py-3 font-mono text-[11px] text-white transition-all active:scale-[0.98] disabled:opacity-60"
                           >
-                            {isViewing ? "loading..." : "view event details"}
+                            {isViewing ? "loading..." : "view booking"}
                           </button>
                         )}
-                        {isCancellable && (
+                        {isCancellable && confirmCancelId !== ticket.id && (
                           <button
-                            onClick={() => handleCancelTicket(ticket.id)}
+                            onClick={() => setConfirmCancelId(ticket.id)}
                             disabled={isCancelling}
                             className="w-full rounded-xl border border-terracotta/20 bg-terracotta/5 py-3 font-mono text-[11px] text-terracotta transition-colors active:bg-terracotta/10 disabled:opacity-50"
                           >
                             {isCancelling ? "cancelling..." : "cancel ticket"}
                           </button>
+                        )}
+                        {confirmCancelId === ticket.id && !isCancelling && (
+                          <div className="rounded-xl border border-terracotta/20 bg-terracotta/5 p-3">
+                            <p className="mb-2 text-center font-mono text-[11px] text-terracotta">
+                              cancel this ticket? this can&apos;t be undone.
+                            </p>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => handleCancelTicket(ticket.id)}
+                                className="flex-1 rounded-lg bg-terracotta py-2.5 font-mono text-[11px] text-white transition-all active:scale-95"
+                              >
+                                yes, cancel
+                              </button>
+                              <button
+                                onClick={() => setConfirmCancelId(null)}
+                                className="flex-1 rounded-lg border border-sand bg-white py-2.5 font-mono text-[11px] text-near-black transition-all active:scale-95"
+                              >
+                                keep it
+                              </button>
+                            </div>
+                          </div>
                         )}
                       </div>
                     </div>

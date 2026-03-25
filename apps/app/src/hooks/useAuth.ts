@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { onAuthStateChanged, signInWithCustomToken, signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "@comeoffline/firebase";
@@ -110,11 +110,11 @@ export function useAuth() {
     setStage("gate");
   };
 
-  const getIdToken = async (): Promise<string | null> => {
+  const getIdToken = useCallback(async (): Promise<string | null> => {
     const currentUser = auth.currentUser;
     if (!currentUser) return null;
     return currentUser.getIdToken();
-  };
+  }, []);
 
   return { user, loading, loginWithToken, logout, getIdToken };
 }

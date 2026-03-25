@@ -34,7 +34,7 @@ export function DayOfScreen() {
   const pickupPoint =
     activeTicket?.pickup_point ||
     activeRsvp?.pickup_point ||
-    currentEvent.pickup_points[0]?.name ||
+    currentEvent.pickup_points?.[0]?.name ||
     "TBD";
 
   return (
@@ -75,6 +75,13 @@ export function DayOfScreen() {
               src={activeTicket.qr_code}
               alt="Ticket QR Code"
               className="mx-auto h-[200px] w-[200px] rounded-xl"
+              onError={(e) => {
+                e.currentTarget.style.display = "none";
+                const fallback = document.createElement("p");
+                fallback.className = "text-center font-mono text-[11px] text-muted py-8";
+                fallback.textContent = "QR code unavailable — show your name at entry";
+                e.currentTarget.parentElement?.appendChild(fallback);
+              }}
             />
             <div className="mt-3 flex items-center justify-center gap-2">
               <span className="font-sans text-[13px] font-medium text-near-black">
@@ -105,34 +112,40 @@ export function DayOfScreen() {
             </div>
           </div>
 
-          <div className="mb-4 h-px bg-sand" />
+          {currentEvent.pickup_points && currentEvent.pickup_points.length > 0 && (
+            <>
+              <div className="mb-4 h-px bg-sand" />
 
-          <div className="flex gap-6">
-            <div>
-              <span className="mb-1 block font-mono text-[9px] uppercase tracking-[1.5px] text-muted">
-                pickup
-              </span>
-              <span className="font-sans text-[15px] font-medium text-near-black">
-                {currentEvent.pickup_points[0]?.time || currentEvent.time}
-              </span>
-            </div>
-            <div>
-              <span className="mb-1 block font-mono text-[9px] uppercase tracking-[1.5px] text-muted">
-                from
-              </span>
-              <span className="font-sans text-sm text-near-black">
-                {pickupPoint}
-              </span>
-            </div>
-          </div>
+              <div className="flex gap-6">
+                <div>
+                  <span className="mb-1 block font-mono text-[9px] uppercase tracking-[1.5px] text-muted">
+                    pickup
+                  </span>
+                  <span className="font-sans text-[15px] font-medium text-near-black">
+                    {currentEvent.pickup_points[0]?.time || currentEvent.time}
+                  </span>
+                </div>
+                <div>
+                  <span className="mb-1 block font-mono text-[9px] uppercase tracking-[1.5px] text-muted">
+                    from
+                  </span>
+                  <span className="font-sans text-sm text-near-black">
+                    {pickupPoint}
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Dress code */}
-        <div className="mb-8 flex items-center gap-2.5 rounded-[14px] bg-blush/10 px-[18px] py-3.5">
-          <p className="font-sans text-[13px] text-warm-brown">
-            dress code: <span className="font-semibold">{currentEvent.dress_code}</span>
-          </p>
-        </div>
+        {currentEvent.dress_code && (
+          <div className="mb-8 flex items-center gap-2.5 rounded-[14px] bg-blush/10 px-[18px] py-3.5">
+            <p className="font-sans text-[13px] text-warm-brown">
+              dress code: <span className="font-semibold">{currentEvent.dress_code}</span>
+            </p>
+          </div>
+        )}
 
         {/* Go dark CTA */}
         <button

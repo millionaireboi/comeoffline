@@ -198,14 +198,17 @@ export function AppEducation() {
     try {
       const token = await getIdToken();
       if (token) {
-        apiFetch("/api/users/me", {
+        await apiFetch("/api/users/me", {
           method: "PUT",
           token,
           body: JSON.stringify({ has_completed_onboarding: true }),
-        }).catch(() => { /* non-blocking */ });
+        });
       }
-    } catch { /* non-blocking */ }
+    } catch (err) {
+      console.warn("[AppEducation] API save failed, proceeding anyway:", err);
+    }
 
+    // Always update Zustand so user isn't stuck, even if API failed
     if (user) {
       setUser({ ...user, has_completed_onboarding: true });
     }

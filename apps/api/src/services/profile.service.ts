@@ -134,6 +134,15 @@ export async function updateUserProfile(
   >>,
 ): Promise<void> {
   const db = await getDb();
+
+  // Enforce handle uniqueness when updating handle
+  if (updates.handle) {
+    const existing = await db.collection("users").where("handle", "==", updates.handle).limit(1).get();
+    if (!existing.empty && existing.docs[0].id !== userId) {
+      throw new Error("Handle is already taken");
+    }
+  }
+
   await db.collection("users").doc(userId).update(updates);
 }
 

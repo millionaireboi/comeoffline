@@ -138,7 +138,7 @@ export async function validateCode(
   // Step 1b: Check if a returning user is signing back in with their original code.
   // Only safe for single-use codes — for multi-use codes, multiple users share the same
   // code so we can't know which user is returning. They should use /sign-in instead.
-  if (codeData.rules.max_uses === 1 || codeData.type === "single") {
+  if (codeData.rules?.max_uses === 1 || codeData.type === "single") {
     const existingUserSnap = await db
       .collection("users")
       .where("invite_code_used", "==", normalizedCode)
@@ -245,10 +245,14 @@ export async function validateCode(
   }
 
   // Step 5: Generate tokens for client sign-in
-  const token = await auth.createCustomToken(firebaseUser.uid);
-  const handoffToken = await generateHandoffToken(firebaseUser.uid, "landing", "active");
-
-  return { valid: true, token, handoff_token: handoffToken, user: userData };
+  try {
+    const token = await auth.createCustomToken(firebaseUser.uid);
+    const handoffToken = await generateHandoffToken(firebaseUser.uid, "landing", "active");
+    return { valid: true, token, handoff_token: handoffToken, user: userData };
+  } catch (tokenErr) {
+    console.error("[auth] Failed to generate tokens:", tokenErr);
+    return { valid: false, error: "Failed to create session. Please try again." };
+  }
 }
 
 /** Creates a provisional user from chatbot vibe check pass */
@@ -354,7 +358,7 @@ export async function signInByHandle(
   return {
     valid: true,
     token: firebaseToken,
-    user: userData,
+    user: sanitizeUser(userData),
     has_seen_welcome: (rawData.has_seen_welcome as boolean) ?? false,
   };
 }

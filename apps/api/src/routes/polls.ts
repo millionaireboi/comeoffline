@@ -25,6 +25,14 @@ router.post("/:id/community-poll", requireAuth, async (req: AuthRequest, res) =>
       return;
     }
 
+    // Validate each vote has required structure
+    for (const vote of votes) {
+      if (!vote || typeof vote.subject_id !== "string" || typeof vote.vibed !== "boolean") {
+        res.status(400).json({ success: false, error: "Each vote must have subject_id (string) and vibed (boolean)" });
+        return;
+      }
+    }
+
     const result = await submitVotes(req.params.id as string, req.uid!, votes);
 
     if (!result.success) {

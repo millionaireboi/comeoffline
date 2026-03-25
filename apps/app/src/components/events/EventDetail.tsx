@@ -35,7 +35,7 @@ export function EventDetail({ event, onClose, onRsvp, onTicketPurchase, onJoinWa
   const user = useAppStore((s) => s.user);
   const activeWaitlistEntry = useAppStore((s) => s.activeWaitlistEntry);
   const isAnnounced = event.status === "announced";
-  const spotsLeft = event.total_spots - event.spots_taken;
+  const spotsLeft = (event.total_spots ?? 0) - (event.spots_taken ?? 0);
   const isTicketed = !!(event.ticketing?.enabled && !event.is_free);
   const tiers = event.ticketing?.tiers || [];
   const hasCheckoutWizard = !!(event.checkout?.enabled && (event.checkout?.steps?.length || 0) > 0);
@@ -47,7 +47,7 @@ export function EventDetail({ event, onClose, onRsvp, onTicketPurchase, onJoinWa
   );
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<string | null>(null);
   const [selectedPickup, setSelectedPickup] = useState<string | null>(
-    event.pickup_points.length === 1 ? event.pickup_points[0].name : null,
+    event.pickup_points?.length === 1 ? event.pickup_points[0].name : null,
   );
   const [showWizard, setShowWizard] = useState(false);
   const [showExitSurvey, setShowExitSurvey] = useState(false);

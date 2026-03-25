@@ -284,6 +284,10 @@ export function SignInScreen({ onBack }: { onBack: () => void }) {
 
           {success && <SuccessBox message={success} />}
 
+          <p className="text-center font-mono text-[10px] text-muted/40">
+            code expires in 10 minutes
+          </p>
+
           <div>
             <label className="mb-2 block font-mono text-[11px] uppercase tracking-[2px] text-muted">
               6-digit code from email

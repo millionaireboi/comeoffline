@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { env } from "../config/env";
 
-const genAI = new GoogleGenerativeAI(env.googleAiApiKey);
+const genAI = env.googleAiApiKey ? new GoogleGenerativeAI(env.googleAiApiKey) : null;
 
 interface GeneratedSpotSeat {
   label: string;
@@ -27,6 +27,8 @@ export async function analyzeFloorPlan(
   imageBase64: string,
   mimeType: string,
 ): Promise<GeneratedSpot[]> {
+  if (!genAI) throw new Error("Floor plan analysis is not available — AI API key not configured");
+
   const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
   const result = await model.generateContent([

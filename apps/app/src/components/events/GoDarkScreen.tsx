@@ -56,13 +56,6 @@ export function GoDarkScreen() {
           be present.
         </p>
 
-        {/* Skip to morning after (for demo flow) */}
-        <button
-          onClick={() => setStage("memories")}
-          className="rounded-full border border-muted/15 bg-transparent px-6 py-3 font-mono text-[11px] text-muted/40 transition-all hover:border-caramel/30 hover:text-cream"
-        >
-          skip to morning after (demo) →
-        </button>
       </div>
 
       {/* Back to day-of for QR / venue info */}

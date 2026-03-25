@@ -14,20 +14,22 @@ function getPriceLabel(event: Event): string {
   if (event.is_free || !event.ticketing?.enabled) return "free";
   const tiers = event.ticketing?.tiers || [];
   if (tiers.length === 0) return "free";
-  const prices = tiers.filter((t) => t.price > 0).map((t) => t.price);
+  const prices = tiers.map((t) => t.price).filter((p): p is number => typeof p === "number" && p > 0);
   if (prices.length === 0) return "free";
   const min = Math.min(...prices);
   return `from \u20B9${min}`;
 }
 
 export function EventCard({ event, index, onOpen }: EventCardProps) {
-  const spotsLeft = event.total_spots - event.spots_taken;
-  const daysUntilVenue = Math.max(
-    0,
-    Math.ceil(
-      (new Date(event.venue_reveal_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
-    ),
-  );
+  const spotsLeft = (event.total_spots ?? 0) - (event.spots_taken ?? 0);
+  const daysUntilVenue = event.venue_reveal_date
+    ? Math.max(
+        0,
+        Math.ceil(
+          (new Date(event.venue_reveal_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
+        ),
+      )
+    : 0;
   const priceLabel = event.status === "announced" ? "coming soon" : getPriceLabel(event);
   const isTicketed = event.ticketing?.enabled && !event.is_free;
 
@@ -47,16 +49,33 @@ export function EventCard({ event, index, onOpen }: EventCardProps) {
               muted
               loop
               playsInline
-              autoPlay
               preload="metadata"
+              onError={(e) => {
+                e.currentTarget.style.display = "none";
+                const fallback = e.currentTarget.parentElement?.querySelector("[data-cover-fallback]") as HTMLElement;
+                if (fallback) fallback.style.display = "flex";
+              }}
             />
           ) : (
             <img
               src={event.cover_url}
               alt={event.title}
               className="h-48 w-full object-cover"
+              onError={(e) => {
+                e.currentTarget.style.display = "none";
+                const fallback = e.currentTarget.parentElement?.querySelector("[data-cover-fallback]") as HTMLElement;
+                if (fallback) fallback.style.display = "flex";
+              }}
             />
           )}
+          {/* Fallback when media fails to load */}
+          <div
+            data-cover-fallback
+            className="hidden h-48 w-full items-center justify-center"
+            style={{ background: `linear-gradient(135deg, ${event.accent || "#D4A574"}, ${event.accent_dark || "#B8845A"})` }}
+          >
+            <span className="text-4xl">{event.emoji}</span>
+          </div>
           {/* Gradient overlay */}
           <div className="absolute inset-0 bg-gradient-to-t from-white/80 via-transparent to-transparent" />
           {/* Tag overlay */}
@@ -119,9 +138,11 @@ export function EventCard({ event, index, onOpen }: EventCardProps) {
         {/* Meta */}
         <div className="mb-4 flex flex-wrap gap-4">
           <div className="font-sans text-[13px] text-soft-black">{formatDate(event.date)}</div>
-          <div className="font-mono text-[11px] text-muted">
-            venue drops in {daysUntilVenue}d
-          </div>
+          {event.venue_reveal_date && daysUntilVenue > 0 && (
+            <div className="font-mono text-[11px] text-muted">
+              venue drops in {daysUntilVenue}d
+            </div>
+          )}
         </div>
 
         {event.status === "announced" ? (

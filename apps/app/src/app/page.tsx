@@ -10,8 +10,8 @@ import { useNavigationHistory } from "@/hooks/useNavigationHistory";
 import { useAppStore } from "@/store/useAppStore";
 import { apiFetch } from "@/lib/api";
 import type { Ticket, Event } from "@comeoffline/types";
-import { InstallGate } from "@/components/gates/InstallGate";
 import { TheGate } from "@/components/gates/TheGate";
+import { PWAInstallPrompt } from "@/components/shared/PWAInstallPrompt";
 import { AcceptanceScreen } from "@/components/gates/AcceptanceScreen";
 import { EventFeed } from "@/components/events/EventFeed";
 import { CountdownScreen } from "@/components/events/CountdownScreen";
@@ -30,11 +30,12 @@ import { SignQuizOffer } from "@/components/onboarding/SignQuizOffer";
 import { SignQuiz } from "@/components/onboarding/SignQuiz";
 import { InAppChat } from "@/components/chat/InAppChat";
 import { BottomNav } from "@/components/shared/BottomNav";
+import { Toast } from "@/components/shared/Toast";
 import { SignInScreen } from "@/components/gates/SignInScreen";
 
 export default function Home() {
-  const { loading, getIdToken } = useAuth();
-  const { isStandalone } = usePWAInstall();
+  const { loading, getIdToken, logout } = useAuth();
+  const { triggerPrompt } = usePWAInstall();
   const { checking: tokenChecking } = useTokenHandoff();
   usePushNotifications();
   useStage(); // Auto stage transitions based on event dates + ticket/RSVP status
@@ -258,12 +259,21 @@ export default function Home() {
     );
   }
 
-  // PWA install gate — only show on mobile browsers (not standalone)
-  if (!isStandalone) {
-    return <InstallGate />;
-  }
+  // Trigger PWA install prompt after booking (when user transitions to countdown)
+  const prevStageForPrompt = useRef<string | null>(null);
+  useEffect(() => {
+    // Detect transition into countdown from feed/bookings (i.e. just booked a ticket)
+    if (
+      stage === "countdown" &&
+      prevStageForPrompt.current &&
+      prevStageForPrompt.current !== "countdown"
+    ) {
+      triggerPrompt();
+    }
+    prevStageForPrompt.current = stage;
+  }, [stage, triggerPrompt]);
 
-  // Inactive user — tasteful exit screen
+  // Inactive user — tasteful exit screen with auto-logout
   if (user && user.status === "inactive") {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center bg-gate-black px-8 text-center">
@@ -274,7 +284,13 @@ export default function Home() {
         <p className="mt-4 max-w-[280px] font-sans text-[15px] leading-relaxed text-muted">
           thanks for being part of the community. sometimes the vibe shifts, and that&apos;s okay.
         </p>
-        <p className="mt-6 font-mono text-[10px] uppercase tracking-[3px] text-muted/30">
+        <button
+          onClick={logout}
+          className="mt-8 rounded-full border border-muted/20 px-6 py-2.5 font-mono text-[11px] text-muted transition-colors hover:text-cream"
+        >
+          sign out
+        </button>
+        <p className="mt-4 font-mono text-[10px] uppercase tracking-[3px] text-muted/30">
           come offline
         </p>
       </main>
@@ -354,6 +370,8 @@ export default function Home() {
       </div>
       {showNav && <BottomNav onChatOpen={() => setChatOpen(true)} />}
       {chatOpen && <InAppChat onClose={() => setChatOpen(false)} />}
+      <PWAInstallPrompt />
+      <Toast />
     </>
   );
 }

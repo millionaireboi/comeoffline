@@ -91,7 +91,7 @@ export function SignQuiz({ onComplete, mode = "onboarding" }: SignQuizProps) {
     if (!resultSign) return;
     const signData = SIGNS[resultSign];
 
-    // Update Zustand immediately
+    // Update Zustand immediately (optimistic)
     if (user) {
       setUser({
         ...user,
@@ -104,11 +104,11 @@ export function SignQuiz({ onComplete, mode = "onboarding" }: SignQuizProps) {
       });
     }
 
-    // Persist to API (fire-and-forget)
+    // Persist to API — await so data isn't lost on next login
     try {
       const token = await getIdToken();
       if (token) {
-        apiFetch("/api/users/me", {
+        await apiFetch("/api/users/me", {
           method: "PUT",
           token,
           body: JSON.stringify({
@@ -119,10 +119,10 @@ export function SignQuiz({ onComplete, mode = "onboarding" }: SignQuizProps) {
             sign_color: signData.color,
             quiz_completed_at: new Date().toISOString(),
           }),
-        }).catch(() => {});
+        });
       }
-    } catch {
-      /* non-blocking */
+    } catch (err) {
+      console.warn("[SignQuiz] API save failed, proceeding anyway:", err);
     }
 
     onComplete();

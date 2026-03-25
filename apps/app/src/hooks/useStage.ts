@@ -9,7 +9,7 @@ import type { Event, RSVP, Ticket } from "@comeoffline/types";
  * Polls every 60s to handle time-based transitions (countdown->reveal->dayof).
  */
 export function useStage() {
-  const { user, currentEvent, activeRsvp, activeTicket, stage, setStage } = useAppStore();
+  const { user, currentEvent, activeRsvp, activeTicket, stage, setStage, navigationOrigin } = useAppStore();
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -38,7 +38,7 @@ export function useStage() {
       }
 
       // Offer sign quiz after onboarding if not yet completed
-      if (!user.sign && !isGrandfathered && !["feed", "sign_quiz", "bookings"].includes(stage)) {
+      if (!user.sign && !isGrandfathered && !["feed", "sign_quiz", "bookings", "profile", "poll"].includes(stage)) {
         setStage("sign_quiz");
         return;
       }
@@ -47,6 +47,8 @@ export function useStage() {
       // sign_quiz should only stay manual while the quiz is incomplete
       if (["profile", "vouch", "poll", "bookings"].includes(stage)) return;
       if (stage === "sign_quiz" && !user.sign) return;
+      // When navigating from bookings, keep countdown visible so user sees post-booking content
+      if (stage === "countdown" && navigationOrigin === "bookings") return;
 
       // If user has neither RSVP nor ticket for any event, show feed
       if (!currentEvent || (!activeRsvp && !activeTicket)) {
@@ -68,7 +70,7 @@ export function useStage() {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [user, currentEvent, activeRsvp, activeTicket, stage, setStage]);
+  }, [user, currentEvent, activeRsvp, activeTicket, stage, setStage, navigationOrigin]);
 
   return stage;
 }
@@ -84,7 +86,10 @@ function determineEventStage(
 
   const now = new Date();
   const eventDate = new Date(event.date);
-  const venueRevealDate = new Date(event.venue_reveal_date);
+  if (isNaN(eventDate.getTime())) return "countdown";
+  const venueRevealDate = event.venue_reveal_date
+    ? new Date(event.venue_reveal_date)
+    : new Date(eventDate.getTime() - 86400000); // default: 1 day before event (already revealed)
 
   // Post-event: memories + reconnect window
   if (rsvp?.status === "attended" || ticket?.status === "checked_in" || ticket?.status === "partially_checked_in") {

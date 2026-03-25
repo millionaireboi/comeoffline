@@ -67,7 +67,19 @@ function ProfileAvatar({ user, signColor }: { user: ProfileData["user"]; signCol
   if (user.avatar_type === "uploaded" && user.avatar_url && !user.avatar_url.startsWith("gradient:")) {
     return (
       <div className="h-16 w-16 overflow-hidden rounded-full">
-        <img src={user.avatar_url} alt={user.name} className="h-full w-full object-cover" />
+        <img
+          src={user.avatar_url}
+          alt={user.name}
+          className="h-full w-full object-cover"
+          onError={(e) => {
+            // Fallback to initial on broken image
+            const target = e.currentTarget;
+            target.style.display = "none";
+            target.parentElement!.classList.add("flex", "items-center", "justify-center", "font-serif", "text-2xl", "text-white");
+            target.parentElement!.style.background = signColor;
+            target.parentElement!.textContent = user.name.charAt(0);
+          }}
+        />
       </div>
     );
   }
@@ -137,15 +149,15 @@ export function ProfileScreen() {
     try {
       const token = await getIdToken();
       if (!token) { setLoading(false); return; }
-      const [profileRes, ticketsRes] = await Promise.all([
+      const [profileResult, ticketsResult] = await Promise.allSettled([
         apiFetch<{ success: boolean; data: ProfileData }>("/api/users/me", { token }),
         apiFetch<{ success: boolean; data: EnrichedTicket[] }>("/api/tickets/mine", { token }),
       ]);
-      if (profileRes.data) {
-        setProfile(profileRes.data);
+      if (profileResult.status === "fulfilled" && profileResult.value.data) {
+        setProfile(profileResult.value.data);
       }
-      if (ticketsRes.data) {
-        setTickets(ticketsRes.data);
+      if (ticketsResult.status === "fulfilled" && ticketsResult.value.data) {
+        setTickets(ticketsResult.value.data);
       }
     } catch (err) {
       console.error("Failed to load profile:", err);
@@ -256,10 +268,10 @@ export function ProfileScreen() {
           <div className="mb-5 flex items-center gap-4">
             <ProfileAvatar user={profile.user} signColor={signColor} />
             <div>
-              <h2 className="font-serif text-[26px] font-normal leading-none text-near-black">
+              <h2 className="truncate font-serif text-[26px] font-normal leading-none text-near-black">
                 {profile.user.name}
               </h2>
-              <p className="mt-0.5 font-mono text-[12px] text-muted">@{profile.user.handle}</p>
+              <p className="mt-0.5 truncate font-mono text-[12px] text-muted">@{profile.user.handle}</p>
             </div>
           </div>
 
@@ -289,7 +301,7 @@ export function ProfileScreen() {
 
           {/* Vibe tag */}
           {profile.user.vibe_tag && (
-            <p className="mb-4 font-hand text-[13px] italic text-muted">
+            <p className="mb-4 truncate font-hand text-[13px] italic text-muted">
               {profile.user.vibe_tag}
             </p>
           )}
@@ -682,6 +694,7 @@ export function ProfileScreen() {
           onSave={async () => {
             setShowEditProfile(false);
             setProfileCompleteMode(false);
+            // Refetch profile to show actual saved state
             try {
               const token = await getIdToken();
               if (!token) return;
@@ -690,7 +703,9 @@ export function ProfileScreen() {
                 { token },
               );
               if (data.data) setProfile(data.data);
-            } catch { /* ignore */ }
+            } catch (err) {
+              console.warn("[ProfileScreen] Failed to refetch profile after save:", err);
+            }
           }}
           highlightIncomplete={profileCompleteMode}
         />

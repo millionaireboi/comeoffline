@@ -141,13 +141,7 @@ export function MemoriesScreen() {
                   transform: `rotate(${photo.rotation}deg)`,
                 }}
               >
-                <div className="aspect-square w-full overflow-hidden">
-                  <img
-                    src={photo.url}
-                    alt={photo.caption}
-                    className="h-full w-full object-cover"
-                  />
-                </div>
+                <PolaroidImage url={photo.url} alt={photo.caption} />
                 <div className="p-2.5">
                   {photo.caption && (
                     <p className="font-caveat text-[15px] text-near-black">{photo.caption}</p>
@@ -177,7 +171,7 @@ export function MemoriesScreen() {
       )}
 
       {/* Empty state */}
-      {(!memories || (memories.polaroids.length === 0 && memories.quotes.length === 0)) && (
+      {(!memories || (!memories.polaroids?.length && !memories.quotes?.length)) && (
         <section className="animate-fadeSlideUp px-5 py-12 text-center" style={{ animationDelay: "0.3s" }}>
           <span className="mb-4 block text-4xl">📸</span>
           <p className="font-serif text-xl text-warm-brown">memories incoming</p>
@@ -226,8 +220,13 @@ export function MemoriesScreen() {
           <div className="max-h-[80vh] max-w-[90vw] overflow-hidden rounded-2xl bg-white">
             <img
               src={selectedPhoto.url}
-              alt={selectedPhoto.caption}
+              alt={selectedPhoto.caption || ""}
               className="max-h-[70vh] w-full object-contain"
+              onError={(e) => {
+                e.currentTarget.src = "";
+                e.currentTarget.alt = "Photo unavailable";
+                e.currentTarget.className = "flex h-48 w-full items-center justify-center bg-sand/20 text-muted text-sm";
+              }}
             />
             <div className="p-4">
               {selectedPhoto.caption && (
@@ -241,6 +240,27 @@ export function MemoriesScreen() {
         </div>
       )}
     </>
+  );
+}
+
+function PolaroidImage({ url, alt }: { url: string; alt?: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <div className="flex aspect-square w-full items-center justify-center bg-sand/30">
+        <span className="text-2xl">{"\uD83D\uDCF7"}</span>
+      </div>
+    );
+  }
+  return (
+    <div className="aspect-square w-full overflow-hidden">
+      <img
+        src={url}
+        alt={alt || ""}
+        className="h-full w-full object-cover"
+        onError={() => setFailed(true)}
+      />
+    </div>
   );
 }
 

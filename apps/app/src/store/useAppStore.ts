@@ -61,7 +61,14 @@ interface AppState {
   // Profile completion mode (triggered from "finish it" nudge)
   profileCompleteMode: boolean;
   setProfileCompleteMode: (mode: boolean) => void;
+
+  // Toast notifications
+  toast: { message: string; type: "error" | "success" | "info" } | null;
+  showToast: (message: string, type?: "error" | "success" | "info") => void;
+  clearToast: () => void;
 }
+
+let toastTimeout: ReturnType<typeof setTimeout> | null = null;
 
 export const useAppStore = create<AppState>((set) => ({
   user: null,
@@ -94,4 +101,15 @@ export const useAppStore = create<AppState>((set) => ({
 
   profileCompleteMode: false,
   setProfileCompleteMode: (mode) => set({ profileCompleteMode: mode }),
+
+  toast: null,
+  showToast: (message, type = "error") => {
+    if (toastTimeout) clearTimeout(toastTimeout);
+    set({ toast: { message, type } });
+    toastTimeout = setTimeout(() => { set({ toast: null }); toastTimeout = null; }, 3500);
+  },
+  clearToast: () => {
+    if (toastTimeout) { clearTimeout(toastTimeout); toastTimeout = null; }
+    set({ toast: null });
+  },
 }));

@@ -103,7 +103,7 @@ router.post("/create", requireAuth, strictLimiter, async (req: AuthRequest, res)
       result.ticket.payment_link_id = linkResult.payment_link_id;
     }
 
-    res.json({ success: true, data: result.ticket });
+    res.status(201).json({ success: true, data: result.ticket });
   } catch (err) {
     console.error("[tickets] create error:", err);
     res.status(500).json({ success: false, error: "Internal server error" });

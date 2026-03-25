@@ -7,8 +7,12 @@ import { Noise } from "@/components/shared/Noise";
 
 type Phase = "sealed" | "revealing" | "revealed";
 
-export function VenueReveal() {
-  const { currentEvent, navigationOrigin, setStage, setNavigationOrigin } = useAppStore();
+interface VenueRevealProps {
+  onClose?: () => void;
+}
+
+export function VenueReveal({ onClose }: VenueRevealProps = {}) {
+  const { currentEvent, navigationOrigin, setStage, setNavigationOrigin, setCurrentEvent, setActiveTicket } = useAppStore();
   const [phase, setPhase] = useState<Phase>("sealed");
   const [scratchPct, setScratchPct] = useState(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -26,10 +30,12 @@ export function VenueReveal() {
     const h = (c.height = c.offsetHeight * 2);
     ctx.scale(2, 2);
 
+    const accent = currentEvent?.accent || "#D4A574";
+    const accentDark = currentEvent?.accent_dark || "#B8845A";
     const g = ctx.createLinearGradient(0, 0, w / 2, h / 2);
-    g.addColorStop(0, "#D4A574");
-    g.addColorStop(0.5, "#B8845A");
-    g.addColorStop(1, "#D4A574");
+    g.addColorStop(0, accent);
+    g.addColorStop(0.5, accentDark);
+    g.addColorStop(1, accent);
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, w, h);
 
@@ -49,7 +55,7 @@ export function VenueReveal() {
     ctx.fillStyle = "rgba(255,255,255,0.3)";
     ctx.font = "10px 'DM Mono', monospace";
     ctx.fillText("your venue awaits", c.offsetWidth / 2, c.offsetHeight / 2 + 12);
-  }, [phase]);
+  }, [phase, currentEvent]);
 
   const scratch = useCallback(
     (e: React.MouseEvent | React.TouchEvent) => {
@@ -60,12 +66,16 @@ export function VenueReveal() {
       if (!ctx) return;
 
       const r = c.getBoundingClientRect();
-      const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
-      const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
+      const touch = "touches" in e ? e.touches[0] : null;
+      if ("touches" in e && !touch) return;
+      const clientX = touch ? touch.clientX : (e as React.MouseEvent).clientX;
+      const clientY = touch ? touch.clientY : (e as React.MouseEvent).clientY;
 
+      const scaleX = c.width / r.width;
+      const scaleY = c.height / r.height;
       ctx.globalCompositeOperation = "destination-out";
       ctx.beginPath();
-      ctx.arc(clientX - r.left, clientY - r.top, 24, 0, Math.PI * 2);
+      ctx.arc((clientX - r.left) * scaleX, (clientY - r.top) * scaleY, 48, 0, Math.PI * 2);
       ctx.fill();
 
       const id = ctx.getImageData(0, 0, c.width, c.height);
@@ -93,13 +103,18 @@ export function VenueReveal() {
       {/* Back */}
       <button
         onClick={() => {
+          if (onClose) { onClose(); return; }
           const dest = navigationOrigin === "bookings" ? "bookings" : "countdown";
           setNavigationOrigin(null);
+          if (dest === "bookings") {
+            setCurrentEvent(null);
+            setActiveTicket(null);
+          }
           setStage(dest);
         }}
         className="animate-fadeIn mb-4 self-start font-mono text-[11px] text-muted transition-colors hover:text-near-black"
       >
-        &larr; {navigationOrigin === "bookings" ? "bookings" : "countdown"}
+        &larr; {onClose ? "back" : navigationOrigin === "bookings" ? "bookings" : "countdown"}
       </button>
 
       <div className="flex flex-1 flex-col items-center justify-center">
@@ -210,7 +225,7 @@ export function VenueReveal() {
                   pickup
                 </span>
                 <span className="font-sans text-sm font-medium text-near-black">
-                  {currentEvent.pickup_points[0]?.time || currentEvent.time}
+                  {currentEvent.pickup_points?.[0]?.time || currentEvent.time}
                 </span>
               </div>
             </div>
@@ -220,10 +235,10 @@ export function VenueReveal() {
             screenshot this. last approved phone use. 📸
           </p>
           <button
-            onClick={() => setStage("dayof")}
+            onClick={() => onClose ? onClose() : setStage("dayof")}
             className="rounded-full bg-near-black px-8 py-3.5 font-sans text-sm font-medium text-white"
           >
-            can&apos;t wait →
+            {onClose ? "done →" : "can\u2019t wait →"}
           </button>
         </div>
       )}

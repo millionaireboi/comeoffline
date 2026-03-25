@@ -10,6 +10,7 @@ import { IncludesSection } from "@/components/events/event-detail/IncludesSectio
 import { DressCodeCard } from "@/components/events/event-detail/DressCodeCard";
 import { ScheduleSection } from "@/components/events/event-detail/ScheduleSection";
 import { OrganizerMessage } from "@/components/events/event-detail/OrganizerMessage";
+import { VenueReveal } from "@/components/events/VenueReveal";
 
 const disconnectQuotes = [
   { text: "the best things in life aren\u2019t on a screen.", author: "\u2014 literally everyone\u2019s grandma" },
@@ -42,8 +43,9 @@ function useCountdown(targetDate: string) {
 export function CountdownScreen() {
   const { track } = useAnalytics();
   const user = useAppStore((s) => s.user);
-  const { currentEvent, activeTicket, navigationOrigin, setStage, setNavigationOrigin } = useAppStore();
+  const { currentEvent, activeTicket, navigationOrigin, setStage, setNavigationOrigin, setCurrentEvent, setActiveTicket, showToast } = useAppStore();
   const [showQuiz, setShowQuiz] = useState(false);
+  const [showReveal, setShowReveal] = useState(false);
   const [quote] = useState(
     () => disconnectQuotes[Math.floor(Math.random() * disconnectQuotes.length)],
   );
@@ -59,6 +61,9 @@ export function CountdownScreen() {
 
   if (!currentEvent) return null;
 
+  const now = new Date();
+  const venueRevealReady = currentEvent.venue_reveal_date && now >= new Date(currentEvent.venue_reveal_date);
+
   return (
     <div className="animate-fadeIn min-h-screen bg-cream px-5 pb-[120px] pt-[60px]">
       <Noise />
@@ -68,6 +73,8 @@ export function CountdownScreen() {
         onClick={() => {
           const dest = navigationOrigin === "bookings" ? "bookings" : "feed";
           setNavigationOrigin(null);
+          setCurrentEvent(null);
+          setActiveTicket(null);
           setStage(dest);
         }}
         className="animate-fadeIn mb-4 font-mono text-[11px] text-muted transition-colors hover:text-near-black"
@@ -162,12 +169,20 @@ export function CountdownScreen() {
               try {
                 await navigator.share(shareData);
                 track(TICKET_SHARED, { event_id: currentEvent.id, method: "native" });
-              } catch { /* cancelled */ }
+              } catch (err) {
+                // User cancelled share — not an error
+                if (err instanceof Error && err.name !== "AbortError") {
+                  showToast("couldn't share. try again.", "error");
+                }
+              }
             } else {
               try {
                 await navigator.clipboard.writeText(shareData.url);
                 track(TICKET_SHARED, { event_id: currentEvent.id, method: "clipboard" });
-              } catch { /* fallback */ }
+                showToast("link copied!", "success");
+              } catch {
+                showToast("couldn't copy link.", "error");
+              }
             }
           }}
           className="w-full rounded-[16px] border border-sand bg-white px-5 py-3.5 text-center transition-all hover:-translate-y-0.5"
@@ -238,13 +253,15 @@ export function CountdownScreen() {
           <span className="font-mono text-[10px] uppercase tracking-[2px] text-muted">
             venue reveal
           </span>
-          <span className="font-mono text-[11px] text-caramel">{time.d} days to go</span>
+          <span className="font-mono text-[11px] text-caramel">
+            {venueRevealReady ? "ready to reveal" : `${time.d} days to go`}
+          </span>
         </div>
         <div className="h-1.5 overflow-hidden rounded-sm bg-sand">
           <div
             className="h-full rounded-sm"
             style={{
-              width: `${Math.min(venueProgress, 100)}%`,
+              width: `${venueRevealReady ? 100 : Math.min(venueProgress, 100)}%`,
               background: "linear-gradient(90deg, #D4A574, #B8845A)",
             }}
           />
@@ -283,16 +300,27 @@ export function CountdownScreen() {
         </p>
       </div>
 
-      {/* Venue sealed peek (for demo) */}
-      <button
-        onClick={() => setStage("reveal")}
-        className="animate-fadeSlideUp w-full rounded-[20px] border-[1.5px] border-dashed border-caramel/25 bg-caramel/5 p-5 text-center transition-all hover:bg-caramel/10"
-        style={{ animationDelay: "0.5s" }}
-      >
-        <span className="mb-2 block text-2xl">&#x2709;&#xFE0F;</span>
-        <p className="mb-1 font-sans text-sm font-medium text-warm-brown">venue sealed</p>
-        <p className="font-mono text-[11px] text-muted">tap to peek (demo)</p>
-      </button>
+      {/* Venue reveal / sealed */}
+      {venueRevealReady ? (
+        <button
+          onClick={() => setShowReveal(true)}
+          className="animate-fadeSlideUp mb-5 w-full rounded-[20px] border-[1.5px] border-caramel/30 bg-gradient-to-br from-caramel/10 to-caramel/5 p-5 text-center transition-all active:scale-[0.98]"
+          style={{ animationDelay: "0.5s" }}
+        >
+          <span className="mb-2 block text-2xl">&#x2709;&#xFE0F;</span>
+          <p className="mb-1 font-sans text-sm font-medium text-warm-brown">reveal venue</p>
+          <p className="font-mono text-[11px] text-muted">scratch to discover where it&apos;s going down</p>
+        </button>
+      ) : (
+        <div
+          className="animate-fadeSlideUp mb-5 w-full rounded-[20px] border-[1.5px] border-dashed border-caramel/25 bg-caramel/5 p-5 text-center"
+          style={{ animationDelay: "0.5s" }}
+        >
+          <span className="mb-2 block text-2xl">&#x2709;&#xFE0F;</span>
+          <p className="mb-1 font-sans text-sm font-medium text-warm-brown">venue sealed</p>
+          <p className="font-mono text-[11px] text-muted">revealed closer to the event</p>
+        </div>
+      )}
 
       {/* Event details — what to expect */}
       {currentEvent.description && (
@@ -360,6 +388,13 @@ export function CountdownScreen() {
             ✕
           </button>
           <SignQuiz onComplete={() => setShowQuiz(false)} mode="pre_checkout" />
+        </div>
+      )}
+
+      {/* Venue reveal overlay */}
+      {showReveal && (
+        <div className="fixed inset-0 z-[600] overflow-y-auto bg-cream">
+          <VenueReveal onClose={() => setShowReveal(false)} />
         </div>
       )}
     </div>

@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { env } from "../config/env";
 
-const genAI = new GoogleGenerativeAI(env.googleAiApiKey);
+const genAI = env.googleAiApiKey ? new GoogleGenerativeAI(env.googleAiApiKey) : null;
 
 export interface VibeCheckScore {
   engagement: number;
@@ -41,6 +41,8 @@ export async function evaluateVibeCheck(input: VibeCheckInput): Promise<VibeChec
     .join("\n\n");
 
   const userContext = `Name: ${input.name}${input.instagram_handle ? `\nInstagram: ${input.instagram_handle}` : ""}`;
+
+  if (!genAI) throw new Error("Vibe check is not available — AI API key not configured");
 
   const model = genAI.getGenerativeModel({
     model: "gemini-2.0-flash",
@@ -85,16 +87,16 @@ export async function evaluateVibeCheck(input: VibeCheckInput): Promise<VibeChec
 
     return { engagement, creativity, authenticity, effort, overall, reasoning, passed };
   } catch (err) {
-    console.error("[vibe-check] Scoring failed, defaulting to pass:", err);
-    // If scoring fails, default to pass — don't block users due to AI errors
+    console.error("[vibe-check] Scoring failed, requiring manual review:", err);
+    // If scoring fails, default to fail — require manual review rather than auto-admitting
     return {
-      engagement: 5,
-      creativity: 5,
-      authenticity: 5,
-      effort: 5,
-      overall: 5,
-      reasoning: "scoring unavailable — defaulted to pass",
-      passed: true,
+      engagement: 0,
+      creativity: 0,
+      authenticity: 0,
+      effort: 0,
+      overall: 0,
+      reasoning: "scoring unavailable — requires manual review",
+      passed: false,
     };
   }
 }

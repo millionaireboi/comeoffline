@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { verifyWebhookSignature } from "../services/razorpay.service";
+import { verifyWebhookSignature, fetchPaymentLinkStatus } from "../services/razorpay.service";
 import { confirmPayment } from "../services/ticket.service";
 import { posthog } from "../config/posthog";
 import { getDb } from "../config/firebase-admin";
@@ -58,6 +58,16 @@ router.post("/razorpay", async (req: Request, res: Response) => {
         console.log(`[webhook] Duplicate webhook ${dedupeId}, skipping`);
         res.status(200).json({ success: true });
         return;
+      }
+
+      // Verify payment status with Razorpay before confirming
+      if (paymentLinkEntity.id) {
+        const linkStatus = await fetchPaymentLinkStatus(paymentLinkEntity.id);
+        if (linkStatus && linkStatus.status !== "paid") {
+          console.warn(`[webhook] Payment link ${paymentLinkEntity.id} status is ${linkStatus.status}, skipping`);
+          res.status(200).json({ success: true });
+          return;
+        }
       }
 
       console.log(`[webhook] Payment confirmed for ticket: ${ticketId}`);

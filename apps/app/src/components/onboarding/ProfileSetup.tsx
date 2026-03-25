@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { apiFetch } from "@/lib/api";
 import type { User } from "@comeoffline/types";
 import { CURATED_INTERESTS } from "@comeoffline/types";
+import AvatarCropModal from "@/components/shared/AvatarCropModal";
 
 /* ═══════════════════════════════════════════════
    DATA CONSTANTS (from prototype)
@@ -141,22 +142,24 @@ function IntroCard({ isChatbot }: { isChatbot: boolean }) {
   );
 }
 
+
 // Card 1: Avatar
 function AvatarCard({ value, onChange }: { value: AvatarValue | null; onChange: (v: AvatarValue) => void }) {
   const [mode, setMode] = useState<"pick" | "upload">("pick");
+  const [rawImageUrl, setRawImageUrl] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Client-side compression via canvas
+    // Load image and pre-resize to max 1200px for performance in crop UI
     const img = new Image();
     const reader = new FileReader();
     reader.onload = () => {
       img.onload = () => {
         const canvas = document.createElement("canvas");
-        const maxSize = 800;
+        const maxSize = 1200;
         let w = img.width, h = img.height;
         if (w > maxSize || h > maxSize) {
           const ratio = Math.min(maxSize / w, maxSize / h);
@@ -166,13 +169,12 @@ function AvatarCard({ value, onChange }: { value: AvatarValue | null; onChange: 
         canvas.width = w;
         canvas.height = h;
         canvas.getContext("2d")!.drawImage(img, 0, 0, w, h);
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
-        onChange({ type: "uploaded", dataUrl });
+        setRawImageUrl(canvas.toDataURL("image/jpeg", 0.9));
       };
       img.src = reader.result as string;
     };
     reader.readAsDataURL(file);
-  }, [onChange]);
+  }, []);
 
   return (
     <CardShell animKey="avatar">
@@ -215,6 +217,21 @@ function AvatarCard({ value, onChange }: { value: AvatarValue | null; onChange: 
           or upload your own photo
         </button>
       </div>
+
+      {rawImageUrl && (
+        <AvatarCropModal
+          imageUrl={rawImageUrl}
+          onConfirm={(croppedDataUrl) => {
+            onChange({ type: "uploaded", dataUrl: croppedDataUrl });
+            setRawImageUrl(null);
+          }}
+          onRetake={() => {
+            setRawImageUrl(null);
+            if (fileRef.current) fileRef.current.value = "";
+            fileRef.current?.click();
+          }}
+        />
+      )}
     </CardShell>
   );
 }
@@ -729,7 +746,7 @@ function ConfirmCard({ profile }: { profile: ProfileDraft }) {
           {profile.area && (
             <span className="rounded-lg font-mono text-[11px] text-muted" style={{ background: "rgba(155,142,130,0.07)", padding: "4px 10px" }}>{profile.area}</span>
           )}
-          {profile.dob && (
+          {profile.dob && profile.dob !== "0000-00-00" && (
             <span className="rounded-lg font-mono text-[11px] text-muted" style={{ background: "rgba(155,142,130,0.07)", padding: "4px 10px" }}>
               {Math.floor((Date.now() - new Date(profile.dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000))}
             </span>
@@ -1048,9 +1065,10 @@ function PersonalityCard({ hotTake, bio, vibeTag, onChangeHotTake, onChangeBio, 
 
       {/* Hot take */}
       <div className="mb-5">
-        <p className="mb-1.5 font-mono text-[10px] uppercase tracking-[1px] text-muted">
+        <p className="mb-0.5 font-mono text-[10px] uppercase tracking-[1px] text-muted">
           hot take {prefilled && <MicroLabel />}
         </p>
+        <p className="mb-1.5 font-sans text-[11px] text-muted">one-liner hot take. shows on your profile. sparks conversation.</p>
         <input
           type="text" value={hotTake}
           onChange={(e) => onChangeHotTake(e.target.value.slice(0, 60))}
@@ -1389,7 +1407,7 @@ export function ProfileSetup() {
       if (!token || !user?.id) return;
 
       // Save step + draft to localStorage
-      localStorage.setItem(STORAGE_KEY_PREFIX + user.id, JSON.stringify({ step: currentStep, draft: currentProfile }));
+      try { localStorage.setItem(STORAGE_KEY_PREFIX + user.id, JSON.stringify({ step: currentStep, draft: currentProfile })); } catch { /* quota exceeded or private browsing */ }
 
       // Build partial updates from filled fields
       const updates: Record<string, unknown> = {};
@@ -1450,7 +1468,7 @@ export function ProfileSetup() {
     setSubmitError("");
     try {
       const token = await getIdToken();
-      if (!token) { setSubmitting(false); return; }
+      if (!token) { setSubmitError("session expired. close and reopen the app."); setSubmitting(false); return; }
 
       const updates: Record<string, unknown> = {
         name: profile.name.trim() || user?.name || "new face",
@@ -1461,7 +1479,7 @@ export function ProfileSetup() {
       if (profile.instagram) updates.instagram_handle = profile.instagram.replace(/^@/, "");
       if (profile.email) updates.email = profile.email;
       if (profile.area) updates.area = profile.area;
-      if (profile.dob) {
+      if (profile.dob && profile.dob !== "0000-00-00") {
         updates.date_of_birth = profile.dob;
         updates.show_age = profile.showAge;
       }
@@ -1492,12 +1510,17 @@ export function ProfileSetup() {
       });
 
       // Set PIN (separate endpoint — never stored in profile payload)
+      // Non-blocking: don't fail the entire profile submit if PIN save fails
       if (profile.pin && profile.pin.length === 4) {
-        await apiFetch("/api/users/me/pin", {
-          method: "POST",
-          token,
-          body: JSON.stringify({ pin: profile.pin }),
-        });
+        try {
+          await apiFetch("/api/users/me/pin", {
+            method: "POST",
+            token,
+            body: JSON.stringify({ pin: profile.pin }),
+          });
+        } catch (pinErr) {
+          console.warn("[ProfileSetup] PIN save failed (non-blocking):", pinErr);
+        }
       }
 
       // Only update Zustand AFTER API confirms success
@@ -1609,7 +1632,7 @@ export function ProfileSetup() {
               setSubmitError("");
               try {
                 const token = await getIdToken();
-                if (!token) { setSubmitting(false); return; }
+                if (!token) { setSubmitError("session expired. close and reopen the app."); setSubmitting(false); return; }
                 const updates: Record<string, unknown> = {
                   name: profile.name.trim() || user?.name || "new face",
                   handle: profile.handle || user?.handle || "",

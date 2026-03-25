@@ -63,22 +63,17 @@ interface ProfileData {
 }
 
 function ProfileAvatar({ user, signColor }: { user: ProfileData["user"]; signColor: string }) {
+  const [imgFailed, setImgFailed] = useState(false);
+
   // Uploaded avatar
-  if (user.avatar_type === "uploaded" && user.avatar_url && !user.avatar_url.startsWith("gradient:")) {
+  if (user.avatar_type === "uploaded" && user.avatar_url && !user.avatar_url.startsWith("gradient:") && !imgFailed) {
     return (
       <div className="h-16 w-16 overflow-hidden rounded-full">
         <img
           src={user.avatar_url}
           alt={user.name}
           className="h-full w-full object-cover"
-          onError={(e) => {
-            // Fallback to initial on broken image
-            const target = e.currentTarget;
-            target.style.display = "none";
-            target.parentElement!.classList.add("flex", "items-center", "justify-center", "font-serif", "text-2xl", "text-white");
-            target.parentElement!.style.background = signColor;
-            target.parentElement!.textContent = user.name.charAt(0);
-          }}
+          onError={() => setImgFailed(true)}
         />
       </div>
     );

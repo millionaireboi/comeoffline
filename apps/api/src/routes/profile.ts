@@ -210,6 +210,10 @@ router.put("/me", requireAuth, async (req: AuthRequest, res) => {
     await updateUserProfile(req.uid!, updates);
     res.json({ success: true });
   } catch (err) {
+    if (err instanceof Error && err.message === "Handle is already taken") {
+      res.status(409).json({ success: false, error: "Handle is already taken" });
+      return;
+    }
     console.error("[profile] update error:", err);
     res.status(500).json({ success: false, error: "Failed to update profile" });
   }

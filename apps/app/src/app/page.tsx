@@ -49,6 +49,7 @@ export default function Home() {
   const [paymentProcessing, setPaymentProcessing] = useState(false);
   const prevStageRef = useRef(stage);
   const ticketRestorationDone = useRef(false);
+  const prevStageForPrompt = useRef<string | null>(null);
 
   // Reset sign-in view when leaving the gate stage (e.g. after successful login)
   useEffect(() => {
@@ -225,6 +226,18 @@ export default function Home() {
     return () => { signal.cancelled = true; };
   }, [loading, tokenChecking, user, restoreActiveTicket]);
 
+  // Trigger PWA install prompt after booking (when user transitions to countdown)
+  useEffect(() => {
+    if (
+      stage === "countdown" &&
+      prevStageForPrompt.current &&
+      prevStageForPrompt.current !== "countdown"
+    ) {
+      triggerPrompt();
+    }
+    prevStageForPrompt.current = stage;
+  }, [stage, triggerPrompt]);
+
   // Payment processing screen — show while polling for webhook confirmation
   if (paymentProcessing) {
     return (
@@ -258,20 +271,6 @@ export default function Home() {
       </main>
     );
   }
-
-  // Trigger PWA install prompt after booking (when user transitions to countdown)
-  const prevStageForPrompt = useRef<string | null>(null);
-  useEffect(() => {
-    // Detect transition into countdown from feed/bookings (i.e. just booked a ticket)
-    if (
-      stage === "countdown" &&
-      prevStageForPrompt.current &&
-      prevStageForPrompt.current !== "countdown"
-    ) {
-      triggerPrompt();
-    }
-    prevStageForPrompt.current = stage;
-  }, [stage, triggerPrompt]);
 
   // Inactive user — tasteful exit screen with auto-logout
   if (user && user.status === "inactive") {

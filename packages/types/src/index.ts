@@ -274,6 +274,7 @@ export interface Event {
   venue_name?: string;
   venue_area?: string;
   venue_address?: string;
+  venue_directions_url?: string;
   venue_reveal_date: string;
   pickup_points: PickupPoint[];
   status: EventStatus;

@@ -7,6 +7,15 @@ import { Noise } from "@/components/shared/Noise";
 
 type Phase = "sealed" | "revealing" | "revealed";
 
+function isSafeUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" || parsed.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
 interface VenueRevealProps {
   onClose?: () => void;
 }
@@ -234,12 +243,28 @@ export function VenueReveal({ onClose }: VenueRevealProps = {}) {
           <p className="mb-5 font-mono text-[11px] italic text-muted/50">
             screenshot this. last approved phone use. 📸
           </p>
-          <button
-            onClick={() => onClose ? onClose() : setStage("dayof")}
-            className="rounded-full bg-near-black px-8 py-3.5 font-sans text-sm font-medium text-white"
-          >
-            {onClose ? "done →" : "can\u2019t wait →"}
-          </button>
+          <div className="flex flex-col items-center gap-3">
+            {currentEvent.venue_directions_url && isSafeUrl(currentEvent.venue_directions_url) && (
+              <a
+                href={currentEvent.venue_directions_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-full border border-sand px-6 py-3 font-mono text-xs font-medium text-near-black transition-colors active:bg-sand/30"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7Z" />
+                  <circle cx="12" cy="9" r="2.5" />
+                </svg>
+                get directions
+              </a>
+            )}
+            <button
+              onClick={() => onClose ? onClose() : setStage("dayof")}
+              className="rounded-full bg-near-black px-8 py-3.5 font-sans text-sm font-medium text-white"
+            >
+              {onClose ? "done →" : "can\u2019t wait →"}
+            </button>
+          </div>
         </div>
       )}
       </div>

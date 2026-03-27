@@ -56,6 +56,7 @@ export function OverviewTab({ event }: OverviewTabProps) {
         venueName={event.venue_name}
         venueArea={event.venue_area}
         venueAddress={event.venue_address}
+        venueDirectionsUrl={event.venue_directions_url}
         venueRevealDate={event.venue_reveal_date}
         accent={event.accent || "#D4A574"}
         accentDark={event.accent_dark || "#B8845A"}

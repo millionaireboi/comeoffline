@@ -1718,6 +1718,7 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
   const [venueName, setVenueName] = useState(event?.venue_name || "");
   const [venueArea, setVenueArea] = useState(event?.venue_area || "");
   const [venueAddress, setVenueAddress] = useState(event?.venue_address || "");
+  const [venueDirectionsUrl, setVenueDirectionsUrl] = useState(event?.venue_directions_url || "");
   const [venueRevealDate, setVenueRevealDate] = useState(event?.venue_reveal_date || "");
   const [pickupPoints, setPickupPoints] = useState<FormPickupPoint[]>(
     event?.pickup_points?.map((p) => ({
@@ -1865,6 +1866,7 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
       venue_name: venueName.trim(),
       venue_area: venueArea.trim(),
       venue_address: venueAddress.trim(),
+      venue_directions_url: venueDirectionsUrl.trim(),
       venue_reveal_date: venueRevealDate,
       pickup_points: pickupPoints.map((p) => ({
         name: p.name.trim(),
@@ -1982,6 +1984,7 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
       venue_name: venueName.trim(),
       venue_area: venueArea.trim(),
       venue_address: venueAddress.trim(),
+      venue_directions_url: venueDirectionsUrl.trim(),
       venue_reveal_date: venueRevealDate,
       pickup_points: pickupPoints.map((p) => ({
         name: p.name.trim(),
@@ -2473,6 +2476,17 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
                 onChange={(e) => setVenueAddress(e.target.value)}
                 className={inputClass}
               />
+            </div>
+            <div>
+              <span className="mb-1 block font-mono text-[9px] text-muted">directions link</span>
+              <input
+                type="url"
+                placeholder="https://maps.google.com/..."
+                value={venueDirectionsUrl}
+                onChange={(e) => setVenueDirectionsUrl(e.target.value)}
+                className={inputClass}
+              />
+              <p className="mt-0.5 text-[9px] text-muted/50">google maps, apple maps, or any location link</p>
             </div>
             <div>
               <span className="mb-1 block font-mono text-[9px] text-muted">venue reveal date</span>

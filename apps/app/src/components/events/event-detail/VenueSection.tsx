@@ -4,21 +4,35 @@ interface VenueSectionProps {
   venueName?: string;
   venueArea?: string;
   venueAddress?: string;
+  venueDirectionsUrl?: string;
   venueRevealDate?: string;
   accent: string;
   accentDark: string;
+}
+
+function isSafeUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" || parsed.protocol === "http:";
+  } catch {
+    return false;
+  }
 }
 
 export function VenueSection({
   venueName,
   venueArea,
   venueAddress,
+  venueDirectionsUrl,
   venueRevealDate,
   accent,
   accentDark,
 }: VenueSectionProps) {
   // Skip if no venue info at all
   if (!venueName && !venueRevealDate) return null;
+
+  const safeDirectionsUrl =
+    venueDirectionsUrl && isSafeUrl(venueDirectionsUrl) ? venueDirectionsUrl : null;
 
   const isRevealed =
     !!venueName &&
@@ -59,6 +73,30 @@ export function VenueSection({
               )}
               {venueAddress && (
                 <p className="mt-0.5 font-mono text-[11px] text-muted">{venueAddress}</p>
+              )}
+              {safeDirectionsUrl && (
+                <a
+                  href={safeDirectionsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2.5 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-[11px] font-medium text-white transition-opacity active:opacity-80"
+                  style={{ backgroundColor: accent }}
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7Z" />
+                    <circle cx="12" cy="9" r="2.5" />
+                  </svg>
+                  get directions
+                </a>
               )}
             </div>
           </div>

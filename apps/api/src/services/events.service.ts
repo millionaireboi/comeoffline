@@ -1,6 +1,19 @@
 import { getDb } from "../config/firebase-admin";
 import type { Event } from "@comeoffline/types";
 
+/** Only allow http/https URLs; reject javascript:, data:, etc. */
+function sanitizeUrl(raw?: string): string {
+  const trimmed = raw?.trim();
+  if (!trimmed) return "";
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol === "https:" || parsed.protocol === "http:") return trimmed;
+  } catch {
+    // invalid URL
+  }
+  return "";
+}
+
 /** Fetch all upcoming/live events for the user feed */
 export async function getEvents(): Promise<Event[]> {
   const db = await getDb();
@@ -119,6 +132,7 @@ export async function createEvent(
     venue_name: data.venue_name?.trim() || "",
     venue_area: data.venue_area?.trim() || "",
     venue_address: data.venue_address?.trim() || "",
+    venue_directions_url: sanitizeUrl(data.venue_directions_url),
     venue_reveal_date: data.venue_reveal_date || "",
     pickup_points: Array.isArray(data.pickup_points)
       ? data.pickup_points.map((p) => ({
@@ -147,6 +161,11 @@ export async function updateEvent(
 
   // Strip fields that shouldn't be overwritten from the form
   const { spots_taken, ...safeData } = data as Record<string, unknown>;
+
+  // Sanitize directions URL if present
+  if (typeof safeData.venue_directions_url === "string") {
+    safeData.venue_directions_url = sanitizeUrl(safeData.venue_directions_url);
+  }
 
   // Sanitize pickup_points capacity if present
   if (Array.isArray(safeData.pickup_points)) {

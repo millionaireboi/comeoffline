@@ -26,6 +26,7 @@ interface ProfileData {
     handle: string;
     vibe_tag?: string;
     instagram_handle?: string;
+    phone_number?: string;
     avatar_url?: string;
     avatar_type?: string;
     area?: string;
@@ -379,6 +380,23 @@ export function ProfileScreen() {
               <p className="mb-0.5 font-mono text-[9px] uppercase tracking-[1.5px] text-muted">instagram</p>
               <p className="font-sans text-sm text-near-black">@{profile.user.instagram_handle}</p>
             </div>
+          )}
+
+          {/* Phone number */}
+          {profile.user.phone_number ? (
+            <div className="mb-4 rounded-[14px] bg-cream p-4">
+              <p className="mb-0.5 font-mono text-[9px] uppercase tracking-[1.5px] text-muted">phone</p>
+              <p className="font-sans text-sm text-near-black">{profile.user.phone_number}</p>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowEditProfile(true)}
+              className="mb-4 w-full rounded-[14px] border border-dashed p-4 text-left transition-colors"
+              style={{ borderColor: "rgba(168,181,160,0.3)", background: "rgba(168,181,160,0.04)" }}
+            >
+              <p className="mb-0.5 font-mono text-[9px] uppercase tracking-[1.5px] text-sage">add phone number</p>
+              <p className="font-sans text-[12px] text-muted">use your phone to sign in next time</p>
+            </button>
           )}
 
           {/* Edit profile button */}

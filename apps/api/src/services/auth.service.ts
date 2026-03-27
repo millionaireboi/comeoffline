@@ -282,7 +282,7 @@ export async function chatbotEntry(
   return createChatbotUser(name, instagramHandle, vibeAnswers);
 }
 
-/** Signs in a returning user by their handle */
+/** Signs in a returning user by their handle, phone number, or Instagram */
 export async function signInByHandle(
   handle: string,
 ): Promise<HandoffTokenResult> {
@@ -295,7 +295,11 @@ export async function signInByHandle(
     return { valid: false, error: "Handle is required" };
   }
 
-  // Search by app handle first, then fall back to instagram handle
+  // Check if input looks like a phone number (starts with + or is purely digits, min 7 chars)
+  const strippedForPhoneCheck = normalized.replace(/[\s\-()]/g, "");
+  const isPhoneInput = /^\+?\d{7,15}$/.test(strippedForPhoneCheck);
+
+  // Search by app handle first, then fall back to phone number, then instagram handle
   let userDoc = null;
   const handleSnap = await db
     .collection("users")
@@ -315,6 +319,22 @@ export async function signInByHandle(
 
     if (!handleSnapAt.empty) {
       userDoc = handleSnapAt.docs[0];
+    }
+  }
+
+  // Fallback: search by phone_number (E.164 format)
+  if (!userDoc && isPhoneInput) {
+    // Normalize phone: strip non-digit chars (except leading +), ensure +prefix
+    const phoneQuery = strippedForPhoneCheck.startsWith("+") ? strippedForPhoneCheck : `+${strippedForPhoneCheck}`;
+
+    const phoneSnap = await db
+      .collection("users")
+      .where("phone_number", "==", phoneQuery)
+      .limit(1)
+      .get();
+
+    if (!phoneSnap.empty) {
+      userDoc = phoneSnap.docs[0];
     }
   }
 

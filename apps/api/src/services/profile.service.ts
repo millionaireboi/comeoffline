@@ -125,7 +125,7 @@ export async function getUserProfile(userId: string): Promise<ProfileData | null
 export async function updateUserProfile(
   userId: string,
   updates: Partial<Pick<User,
-    | "name" | "handle" | "vibe_tag" | "email" | "instagram_handle" | "has_seen_welcome" | "fcm_token"
+    | "name" | "handle" | "vibe_tag" | "email" | "phone_number" | "instagram_handle" | "has_seen_welcome" | "fcm_token"
     | "avatar_url" | "avatar_type" | "area" | "age_range" | "hot_take" | "bio"
     | "interests" | "date_of_birth" | "show_age"
     | "drink_of_choice" | "referral_source" | "has_completed_profile"

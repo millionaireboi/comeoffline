@@ -1,10 +1,12 @@
 import { Router } from "express";
 import { requireAuth, type AuthRequest } from "../middleware/auth";
 import { getUserProfile, updateUserProfile, checkHandleAvailable } from "../services/profile.service";
+import { getDb } from "../config/firebase-admin";
 import { getEnrichedConnections } from "../services/connections.service";
 import { getStorageService } from "../config/firebase-admin";
 import { CURATED_INTERESTS } from "@comeoffline/types";
 import { isValidPin, hashPin } from "../services/pin.service";
+import { isValidPhoneNumber } from "libphonenumber-js";
 
 const router = Router();
 
@@ -51,7 +53,7 @@ router.get("/me", requireAuth, async (req: AuthRequest, res) => {
 router.put("/me", requireAuth, async (req: AuthRequest, res) => {
   try {
     const {
-      name, handle, vibe_tag, email, instagram_handle, has_seen_welcome, fcm_token,
+      name, handle, vibe_tag, email, phone_number, instagram_handle, has_seen_welcome, fcm_token,
       avatar_url, avatar_type, area, age_range, gender, hot_take, bio,
       interests, date_of_birth, show_age,
       drink_of_choice, community_intent, referral_source, has_completed_profile,
@@ -85,6 +87,21 @@ router.put("/me", requireAuth, async (req: AuthRequest, res) => {
     if (instagram_handle !== undefined) {
       if (instagram_handle !== "" && !strCheck(instagram_handle, 30)) { res.status(400).json({ success: false, error: "instagram_handle must be max 30 characters" }); return; }
       updates.instagram_handle = instagram_handle;
+    }
+    if (phone_number !== undefined) {
+      if (phone_number === "") {
+        updates.phone_number = "";
+      } else if (typeof phone_number !== "string" || phone_number.length > 20 || !isValidPhoneNumber(phone_number)) {
+        res.status(400).json({ success: false, error: "Invalid phone number. Please use international format (e.g. +919876543210)" }); return;
+      } else {
+        // Enforce uniqueness — no two users can share a phone number
+        const db = await getDb();
+        const existingPhone = await db.collection("users").where("phone_number", "==", phone_number).limit(1).get();
+        if (!existingPhone.empty && existingPhone.docs[0].id !== req.uid) {
+          res.status(409).json({ success: false, error: "This phone number is already linked to another account" }); return;
+        }
+        updates.phone_number = phone_number;
+      }
     }
     if (has_seen_welcome !== undefined) updates.has_seen_welcome = !!has_seen_welcome;
     if (fcm_token !== undefined) {

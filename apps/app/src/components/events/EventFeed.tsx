@@ -28,11 +28,15 @@ export function EventFeed() {
   const [nudgeDismissed, setNudgeDismissed] = useState(() => {
     try { return localStorage.getItem("co_profile_nudge_dismissed") === "1"; } catch { return false; }
   });
+  const [phoneNudgeDismissed, setPhoneNudgeDismissed] = useState(() => {
+    try { return localStorage.getItem("co_phone_nudge_dismissed") === "1"; } catch { return false; }
+  });
   const profileIncomplete = user && (
     !user.bio || !user.hot_take || !user.vibe_tag
     || !user.interests || user.interests.length === 0
     || !user.area || !user.instagram_handle
   );
+  const needsPhoneNumber = user && !user.phone_number;
 
   const tokenRetryCount = useRef(0);
 
@@ -320,6 +324,30 @@ export function EventFeed() {
           <button
             onClick={() => { setNudgeDismissed(true); try { localStorage.setItem("co_profile_nudge_dismissed", "1"); } catch { /* ignore */ } }}
             className="px-1 py-1 font-mono text-[11px] text-muted/40"
+          >
+            {"\u2715"}
+          </button>
+        </div>
+      )}
+
+      {/* Phone number nudge for existing users */}
+      {needsPhoneNumber && !phoneNudgeDismissed && (
+        <div
+          className="flex items-center justify-between border-b px-5 py-3"
+          style={{ background: "rgba(168,181,160,0.06)", borderColor: "rgba(168,181,160,0.12)" }}
+        >
+          <button
+            onClick={() => { setStage("profile"); }}
+            className="flex items-center gap-2.5 text-left"
+          >
+            <span className="text-base">{"\u260E\uFE0F"}</span>
+            <p className="font-sans text-[13px] text-near-black">
+              add your phone number — <span className="font-medium text-sage">use it to sign in</span>
+            </p>
+          </button>
+          <button
+            onClick={() => { setPhoneNudgeDismissed(true); try { localStorage.setItem("co_phone_nudge_dismissed", "1"); } catch { /* ignore */ } }}
+            className="flex h-11 w-11 shrink-0 items-center justify-center font-mono text-[11px] text-muted/40"
           >
             {"\u2715"}
           </button>

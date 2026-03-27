@@ -186,20 +186,24 @@ export function SignInScreen({ onBack }: { onBack: () => void }) {
         <form onSubmit={handleSubmit} className="w-full max-w-[320px] space-y-4">
           <div>
             <label className="mb-2 block font-mono text-[11px] uppercase tracking-[2px] text-muted">
-              your handle or instagram
+              handle, phone, or instagram
             </label>
             <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 font-sans text-[15px] text-muted/40">@</span>
+              {!/^\+?\d/.test(handle) && (
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 font-sans text-[15px] text-muted/40">@</span>
+              )}
               <input
                 type="text"
                 value={handle}
                 onChange={(e) => setHandle(e.target.value.replace(/^@/, "").replace(/\s/g, ""))}
                 required
-                autoComplete="username"
+                autoComplete="username tel"
                 autoCapitalize="none"
                 autoCorrect="off"
-                className="w-full rounded-[14px] border border-white/10 bg-white/5 py-3 pl-9 pr-4 font-sans text-[15px] text-cream placeholder:text-muted/30 focus:border-caramel/50 focus:outline-none"
-                placeholder="your_handle"
+                enterKeyHint="next"
+                className="w-full rounded-[14px] border border-white/10 bg-white/5 py-3 pr-4 font-sans text-base text-cream placeholder:text-muted/30 focus:border-caramel/50 focus:outline-none"
+                style={{ paddingLeft: /^\+?\d/.test(handle) ? "1rem" : "2.25rem" }}
+                placeholder="handle or phone number"
               />
             </div>
           </div>

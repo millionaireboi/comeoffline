@@ -6,6 +6,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { apiFetch } from "@/lib/api";
 import { Noise } from "@/components/shared/Noise";
 import AvatarCropModal from "@/components/shared/AvatarCropModal";
+import PhoneInput, { isValidPhoneNumber } from "react-phone-number-input";
+import "react-phone-number-input/style.css";
 
 const AVATAR_GRADIENTS = [
   ["#D4A574", "#C4704D"], ["#B8A9C9", "#8B7BA8"], ["#A8B5A0", "#7A9170"],
@@ -32,6 +34,7 @@ interface EditProfileProps {
     interests?: string[];
     vibe_tag?: string;
     instagram_handle?: string;
+    phone_number?: string;
     show_age?: boolean;
     drink_of_choice?: string;
   };
@@ -61,6 +64,7 @@ export function EditProfileScreen({ user, onSave, onClose, highlightIncomplete }
   const [interests, setInterests] = useState<string[]>(user.interests || []);
   const [vibeTag, setVibeTag] = useState(user.vibe_tag || "");
   const [igHandle, setIgHandle] = useState(user.instagram_handle || "");
+  const [phoneNumber, setPhoneNumber] = useState(user.phone_number || "");
   const [showAge, setShowAge] = useState(user.show_age !== false);
   const [drinkOfChoice, setDrinkOfChoice] = useState(user.drink_of_choice || "");
 
@@ -132,6 +136,10 @@ export function EditProfileScreen({ user, onSave, onClose, highlightIncomplete }
       setError("Name must be at least 2 characters");
       return;
     }
+    if (phoneNumber && !isValidPhoneNumber(phoneNumber)) {
+      setError("Please enter a valid phone number");
+      return;
+    }
 
     setSaving(true);
     setError("");
@@ -146,6 +154,7 @@ export function EditProfileScreen({ user, onSave, onClose, highlightIncomplete }
         vibe_tag: vibeTag,
         area: area,
         instagram_handle: igHandle,
+        phone_number: phoneNumber || "",
         show_age: showAge,
         drink_of_choice: drinkOfChoice,
         interests: interests,
@@ -168,7 +177,12 @@ export function EditProfileScreen({ user, onSave, onClose, highlightIncomplete }
       onSave();
     } catch (err) {
       console.error("Failed to save profile:", err);
-      setError("Failed to save. Please try again.");
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.includes("phone number")) {
+        setError(msg);
+      } else {
+        setError("Failed to save. Please try again.");
+      }
     } finally {
       setSaving(false);
     }
@@ -409,6 +423,34 @@ export function EditProfileScreen({ user, onSave, onClose, highlightIncomplete }
               style={{ border: "1px solid rgba(155,142,130,0.1)" }}
             />
           </div>
+        </FieldSection>
+
+        {/* Phone Number */}
+        <FieldSection label="phone number">
+          <div className="phone-input-wrapper">
+            <PhoneInput
+              international
+              defaultCountry="IN"
+              value={phoneNumber}
+              onChange={(v) => setPhoneNumber(v || "")}
+              className="w-full rounded-xl bg-white/5 px-4 py-3 font-sans text-base text-cream outline-none"
+              style={{
+                border: `1px solid ${phoneNumber && !isValidPhoneNumber(phoneNumber) ? "rgba(196,112,77,0.4)" : "rgba(155,142,130,0.1)"}`,
+              }}
+              numberInputProps={{
+                className: "bg-transparent text-cream outline-none font-sans text-base w-full",
+                inputMode: "tel" as const,
+                autoComplete: "tel",
+                enterKeyHint: "done",
+              }}
+            />
+          </div>
+          {phoneNumber && !isValidPhoneNumber(phoneNumber) && (
+            <p className="mt-1 font-sans text-[11px] text-terracotta/70">enter a valid phone number</p>
+          )}
+          <p className="mt-1.5 font-sans text-[11px] text-muted/40">
+            used for signing in. we&apos;ll never spam you.
+          </p>
         </FieldSection>
 
         {/* Show Age toggle */}

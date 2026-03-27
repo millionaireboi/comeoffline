@@ -8,6 +8,8 @@ import { apiFetch } from "@/lib/api";
 import type { User } from "@comeoffline/types";
 import { CURATED_INTERESTS } from "@comeoffline/types";
 import AvatarCropModal from "@/components/shared/AvatarCropModal";
+import PhoneInput, { isValidPhoneNumber } from "react-phone-number-input";
+import "react-phone-number-input/style.css";
 
 /* ═══════════════════════════════════════════════
    DATA CONSTANTS (from prototype)
@@ -59,6 +61,7 @@ interface ProfileDraft {
   name: string;
   handle: string;
   instagram: string;
+  phone: string; // E.164 format
   area: string;
   dob: string;
   showAge: boolean;
@@ -404,6 +407,53 @@ function InstagramCard({ value, onChange, email, onChangeEmail, prefilled }: {
       {email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && (
         <p className="mt-1.5 font-sans text-[11px] text-terracotta/70">enter a valid email</p>
       )}
+    </CardShell>
+  );
+}
+
+// Card: Phone Number
+function PhoneNumberCard({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const valid = value ? isValidPhoneNumber(value) : null;
+
+  return (
+    <CardShell animKey="phone">
+      <h2 className="mb-2 font-serif text-[28px] font-normal text-cream">your phone number</h2>
+      <p className="mb-6 font-sans text-[13px] leading-relaxed text-muted">
+        this is how you&apos;ll sign in next time. you can use your phone number instead of your handle.
+      </p>
+
+      <div className="phone-input-wrapper">
+        <PhoneInput
+          international
+          defaultCountry="IN"
+          value={value}
+          onChange={(v) => onChange(v || "")}
+          className="w-full rounded-2xl bg-gate-dark px-4 py-[18px] font-sans text-base text-cream outline-none transition-all duration-300"
+          style={{
+            border: `1.5px solid ${valid === false ? "rgba(196,112,77,0.4)" : valid === true ? "rgba(168,181,160,0.38)" : "rgba(155,142,130,0.13)"}`,
+          }}
+          numberInputProps={{
+            className: "bg-transparent text-cream outline-none font-sans text-base w-full",
+            inputMode: "tel" as const,
+            autoComplete: "tel",
+            enterKeyHint: "done",
+          }}
+        />
+      </div>
+
+      {valid === false && value && (
+        <p className="mt-1.5 font-sans text-[11px] text-terracotta/70">enter a valid phone number</p>
+      )}
+      {valid === true && (
+        <p className="animate-fadeIn mt-1.5 text-center font-mono text-[11px] text-sage">looks good</p>
+      )}
+
+      <div className="mt-4 flex items-start gap-2 rounded-xl px-3 py-2.5" style={{ background: "rgba(155,142,130,0.05)" }}>
+        <span className="mt-0.5 text-sm" role="img" aria-label="lock">&#128274;</span>
+        <p className="font-sans text-[11px] leading-relaxed text-muted/60">
+          this is not for spam. your number is private and only used for signing in. we&apos;ll never call or text you marketing messages.
+        </p>
+      </div>
     </CardShell>
   );
 }
@@ -1264,8 +1314,14 @@ function InteractiveConfirmCard({ profile, onEditField }: { profile: ProfileDraf
           </button>
         )}
 
+        {profile.phone && (
+          <button onClick={() => onEditField(6)} className="block w-full text-center">
+            <p className="font-mono text-[11px] text-muted/60">{profile.phone}<EditHint /></p>
+          </button>
+        )}
+
         {profile.vibeTag && (
-          <button onClick={() => onEditField(6)} className="mt-1 block w-full text-center">
+          <button onClick={() => onEditField(7)} className="mt-1 block w-full text-center">
             <p className="font-hand text-[13px] italic" style={{ color: "rgba(250,246,240,0.4)" }}>{profile.vibeTag}<EditHint /></p>
           </button>
         )}
@@ -1291,21 +1347,21 @@ function InteractiveConfirmCard({ profile, onEditField }: { profile: ProfileDraf
         </button>
 
         {profile.hotTake && (
-          <button onClick={() => onEditField(6)} className="mt-3 block w-full">
+          <button onClick={() => onEditField(7)} className="mt-3 block w-full">
             <div className="rounded-xl px-4 py-3" style={{ background: "rgba(155,142,130,0.05)" }}>
               <p className="font-hand text-base" style={{ color: "rgba(250,246,240,0.56)" }}>&ldquo;{profile.hotTake}&rdquo;<EditHint /></p>
             </div>
           </button>
         )}
         {profile.bio && (
-          <button onClick={() => onEditField(6)} className="mt-2 block w-full">
+          <button onClick={() => onEditField(7)} className="mt-2 block w-full">
             <div className="rounded-xl px-4 py-3" style={{ background: "rgba(155,142,130,0.05)" }}>
               <p className="font-sans text-[12px] leading-relaxed" style={{ color: "rgba(250,246,240,0.5)" }}>{profile.bio}<EditHint /></p>
             </div>
           </button>
         )}
         {profile.interests.length > 0 && (
-          <button onClick={() => onEditField(7)} className="mt-3 block w-full">
+          <button onClick={() => onEditField(8)} className="mt-3 block w-full">
             <div className="flex flex-wrap justify-center gap-1.5">
               {profile.interests.map((i) => (
                 <span key={i} className="rounded-full font-mono text-[10px]" style={{ background: "rgba(212,165,116,0.12)", color: "#D4A574", padding: "3px 10px" }}>{i}</span>
@@ -1328,7 +1384,7 @@ export function ProfileSetup() {
   const { user, setUser, onboardingSource } = useAppStore();
   const { getIdToken } = useAuth();
   const isChatbot = onboardingSource === "landing_chatbot";
-  const totalSteps = 11;
+  const totalSteps = 12;
 
   // Initialize draft from user data (for chatbot pre-fill)
   const [step, setStep] = useState(0);
@@ -1339,6 +1395,7 @@ export function ProfileSetup() {
     name: isChatbot && user?.name ? user.name : "",
     handle: isChatbot && user?.handle ? user.handle.replace(/^@/, "") : "",
     instagram: isChatbot && user?.instagram_handle ? user.instagram_handle.replace(/^@/, "") : "",
+    phone: user?.phone_number || "",
     area: "",
     dob: "",
     showAge: true,
@@ -1361,7 +1418,7 @@ export function ProfileSetup() {
       const saved = localStorage.getItem(STORAGE_KEY_PREFIX + user.id);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (typeof parsed.step === "number") setStep(Math.min(parsed.step, 9));
+        if (typeof parsed.step === "number") setStep(Math.min(parsed.step, 10));
         if (parsed.draft) setProfile((prev) => ({ ...prev, ...parsed.draft }));
       }
     } catch { /* ignore */ }
@@ -1391,11 +1448,12 @@ export function ProfileSetup() {
       }
       case 4: return profile.area.length > 0; // gender (optional) + area
       case 5: return true; // instagram optional
-      case 6: return true; // personality all optional
-      case 7: return profile.interests.length >= 1; // interests
-      case 8: return profile.intent.length > 0; // intent + source (source optional)
-      case 9: return profile.pin.length === 4 && profile.pin === profile.pinConfirm; // PIN
-      case 10: return true; // confirm
+      case 6: return !profile.phone || isValidPhoneNumber(profile.phone); // phone — optional but must be valid if entered
+      case 7: return true; // personality all optional
+      case 8: return profile.interests.length >= 1; // interests
+      case 9: return profile.intent.length > 0; // intent + source (source optional)
+      case 10: return profile.pin.length === 4 && profile.pin === profile.pinConfirm; // PIN
+      case 11: return true; // confirm
       default: return false;
     }
   };
@@ -1414,6 +1472,7 @@ export function ProfileSetup() {
       if (currentProfile.name.trim()) updates.name = currentProfile.name.trim();
       if (currentProfile.handle) updates.handle = currentProfile.handle;
       if (currentProfile.instagram) updates.instagram_handle = currentProfile.instagram.replace(/^@/, "");
+      if (currentProfile.phone && isValidPhoneNumber(currentProfile.phone)) updates.phone_number = currentProfile.phone;
       if (currentProfile.email) updates.email = currentProfile.email;
       if (currentProfile.area) updates.area = currentProfile.area;
       if (currentProfile.dob) updates.date_of_birth = currentProfile.dob;
@@ -1477,6 +1536,7 @@ export function ProfileSetup() {
       };
 
       if (profile.instagram) updates.instagram_handle = profile.instagram.replace(/^@/, "");
+      if (profile.phone && isValidPhoneNumber(profile.phone)) updates.phone_number = profile.phone;
       if (profile.email) updates.email = profile.email;
       if (profile.area) updates.area = profile.area;
       if (profile.dob && profile.dob !== "0000-00-00") {
@@ -1530,6 +1590,7 @@ export function ProfileSetup() {
           name: updates.name as string,
           handle: updates.handle as string,
           instagram_handle: profile.instagram || user.instagram_handle,
+          phone_number: profile.phone || user.phone_number,
           area: profile.area || undefined,
           date_of_birth: profile.dob || undefined,
           show_age: profile.showAge,
@@ -1553,7 +1614,12 @@ export function ProfileSetup() {
       }
     } catch (err) {
       console.error("[ProfileSetup] submit error:", err);
-      setSubmitError("something went wrong. tap confirm to try again.");
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.includes("phone number")) {
+        setSubmitError(msg);
+      } else {
+        setSubmitError("something went wrong. tap confirm to try again.");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -1567,22 +1633,24 @@ export function ProfileSetup() {
       case 3: return <DobPickerCard dob={profile.dob} showAge={profile.showAge} onChangeDob={update("dob") as (v: string) => void} onChangeShowAge={update("showAge") as (v: boolean) => void} />;
       case 4: return <GenderAreaCard gender={profile.gender} area={profile.area} onChangeGender={update("gender") as (v: string) => void} onChangeArea={update("area") as (v: string) => void} />;
       case 5: return <InstagramCard value={profile.instagram} onChange={update("instagram") as (v: string) => void} email={profile.email} onChangeEmail={update("email") as (v: string) => void} prefilled={isChatbot && !!user?.instagram_handle} />;
-      case 6: return <PersonalityCard hotTake={profile.hotTake} bio={profile.bio} vibeTag={profile.vibeTag} onChangeHotTake={update("hotTake") as (v: string) => void} onChangeBio={update("bio") as (v: string) => void} onChangeVibeTag={update("vibeTag") as (v: string) => void} prefilled={isChatbot} />;
-      case 7: return <InterestsCard value={profile.interests} onChange={update("interests") as (v: string[]) => void} />;
-      case 8: return <IntentSourceCard intent={profile.intent} source={profile.source} onChangeIntent={update("intent") as (v: string) => void} onChangeSource={update("source") as (v: string) => void} />;
-      case 9: return <PinSetupCard pin={profile.pin} pinConfirm={profile.pinConfirm} onChangePin={update("pin") as (v: string) => void} onChangePinConfirm={update("pinConfirm") as (v: string) => void} />;
-      case 10: return <InteractiveConfirmCard profile={profile} onEditField={(s) => setStep(s)} />;
+      case 6: return <PhoneNumberCard value={profile.phone} onChange={update("phone") as (v: string) => void} />;
+      case 7: return <PersonalityCard hotTake={profile.hotTake} bio={profile.bio} vibeTag={profile.vibeTag} onChangeHotTake={update("hotTake") as (v: string) => void} onChangeBio={update("bio") as (v: string) => void} onChangeVibeTag={update("vibeTag") as (v: string) => void} prefilled={isChatbot} />;
+      case 8: return <InterestsCard value={profile.interests} onChange={update("interests") as (v: string[]) => void} />;
+      case 9: return <IntentSourceCard intent={profile.intent} source={profile.source} onChangeIntent={update("intent") as (v: string) => void} onChangeSource={update("source") as (v: string) => void} />;
+      case 10: return <PinSetupCard pin={profile.pin} pinConfirm={profile.pinConfirm} onChangePin={update("pin") as (v: string) => void} onChangePinConfirm={update("pinConfirm") as (v: string) => void} />;
+      case 11: return <InteractiveConfirmCard profile={profile} onEditField={(s) => setStep(s)} />;
       default: return null;
     }
   };
 
   const getButtonLabel = () => {
     if (step === 0) return "let\u2019s go \u2192";
-    if (step === 10) return "that\u2019s me \u2192";
+    if (step === 11) return "that\u2019s me \u2192";
     // Optional fields: show "skip" when empty
     if (step === 1 && !profile.avatar) return "skip \u2192";
     if (step === 5 && !profile.instagram) return "skip \u2192";
-    if (step === 6 && !profile.hotTake && !profile.bio && !profile.vibeTag) return "skip \u2192";
+    if (step === 6 && !profile.phone) return "skip \u2192";
+    if (step === 7 && !profile.hotTake && !profile.bio && !profile.vibeTag) return "skip \u2192";
     return "next \u2192";
   };
 
@@ -1624,7 +1692,7 @@ export function ProfileSetup() {
           </p>
         )}
         <NextButton onClick={next} disabled={!canProceed() || submitting} label={submitting ? "saving..." : getButtonLabel()} />
-        {step >= 3 && step < 9 && (
+        {step >= 3 && step < 10 && (
           <button
             onClick={async () => {
               if (submitting) return;
@@ -1640,6 +1708,7 @@ export function ProfileSetup() {
                   has_completed_onboarding: true,
                 };
                 if (profile.instagram) updates.instagram_handle = profile.instagram.replace(/^@/, "");
+                if (profile.phone && isValidPhoneNumber(profile.phone)) updates.phone_number = profile.phone;
                 if (profile.area) updates.area = profile.area;
                 if (profile.dob && profile.dob !== "0000-00-00") {
                   updates.date_of_birth = profile.dob;

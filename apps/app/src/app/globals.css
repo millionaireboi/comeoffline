@@ -19,6 +19,7 @@ body {
   padding-top: env(safe-area-inset-top, 0px);
   padding-left: env(safe-area-inset-left, 0px);
   padding-right: env(safe-area-inset-right, 0px);
+  overscroll-behavior: contain; /* Prevent iOS rubber-banding in PWA standalone */
 }
 
 /* Dark screens: extend bg color behind status bar / Dynamic Island */
@@ -258,6 +259,68 @@ input::placeholder {
 
 .animate-screenIn {
   animation: screenIn 0.25s ease both;
+}
+
+/* ═══════════════════════════════════════════
+   PHONE INPUT OVERRIDES (react-phone-number-input)
+   ═══════════════════════════════════════════ */
+
+.phone-input-wrapper .PhoneInput {
+  gap: 8px;
+}
+
+.phone-input-wrapper .PhoneInputCountry {
+  background: rgba(155,142,130,0.07);
+  border-radius: 12px;
+  padding: 8px 10px;
+  /* Ensure minimum touch target for country selector */
+  min-height: 44px;
+  min-width: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.phone-input-wrapper .PhoneInputCountryIcon {
+  width: 24px;
+  height: 18px;
+}
+
+.phone-input-wrapper .PhoneInputCountrySelectArrow {
+  color: rgba(155,142,130,0.4);
+  opacity: 1;
+}
+
+/* Country dropdown — dark theme + viewport safety for PWA standalone */
+.phone-input-wrapper .PhoneInputCountrySelect {
+  color: #FAF6F0;
+  background: #1a1917;
+  font-size: 16px; /* Prevent iOS auto-zoom on select focus */
+}
+
+.phone-input-wrapper .PhoneInputCountrySelect option {
+  color: #FAF6F0;
+  background: #1a1917;
+  padding: 8px;
+}
+
+.phone-input-wrapper .PhoneInputInput {
+  background: transparent;
+  color: #FAF6F0;
+  border: none;
+  outline: none;
+  font-family: inherit;
+  font-size: 16px; /* >= 16px prevents iOS auto-zoom on input focus */
+}
+
+.phone-input-wrapper .PhoneInputInput::placeholder {
+  color: rgba(155,142,130,0.3);
+}
+
+/* Ensure phone input wrapper doesn't overflow in small viewports */
+.phone-input-wrapper {
+  position: relative;
+  z-index: 10;
 }
 
 @media (prefers-reduced-motion: reduce) {

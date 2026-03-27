@@ -25,6 +25,7 @@ export interface User {
   handle: string;
   vibe_tag: string;
   email?: string;
+  phone_number?: string; // E.164 format, e.g. "+919876543210"
   instagram_handle?: string;
   invite_code_used: string;
   vouched_by?: string;

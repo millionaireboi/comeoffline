@@ -58,7 +58,7 @@ const nextConfig: NextConfig = {
               "default-src 'self'",
               `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""} https://apis.google.com https://us-assets.i.posthog.com https://vercel.live https://*.vercel-scripts.com https://www.gstatic.com`,
               "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' data: blob: https://storage.googleapis.com https://*.firebasestorage.googleapis.com",
+              "img-src 'self' data: blob: https://storage.googleapis.com https://*.firebasestorage.googleapis.com https://purecatamphetamine.github.io",
               "font-src 'self' data:",
               isDev
                 ? "connect-src *"

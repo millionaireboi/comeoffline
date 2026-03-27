@@ -59,13 +59,18 @@ export async function generateMetadata({
       title: `${event.emoji} ${event.title}`,
       description: `${event.date} · ${spotsLeft} spots left\n${description}`,
       url: `https://comeoffline.com/events/${event.id}`,
-      siteName: "come offline",
+      siteName: "come offline.",
       type: "website",
+      images: [{ url: "/Comeoffline socials.png", width: 1200, height: 630, alt: event.title }],
     },
     twitter: {
-      card: "summary",
+      card: "summary_large_image",
       title: `${event.emoji} ${event.title}`,
       description: `${event.date} · ${spotsLeft} spots left`,
+      images: ["/Comeoffline socials.png"],
+    },
+    alternates: {
+      canonical: `https://comeoffline.com/events/${event.id}`,
     },
   };
 }
@@ -109,5 +114,43 @@ export default async function EventPage({
     );
   }
 
-  return <EventDetailPage event={event} />;
+  const eventJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Event",
+    name: event.title,
+    description: event.tagline || event.description?.slice(0, 300),
+    startDate: event.date,
+    eventAttendanceMode: "https://schema.org/OfflineEventAttendanceMode",
+    eventStatus: "https://schema.org/EventScheduled",
+    organizer: {
+      "@type": "Organization",
+      name: "come offline.",
+      url: "https://comeoffline.com",
+    },
+    location: {
+      "@type": "Place",
+      address: {
+        "@type": "PostalAddress",
+        addressLocality: "Bangalore",
+        addressCountry: "IN",
+      },
+    },
+    offers: {
+      "@type": "Offer",
+      availability:
+        event.total_spots - event.spots_taken > 0
+          ? "https://schema.org/InStock"
+          : "https://schema.org/SoldOut",
+    },
+  };
+
+  return (
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(eventJsonLd) }}
+      />
+      <EventDetailPage event={event} />
+    </>
+  );
 }

@@ -60,11 +60,20 @@ export const metadata: Metadata = {
     siteName: "come offline.",
     locale: "en_IN",
     type: "website",
+    images: [
+      {
+        url: "/Comeoffline socials.png",
+        width: 1200,
+        height: 630,
+        alt: "come offline. — an invite-only community for people who still go outside.",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "come offline.",
     description: "an invite-only community for people who still believe the best connections happen face to face.",
+    images: ["/Comeoffline socials.png"],
   },
   robots: {
     index: true,

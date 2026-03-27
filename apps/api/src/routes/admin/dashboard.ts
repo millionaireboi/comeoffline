@@ -21,8 +21,8 @@ async function fetchDashboardStats() {
     contactUnreadSnap,
     brandNewSnap,
   ] = await Promise.all([
-    db.collection("users").count().get(),
-    db.collection("users").where("status", "==", "provisional").count().get(),
+    db.collection("users").where("has_completed_onboarding", "==", true).count().get(),
+    db.collection("users").where("has_completed_onboarding", "==", true).where("status", "==", "provisional").count().get(),
     db.collection("events").where("status", "==", "upcoming").count().get(),
     db.collection("events").where("status", "==", "live").count().get(),
     db.collection("tickets").where("status", "==", "confirmed").count().get(),

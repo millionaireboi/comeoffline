@@ -1026,6 +1026,7 @@ export async function getEventTickets(eventId: string) {
   const snap = await db
     .collection("tickets")
     .where("event_id", "==", eventId)
+    .where("status", "in", ["confirmed", "checked_in", "partially_checked_in"])
     .orderBy("purchased_at", "desc")
     .get();
 

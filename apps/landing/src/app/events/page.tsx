@@ -1,13 +1,11 @@
-"use client";
-
-import { useState, useEffect } from "react";
-import { P, API_URL } from "@/components/shared/P";
+import { P } from "@/components/shared/P";
 import { GlitchText } from "@/components/events/GlitchText";
-import { FeedEventCard } from "@/components/events/FeedEventCard";
-import { FeedEventDetail } from "@/components/events/FeedEventDetail";
+import { EventsFeed } from "@/components/events/EventsFeed";
 import { Footer } from "@/components/shared/Footer";
 
 export const dynamic = "force-dynamic";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
 interface PublicEvent {
   id: string;
@@ -29,29 +27,23 @@ interface PublicEvent {
   status: string;
 }
 
-export default function EventsPage() {
-  const [events, setEvents] = useState<PublicEvent[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [detailEvent, setDetailEvent] = useState<PublicEvent | null>(null);
+async function getEvents(): Promise<{ events: PublicEvent[]; error: string }> {
+  try {
+    const res = await fetch(`${API_URL}/api/events/public`, {
+      next: { revalidate: 60 },
+    });
+    const data = await res.json();
+    if (data.success) {
+      return { events: data.data || [], error: "" };
+    }
+    return { events: [], error: "couldn't load events" };
+  } catch {
+    return { events: [], error: "couldn't reach the server" };
+  }
+}
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch(`${API_URL}/api/events/public`);
-        const data = await res.json();
-        if (data.success) {
-          setEvents(data.data || []);
-        } else {
-          setError("couldn't load events");
-        }
-      } catch {
-        setError("couldn't reach the server");
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+export default async function EventsPage() {
+  const { events, error } = await getEvents();
 
   return (
     <div className="min-h-screen bg-cream">
@@ -87,26 +79,19 @@ export default function EventsPage() {
         <div className="flex justify-between px-5 pb-4">
           <span className="font-mono text-[10px] uppercase tracking-[3px] text-muted">upcoming events</span>
           <span className="font-mono text-[11px] text-caramel">
-            {loading ? "..." : `${events.length} events`}
+            {`${events.length} events`}
           </span>
         </div>
 
         <section className="flex flex-col gap-4 px-4">
-          {loading && (
-            <div className="py-16 text-center">
-              <div className="mx-auto mb-4 h-6 w-6 animate-spin rounded-full border-2 border-sand border-t-caramel" />
-              <p className="font-mono text-[11px] text-muted">loading events...</p>
-            </div>
-          )}
-
-          {error && !loading && (
+          {error && (
             <div className="rounded-[20px] border border-dashed p-8 text-center" style={{ borderColor: P.sand }}>
               <p className="mb-1 font-serif text-lg text-warm-brown">{error}</p>
               <p className="font-mono text-[11px] text-muted">try refreshing the page</p>
             </div>
           )}
 
-          {!loading && !error && events.length === 0 && (
+          {!error && events.length === 0 && (
             <div className="rounded-[20px] border border-dashed p-8 text-center" style={{ borderColor: P.sand }}>
               <span className="mb-3 block text-[28px]">{"\u{1F440}"}</span>
               <p className="m-0 mb-1 font-serif text-lg text-warm-brown">nothing yet</p>
@@ -114,11 +99,9 @@ export default function EventsPage() {
             </div>
           )}
 
-          {!loading && !error && events.map((e, i) => (
-            <FeedEventCard key={e.id} event={e} index={i} onOpen={setDetailEvent} />
-          ))}
+          {!error && <EventsFeed events={events} />}
 
-          {!loading && !error && events.length > 0 && (
+          {!error && events.length > 0 && (
             <div
               className="rounded-[20px] border-[1.5px] border-dashed p-8 text-center"
               style={{
@@ -134,9 +117,6 @@ export default function EventsPage() {
         </section>
       </div>
 
-      {detailEvent && (
-        <FeedEventDetail event={detailEvent} onClose={() => setDetailEvent(null)} />
-      )}
       <Footer />
     </div>
   );

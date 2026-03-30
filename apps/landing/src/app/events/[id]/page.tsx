@@ -21,6 +21,9 @@ interface PublicEvent {
   includes: string[];
   venue_reveal_date?: string;
   status: string;
+  cover_url?: string;
+  cover_type?: "image" | "video";
+  gallery_urls?: string[];
 }
 
 async function getEvent(id: string): Promise<PublicEvent | null> {
@@ -61,7 +64,7 @@ export async function generateMetadata({
       url: `https://comeoffline.com/events/${event.id}`,
       siteName: "come offline.",
       type: "website",
-      images: [{ url: "/Comeoffline socials.png", width: 1200, height: 630, alt: event.title }],
+      images: [{ url: event.cover_url && event.cover_type === "image" ? event.cover_url : "/Comeoffline socials.png", width: 1200, height: 630, alt: event.title }],
     },
     twitter: {
       card: "summary_large_image",

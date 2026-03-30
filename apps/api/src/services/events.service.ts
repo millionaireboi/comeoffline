@@ -51,28 +51,36 @@ export async function getPublicEvents(): Promise<Partial<Event>[]> {
   const snap = await db.collection("events").orderBy("date", "asc").get();
   const validStatuses = new Set(["announced", "upcoming", "listed", "sold_out", "live"]);
 
+  const now = new Date();
   return snap.docs
     .map((doc) => ({ id: doc.id, ...doc.data() }) as Event)
     .filter((e) => validStatuses.has(e.status))
-    .map((e) => ({
-      id: e.id,
-      title: e.title,
-      tagline: e.tagline,
-      description: e.description,
-      date: e.date,
-      time: e.time,
-      total_spots: e.total_spots,
-      spots_taken: e.spots_taken,
-      accent: e.accent,
-      accent_dark: e.accent_dark,
-      emoji: e.emoji,
-      tag: e.tag,
-      zones: e.zones,
-      dress_code: e.dress_code,
-      includes: e.includes,
-      venue_reveal_date: e.venue_reveal_date,
-      status: e.status,
-    }));
+    .map((e) => {
+      const venueRevealed = !!e.venue_reveal_date && new Date(e.venue_reveal_date) <= now;
+      return {
+        id: e.id,
+        title: e.title,
+        tagline: e.tagline,
+        description: e.description,
+        date: e.date,
+        time: e.time,
+        total_spots: e.total_spots,
+        spots_taken: e.spots_taken,
+        accent: e.accent,
+        accent_dark: e.accent_dark,
+        emoji: e.emoji,
+        tag: e.tag,
+        zones: e.zones,
+        dress_code: e.dress_code,
+        includes: e.includes,
+        venue_reveal_date: e.venue_reveal_date,
+        status: e.status,
+        cover_url: e.cover_url,
+        cover_type: e.cover_type,
+        gallery_urls: e.gallery_urls,
+        ...(venueRevealed && e.venue_name ? { venue_name: e.venue_name } : {}),
+      };
+    });
 }
 
 /** Fetch a single public-facing event by ID (stripped of venue secrets) */
@@ -85,6 +93,7 @@ export async function getPublicEvent(eventId: string): Promise<Partial<Event> | 
   const validStatuses = new Set(["announced", "upcoming", "listed", "sold_out", "live"]);
   if (!validStatuses.has(e.status)) return null;
 
+  const venueRevealed = !!e.venue_reveal_date && new Date(e.venue_reveal_date) <= new Date();
   return {
     id: e.id,
     title: e.title,
@@ -103,6 +112,10 @@ export async function getPublicEvent(eventId: string): Promise<Partial<Event> | 
     includes: e.includes,
     venue_reveal_date: e.venue_reveal_date,
     status: e.status,
+    cover_url: e.cover_url,
+    cover_type: e.cover_type,
+    gallery_urls: e.gallery_urls,
+    ...(venueRevealed && e.venue_name ? { venue_name: e.venue_name } : {}),
   };
 }
 
@@ -142,6 +155,8 @@ export async function createEvent(
         }))
       : [],
     status: data.status || "draft",
+    ...(data.cover_url ? { cover_url: data.cover_url, cover_type: data.cover_type || "image" } : {}),
+    ...(Array.isArray(data.gallery_urls) && data.gallery_urls.length > 0 ? { gallery_urls: data.gallery_urls } : {}),
   };
 
   const ref = await db.collection("events").add(eventData);

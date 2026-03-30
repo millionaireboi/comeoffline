@@ -7,6 +7,9 @@ export const GATE_OPENED = "gate_opened";
 export const CODE_VALIDATED = "code_validated";
 export const CODE_FAILED = "code_failed";
 export const CHATBOT_OPENED = "chatbot_opened";
+export const SIGNIN_STARTED = "signin_started";
+export const SIGNIN_SUCCESS = "signin_success";
+export const SIGNIN_FAILED = "signin_failed";
 
 // App — checkout funnel
 export const CHECKOUT_STARTED = "checkout_started";

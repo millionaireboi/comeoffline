@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { useAnalytics, EVENT_DETAIL_OPENED, GATE_OPENED, CODE_VALIDATED, CODE_FAILED, CHATBOT_OPENED, EVENT_SHARED } from "@comeoffline/analytics";
+import { useAnalytics, EVENT_DETAIL_OPENED, GATE_OPENED, CODE_VALIDATED, CODE_FAILED, CHATBOT_OPENED, EVENT_SHARED, SIGNIN_STARTED, SIGNIN_SUCCESS, SIGNIN_FAILED } from "@comeoffline/analytics";
 import { P, API_URL, APP_URL } from "@/components/shared/P";
 import { SpotsBar } from "@/components/events/SpotsBar";
 import { useChat } from "@/components/chat/ChatProvider";
@@ -12,16 +12,163 @@ interface FeedEventDetailProps {
 }
 
 type GateStage = "idle" | "gate" | "confirmed";
+type GateTab = "join" | "signin";
+type SignInStep = "handle" | "pin";
+
+const notFoundLines = [
+  "hmm, can't find you.",
+  "we don't recognize that one.",
+  "no account with that handle.",
+  "are you sure that's right?",
+];
+
+function CoverMedia({ event }: { event: any }) {
+  const isVideo = event.cover_type === "video";
+  const images: string[] = isVideo
+    ? []
+    : [event.cover_url, ...(event.gallery_urls || [])];
+  const hasCarousel = images.length > 1;
+  const [active, setActive] = useState(0);
+
+  useEffect(() => {
+    if (!hasCarousel) return;
+    const timer = setInterval(() => {
+      setActive((prev) => (prev + 1) % images.length);
+    }, 3500);
+    return () => clearInterval(timer);
+  }, [hasCarousel, images.length]);
+
+  if (isVideo) {
+    return (
+      <div style={{ position: "relative", width: "100%", height: 200, overflow: "hidden", flexShrink: 0 }}>
+        <video
+          src={event.cover_url}
+          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+          muted
+          loop
+          playsInline
+          autoPlay
+          preload="metadata"
+        />
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: "linear-gradient(to top, rgba(0,0,0,0.35), transparent, rgba(0,0,0,0.15))",
+            pointerEvents: "none",
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (hasCarousel) {
+    return (
+      <div style={{ position: "relative", width: "100%", height: 200, overflow: "hidden", flexShrink: 0 }}>
+        <div
+          style={{
+            display: "flex",
+            height: "100%",
+            transition: "transform 0.5s ease-in-out",
+            transform: `translateX(-${active * 100}%)`,
+          }}
+        >
+          {images.map((url, i) => (
+            <img
+              key={url}
+              src={url}
+              alt={i === 0 ? event.title : `${event.title} ${i + 1}`}
+              style={{
+                width: "100%",
+                height: 200,
+                objectFit: "cover",
+                flexShrink: 0,
+                display: "block",
+              }}
+            />
+          ))}
+        </div>
+        {/* Dots */}
+        <div
+          style={{
+            position: "absolute",
+            bottom: 10,
+            left: "50%",
+            transform: "translateX(-50%)",
+            display: "flex",
+            gap: 6,
+          }}
+        >
+          {images.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => setActive(i)}
+              aria-label={`Go to slide ${i + 1}`}
+              style={{
+                width: i === active ? 16 : 6,
+                height: 6,
+                borderRadius: 3,
+                border: "none",
+                padding: 0,
+                cursor: "pointer",
+                background: i === active ? "#fff" : "rgba(255,255,255,0.5)",
+                transition: "all 0.3s ease",
+              }}
+            />
+          ))}
+        </div>
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: "linear-gradient(to top, rgba(0,0,0,0.35), transparent, rgba(0,0,0,0.15))",
+            pointerEvents: "none",
+          }}
+        />
+      </div>
+    );
+  }
+
+  // Single image
+  return (
+    <div style={{ position: "relative", width: "100%", height: 200, overflow: "hidden", flexShrink: 0 }}>
+      <img
+        src={event.cover_url}
+        alt={event.title}
+        style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: "linear-gradient(to top, rgba(0,0,0,0.35), transparent, rgba(0,0,0,0.15))",
+          pointerEvents: "none",
+        }}
+      />
+    </div>
+  );
+}
 
 export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
   const { openChat } = useChat();
   const { track } = useAnalytics();
   const [gateStage, setGateStage] = useState<GateStage>("idle");
+  const [gateTab, setGateTab] = useState<GateTab>("join");
   const [code, setCode] = useState("");
   const [codeError, setCodeError] = useState("");
   const [shaking, setShaking] = useState(false);
   const [validating, setValidating] = useState(false);
   const codeInputRef = useRef<HTMLInputElement>(null);
+
+  // Sign-in state
+  const [signInStep, setSignInStep] = useState<SignInStep>("handle");
+  const [signInHandle, setSignInHandle] = useState("");
+  const [signInPin, setSignInPin] = useState("");
+  const [signInError, setSignInError] = useState("");
+  const [signInLoading, setSignInLoading] = useState(false);
+  const [signInErrorIdx, setSignInErrorIdx] = useState(0);
+  const signInInputRef = useRef<HTMLInputElement>(null);
+  const pinInputRef = useRef<HTMLInputElement>(null);
 
   const accent = event.accent || P.caramel;
   const accentDark = event.accent_dark || P.deepCaramel;
@@ -55,13 +202,29 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
 
   // Auto-focus code input when gate opens
   useEffect(() => {
-    if (gateStage === "gate") {
+    if (gateStage === "gate" && gateTab === "join") {
       setTimeout(() => codeInputRef.current?.focus(), 400);
     }
-  }, [gateStage]);
+  }, [gateStage, gateTab]);
+
+  // Auto-focus sign-in inputs
+  useEffect(() => {
+    if (gateStage === "gate" && gateTab === "signin") {
+      if (signInStep === "handle") {
+        setTimeout(() => signInInputRef.current?.focus(), 400);
+      } else if (signInStep === "pin") {
+        setTimeout(() => pinInputRef.current?.focus(), 100);
+      }
+    }
+  }, [gateStage, gateTab, signInStep]);
 
   const handleImIn = useCallback(() => {
     track(GATE_OPENED, { event_id: event.id, event_title: event.title });
+    setGateTab("join");
+    setSignInStep("handle");
+    setSignInHandle("");
+    setSignInPin("");
+    setSignInError("");
     setGateStage("gate");
   }, [event.id, event.title, track]);
 
@@ -111,6 +274,70 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
       openChat();
     }, 200);
   }, [event.id, onClose, openChat, track]);
+
+  const handleSignIn = useCallback(async () => {
+    const trimmed = signInHandle.trim().replace(/^@/, "").replace(/\s/g, "").toLowerCase();
+    if (!trimmed || signInLoading) return;
+
+    if (signInStep === "pin" && signInPin.length !== 4) {
+      setSignInError("enter your 4-digit PIN");
+      return;
+    }
+
+    setSignInError("");
+    setSignInLoading(true);
+
+    try {
+      const res = await fetch(`${API_URL}/api/auth/sign-in`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          handle: trimmed,
+          source: "landing",
+          ...(signInStep === "pin" && { pin: signInPin }),
+        }),
+      });
+      const data = await res.json();
+
+      if (data.success && data.data?.handoff_token) {
+        track(SIGNIN_SUCCESS, { event_id: event.id });
+        setGateStage("confirmed");
+        setTimeout(() => {
+          window.location.href = `${APP_URL}?token=${data.data.handoff_token}&source=landing`;
+        }, 1200);
+      } else if (data.needs_pin) {
+        setSignInStep("pin");
+        setSignInPin("");
+        setSignInError("");
+      } else if (res.status === 429) {
+        track(SIGNIN_FAILED, { event_id: event.id, error: "rate_limited" });
+        setSignInError("too many attempts. wait a bit and try again.");
+      } else {
+        track(SIGNIN_FAILED, { event_id: event.id, error: signInStep === "pin" ? "wrong_pin" : "not_found" });
+        if (signInStep === "pin") {
+          setSignInError("wrong PIN. try again.");
+          setSignInPin("");
+        } else {
+          setSignInError(notFoundLines[signInErrorIdx % notFoundLines.length]);
+          setSignInErrorIdx((i) => i + 1);
+        }
+      }
+    } catch {
+      track(SIGNIN_FAILED, { event_id: event.id, error: "network" });
+      setSignInError("something went wrong. try again.");
+    } finally {
+      setSignInLoading(false);
+    }
+  }, [signInHandle, signInPin, signInStep, signInLoading, signInErrorIdx, event.id, track]);
+
+  const switchToSignIn = useCallback(() => {
+    track(SIGNIN_STARTED, { event_id: event.id });
+    setGateTab("signin");
+    setSignInStep("handle");
+    setSignInHandle("");
+    setSignInPin("");
+    setSignInError("");
+  }, [event.id, track]);
 
   return (
     <div
@@ -190,7 +417,7 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
             </div>
 
             {/* Event context */}
-            <div style={{ textAlign: "center", marginBottom: 28 }}>
+            <div style={{ textAlign: "center", marginBottom: 24 }}>
               <span style={{ fontSize: 36, display: "block", marginBottom: 10 }}>{event.emoji}</span>
               <h3
                 className="font-serif font-normal"
@@ -203,116 +430,386 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
               </p>
             </div>
 
-            {/* Divider */}
-            <div style={{ height: 1, background: P.cream + "10", margin: "0 20px 28px" }} />
-
-            {/* Code input section */}
-            <p
-              className="font-sans text-[13px]"
-              style={{ color: P.muted, margin: "0 0 14px", textAlign: "center" }}
-            >
-              enter your invite code
-            </p>
-
-            <div
-              style={{
-                background: P.gateBlack,
-                borderRadius: 14,
-                padding: "16px 18px",
-                marginBottom: 14,
-                border: `1.5px solid ${codeError ? P.coral : P.cream + "12"}`,
-                animation: shaking ? "shake 0.4s ease" : "none",
-              }}
-            >
-              <input
-                ref={codeInputRef}
-                type="text"
-                value={code}
-                onChange={(e) => {
-                  setCode(e.target.value.toUpperCase());
-                  setCodeError("");
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleValidateCode();
-                }}
-                placeholder="ENTER CODE"
-                className="font-mono text-[18px] uppercase tracking-[4px]"
-                style={{
-                  width: "100%",
-                  background: "transparent",
-                  border: "none",
-                  outline: "none",
-                  color: P.cream,
-                  textAlign: "center",
-                }}
-              />
-            </div>
-
-            {/* Error message */}
-            {codeError && (
-              <p
+            {/* "Already a member?" hint */}
+            {gateTab === "join" && (
+              <button
+                onClick={switchToSignIn}
                 className="font-sans text-[12px]"
-                style={{ color: P.coral, textAlign: "center", margin: "0 0 10px" }}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  background: "none",
+                  border: "none",
+                  color: P.muted,
+                  textAlign: "center",
+                  cursor: "pointer",
+                  padding: 0,
+                  marginBottom: 16,
+                  transition: "color 0.2s",
+                }}
               >
-                {codeError}
-              </p>
+                already a member?{" "}
+                <span style={{ color: P.cream, textDecoration: "underline", textUnderlineOffset: 2 }}>
+                  sign in
+                </span>
+              </button>
             )}
 
-            {/* Submit button */}
-            <button
-              onClick={handleValidateCode}
-              disabled={validating}
-              className="font-sans text-[14px] font-semibold"
+            {/* Pill toggle */}
+            <div
               style={{
-                display: "block",
-                width: "100%",
-                background: accent,
-                color: "#FFFFFF",
-                border: "none",
-                borderRadius: 12,
-                padding: "14px 0",
-                cursor: validating ? "wait" : "pointer",
-                opacity: validating ? 0.7 : 1,
-                transition: "opacity 0.2s",
-                marginBottom: 20,
+                display: "flex",
+                background: P.cream + "08",
+                borderRadius: 10,
+                padding: 3,
+                marginBottom: 24,
+                border: `1px solid ${P.cream}10`,
               }}
             >
-              {validating ? "checking..." : "let me in"}
-            </button>
-
-            {/* Divider with "or" */}
-            <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "0 0 20px" }}>
-              <div style={{ flex: 1, height: 1, background: P.cream + "10" }} />
-              <span className="font-mono text-[10px] uppercase tracking-[1.5px]" style={{ color: P.muted + "80" }}>
-                or
-              </span>
-              <div style={{ flex: 1, height: 1, background: P.cream + "10" }} />
+              <button
+                onClick={() => setGateTab("join")}
+                className="font-mono text-[11px] uppercase tracking-[1.5px]"
+                style={{
+                  flex: 1,
+                  padding: "10px 0",
+                  borderRadius: 8,
+                  border: "none",
+                  cursor: "pointer",
+                  transition: "all 0.25s ease",
+                  background: gateTab === "join" ? P.cream + "15" : "transparent",
+                  color: gateTab === "join" ? P.cream : P.muted + "60",
+                }}
+              >
+                join
+              </button>
+              <button
+                onClick={switchToSignIn}
+                className="font-mono text-[11px] uppercase tracking-[1.5px]"
+                style={{
+                  flex: 1,
+                  padding: "10px 0",
+                  borderRadius: 8,
+                  border: "none",
+                  cursor: "pointer",
+                  transition: "all 0.25s ease",
+                  background: gateTab === "signin" ? P.cream + "15" : "transparent",
+                  color: gateTab === "signin" ? P.cream : P.muted + "60",
+                }}
+              >
+                sign in
+              </button>
             </div>
 
-            {/* Prove yourself — prominent CTA */}
-            <button
-              onClick={handleNoCode}
-              className="font-sans text-[14px] font-medium"
-              style={{
-                display: "block",
-                width: "100%",
-                background: P.cream + "0A",
-                color: P.cream,
-                border: `1.5px solid ${P.cream}20`,
-                borderRadius: 12,
-                padding: "14px 0",
-                cursor: "pointer",
-                transition: "all 0.2s",
-              }}
-            >
-              no code? prove yourself &rarr;
-            </button>
-            <p
-              className="font-sans text-[11px]"
-              style={{ color: P.muted + "80", textAlign: "center", margin: "10px 0 0", lineHeight: 1.4 }}
-            >
-              chat with our bot &mdash; pass the vibe check, get in
-            </p>
+            {/* ===== JOIN TAB ===== */}
+            {gateTab === "join" && (
+              <div style={{ animation: "gateFadeIn 0.25s ease" }}>
+                {/* Code input section */}
+                <p
+                  className="font-sans text-[13px]"
+                  style={{ color: P.muted, margin: "0 0 14px", textAlign: "center" }}
+                >
+                  enter your invite code
+                </p>
+
+                <div
+                  style={{
+                    background: P.gateBlack,
+                    borderRadius: 14,
+                    padding: "16px 18px",
+                    marginBottom: 14,
+                    border: `1.5px solid ${codeError ? P.coral : P.cream + "12"}`,
+                    animation: shaking ? "shake 0.4s ease" : "none",
+                  }}
+                >
+                  <input
+                    ref={codeInputRef}
+                    type="text"
+                    value={code}
+                    onChange={(e) => {
+                      setCode(e.target.value.toUpperCase());
+                      setCodeError("");
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleValidateCode();
+                    }}
+                    placeholder="ENTER CODE"
+                    className="font-mono text-[18px] uppercase tracking-[4px]"
+                    style={{
+                      width: "100%",
+                      background: "transparent",
+                      border: "none",
+                      outline: "none",
+                      color: P.cream,
+                      textAlign: "center",
+                    }}
+                  />
+                </div>
+
+                {/* Error message */}
+                {codeError && (
+                  <p
+                    className="font-sans text-[12px]"
+                    style={{ color: P.coral, textAlign: "center", margin: "0 0 10px" }}
+                  >
+                    {codeError}
+                  </p>
+                )}
+
+                {/* Submit button */}
+                <button
+                  onClick={handleValidateCode}
+                  disabled={validating}
+                  className="font-sans text-[14px] font-semibold"
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    background: accent,
+                    color: "#FFFFFF",
+                    border: "none",
+                    borderRadius: 12,
+                    padding: "14px 0",
+                    cursor: validating ? "wait" : "pointer",
+                    opacity: validating ? 0.7 : 1,
+                    transition: "opacity 0.2s",
+                    marginBottom: 20,
+                  }}
+                >
+                  {validating ? "checking..." : "let me in"}
+                </button>
+
+                {/* Divider with "or" */}
+                <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "0 0 20px" }}>
+                  <div style={{ flex: 1, height: 1, background: P.cream + "10" }} />
+                  <span className="font-mono text-[10px] uppercase tracking-[1.5px]" style={{ color: P.muted + "80" }}>
+                    or
+                  </span>
+                  <div style={{ flex: 1, height: 1, background: P.cream + "10" }} />
+                </div>
+
+                {/* Prove yourself — prominent CTA */}
+                <button
+                  onClick={handleNoCode}
+                  className="font-sans text-[14px] font-medium"
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    background: P.cream + "0A",
+                    color: P.cream,
+                    border: `1.5px solid ${P.cream}20`,
+                    borderRadius: 12,
+                    padding: "14px 0",
+                    cursor: "pointer",
+                    transition: "all 0.2s",
+                  }}
+                >
+                  no code? prove yourself &rarr;
+                </button>
+                <p
+                  className="font-sans text-[11px]"
+                  style={{ color: P.muted + "80", textAlign: "center", margin: "10px 0 0", lineHeight: 1.4 }}
+                >
+                  chat with our bot &mdash; pass the vibe check, get in
+                </p>
+              </div>
+            )}
+
+            {/* ===== SIGN IN TAB ===== */}
+            {gateTab === "signin" && (
+              <div style={{ animation: "gateFadeIn 0.25s ease" }}>
+                {/* Handle step */}
+                {signInStep === "handle" && (
+                  <>
+                    <p
+                      className="font-sans text-[13px]"
+                      style={{ color: P.muted, margin: "0 0 14px", textAlign: "center" }}
+                    >
+                      enter your handle, phone, or instagram
+                    </p>
+
+                    <div
+                      style={{
+                        background: P.gateBlack,
+                        borderRadius: 14,
+                        padding: "16px 18px",
+                        marginBottom: 14,
+                        border: `1.5px solid ${signInError ? P.coral : P.cream + "12"}`,
+                        display: "flex",
+                        alignItems: "center",
+                      }}
+                    >
+                      {!/^\+?\d/.test(signInHandle) && (
+                        <span
+                          className="font-sans text-[16px]"
+                          style={{ color: P.muted + "50", marginRight: 2, flexShrink: 0 }}
+                        >
+                          @
+                        </span>
+                      )}
+                      <input
+                        ref={signInInputRef}
+                        type="text"
+                        value={signInHandle}
+                        onChange={(e) => {
+                          setSignInHandle(e.target.value.replace(/^@/, "").replace(/\s/g, ""));
+                          setSignInError("");
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleSignIn();
+                        }}
+                        placeholder="handle or phone number"
+                        autoComplete="username"
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        className="font-sans text-[16px]"
+                        style={{
+                          width: "100%",
+                          background: "transparent",
+                          border: "none",
+                          outline: "none",
+                          color: P.cream,
+                        }}
+                      />
+                    </div>
+
+                    {signInError && (
+                      <p
+                        className="font-sans text-[12px]"
+                        style={{ color: P.coral, textAlign: "center", margin: "0 0 10px" }}
+                      >
+                        {signInError}
+                      </p>
+                    )}
+
+                    <button
+                      onClick={handleSignIn}
+                      disabled={signInLoading || !signInHandle.trim()}
+                      className="font-sans text-[14px] font-semibold"
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        background: signInHandle.trim() ? P.cream : P.cream + "15",
+                        color: signInHandle.trim() ? P.nearBlack : P.muted + "40",
+                        border: "none",
+                        borderRadius: 12,
+                        padding: "14px 0",
+                        cursor: signInHandle.trim() ? "pointer" : "default",
+                        opacity: signInLoading ? 0.6 : 1,
+                        transition: "all 0.2s",
+                      }}
+                    >
+                      {signInLoading ? "finding you..." : "next \u2192"}
+                    </button>
+                  </>
+                )}
+
+                {/* PIN step */}
+                {signInStep === "pin" && (
+                  <>
+                    <p
+                      className="font-sans text-[13px]"
+                      style={{ color: P.muted, margin: "0 0 4px", textAlign: "center" }}
+                    >
+                      signing in as{" "}
+                      <span style={{ color: P.cream }}>@{signInHandle.trim().replace(/^@/, "").toLowerCase()}</span>
+                    </p>
+                    <p
+                      className="font-sans text-[13px]"
+                      style={{ color: P.muted, margin: "0 0 14px", textAlign: "center" }}
+                    >
+                      enter your 4-digit PIN
+                    </p>
+
+                    <div
+                      style={{
+                        background: P.gateBlack,
+                        borderRadius: 14,
+                        padding: "16px 18px",
+                        marginBottom: 14,
+                        border: `1.5px solid ${signInError ? P.coral : P.cream + "12"}`,
+                      }}
+                    >
+                      <input
+                        ref={pinInputRef}
+                        type="password"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={4}
+                        autoComplete="current-password"
+                        value={signInPin}
+                        onChange={(e) => {
+                          setSignInPin(e.target.value.replace(/\D/g, "").slice(0, 4));
+                          setSignInError("");
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleSignIn();
+                        }}
+                        placeholder="\u2022\u2022\u2022\u2022"
+                        className="font-mono text-[24px] tracking-[12px]"
+                        style={{
+                          width: "100%",
+                          background: "transparent",
+                          border: "none",
+                          outline: "none",
+                          color: P.cream,
+                          textAlign: "center",
+                        }}
+                      />
+                    </div>
+
+                    {signInError && (
+                      <p
+                        className="font-sans text-[12px]"
+                        style={{ color: P.coral, textAlign: "center", margin: "0 0 10px" }}
+                      >
+                        {signInError}
+                      </p>
+                    )}
+
+                    <button
+                      onClick={handleSignIn}
+                      disabled={signInLoading || signInPin.length !== 4}
+                      className="font-sans text-[14px] font-semibold"
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        background: signInPin.length === 4 ? P.cream : P.cream + "15",
+                        color: signInPin.length === 4 ? P.nearBlack : P.muted + "40",
+                        border: "none",
+                        borderRadius: 12,
+                        padding: "14px 0",
+                        cursor: signInPin.length === 4 ? "pointer" : "default",
+                        opacity: signInLoading ? 0.6 : 1,
+                        transition: "all 0.2s",
+                        marginBottom: 12,
+                      }}
+                    >
+                      {signInLoading ? "checking..." : "sign in \u2192"}
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setSignInStep("handle");
+                        setSignInPin("");
+                        setSignInError("");
+                      }}
+                      className="font-sans text-[12px]"
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        background: "none",
+                        border: "none",
+                        color: P.muted + "60",
+                        textAlign: "center",
+                        cursor: "pointer",
+                        padding: 0,
+                      }}
+                    >
+                      &larr; use a different handle
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -352,6 +849,11 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
         {/* ===== IDLE VIEW — event details ===== */}
         {gateStage === "idle" && (
           <>
+            {/* Cover media / carousel */}
+            {event.cover_url && (
+              <CoverMedia event={event} />
+            )}
+
             {/* Header */}
             <div style={{ padding: "20px 20px 0", flexShrink: 0 }}>
               {/* Close + tag row */}
@@ -484,13 +986,17 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
                     {event.time}
                   </p>
                 </div>
-                {daysUntilVenue !== null && (
+                {(daysUntilVenue !== null || event.venue_name) && (
                   <div>
                     <span className="font-mono text-[9px] uppercase tracking-[1px]" style={{ color: P.muted }}>
                       venue
                     </span>
-                    <p className="font-sans text-[14px] font-medium" style={{ color: accent, margin: "4px 0 0" }}>
-                      {daysUntilVenue > 0 ? `drops in ${daysUntilVenue}d` : "revealed"}
+                    <p className="font-sans text-[14px] font-medium" style={{ color: event.venue_name ? P.nearBlack : accent, margin: "4px 0 0" }}>
+                      {event.venue_name
+                        ? event.venue_name
+                        : daysUntilVenue && daysUntilVenue > 0
+                          ? `drops in ${daysUntilVenue}d`
+                          : "dropping soon"}
                     </p>
                   </div>
                 )}

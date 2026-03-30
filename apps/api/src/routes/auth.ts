@@ -1,6 +1,6 @@
 import { Router } from "express";
 import crypto from "crypto";
-import { validateCode, validateHandoffToken, chatbotEntry, signInByHandle } from "../services/auth.service";
+import { validateCode, validateHandoffToken, chatbotEntry, signInByHandle, generateHandoffToken } from "../services/auth.service";
 import { strictLimiter, signInLimiter } from "../middleware/rateLimit";
 import { isValidPin, verifyPin, hashPin } from "../services/pin.service";
 import { sendPinResetEmail } from "../services/email.service";
@@ -96,7 +96,7 @@ router.post("/validate-token", async (req, res) => {
 /** POST /api/auth/sign-in — Sign in returning user by handle + PIN */
 router.post("/sign-in", signInLimiter, async (req, res) => {
   try {
-    const { handle, pin } = req.body;
+    const { handle, pin, source } = req.body;
 
     if (!handle || typeof handle !== "string") {
       res.status(400).json({ success: false, error: "Handle is required" });
@@ -132,10 +132,21 @@ router.post("/sign-in", signInLimiter, async (req, res) => {
     delete userData.pin_hash;
     delete userData.pin_set_at;
 
+    // If request comes from landing page, generate a handoff token for cross-app redirect
+    const userId = userData.id as string | undefined;
+    let handoffToken: string | undefined;
+    if (source === "landing" && userId) {
+      const userStatus = (userData.status === "active" || userData.status === "provisional")
+        ? userData.status as "active" | "provisional"
+        : "active";
+      handoffToken = await generateHandoffToken(userId, "landing", userStatus);
+    }
+
     res.json({
       success: true,
       data: {
         token: result.token,
+        ...(handoffToken && { handoff_token: handoffToken }),
         user: userData,
         has_seen_welcome: result.has_seen_welcome,
       },

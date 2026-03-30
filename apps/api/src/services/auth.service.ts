@@ -330,8 +330,12 @@ export async function signInByHandle(
     const phoneSnap = await db
       .collection("users")
       .where("phone_number", "==", phoneQuery)
-      .limit(1)
+      .limit(2)
       .get();
+
+    if (phoneSnap.size > 1) {
+      return { valid: false, error: "Multiple accounts found with this phone number. Please sign in with your handle instead." };
+    }
 
     if (!phoneSnap.empty) {
       userDoc = phoneSnap.docs[0];

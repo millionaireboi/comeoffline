@@ -22,6 +22,9 @@ interface EventDetailPageProps {
     includes: string[];
     venue_reveal_date?: string;
     status: string;
+    cover_url?: string;
+    cover_type?: "image" | "video";
+    gallery_urls?: string[];
   };
 }
 

@@ -285,6 +285,7 @@ export interface Event {
   seating?: SeatingConfig;
   cover_url?: string; // image or video URL for event cover
   cover_type?: "image" | "video"; // media type of the cover
+  gallery_urls?: string[]; // additional images for carousel (images only)
   waitlist_count?: number; // number of users on the waitlist (announced events)
 }
 

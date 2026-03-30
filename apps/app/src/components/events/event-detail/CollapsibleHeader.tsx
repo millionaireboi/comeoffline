@@ -1,3 +1,4 @@
+import { useState, useEffect, useCallback } from "react";
 import { useAnalytics, EVENT_SHARED } from "@comeoffline/analytics";
 import type { Event } from "@comeoffline/types";
 import { formatDate } from "@comeoffline/ui";
@@ -50,6 +51,24 @@ export function CollapsibleHeader({
   }
 
   const hasCover = !!event.cover_url;
+  const isVideo = event.cover_type === "video";
+  const carouselImages = hasCover && !isVideo
+    ? [event.cover_url!, ...(event.gallery_urls || [])]
+    : [];
+  const hasCarousel = carouselImages.length > 1;
+
+  const [activeSlide, setActiveSlide] = useState(0);
+
+  // Auto-advance carousel
+  useEffect(() => {
+    if (!hasCarousel) return;
+    const timer = setInterval(() => {
+      setActiveSlide((prev) => (prev + 1) % carouselImages.length);
+    }, 3500);
+    return () => clearInterval(timer);
+  }, [hasCarousel, carouselImages.length]);
+
+  const goToSlide = useCallback((idx: number) => setActiveSlide(idx), []);
 
   return (
     <div className="relative shrink-0 overflow-hidden">
@@ -62,7 +81,7 @@ export function CollapsibleHeader({
             opacity: scrolled ? 1 : 1,
           }}
         >
-          {event.cover_type === "video" ? (
+          {isVideo ? (
             <video
               src={event.cover_url}
               className="h-[200px] w-full object-cover"
@@ -72,6 +91,37 @@ export function CollapsibleHeader({
               autoPlay
               preload="metadata"
             />
+          ) : hasCarousel ? (
+            <div className="relative h-[200px] w-full overflow-hidden">
+              <div
+                className="flex h-full transition-transform duration-500 ease-in-out"
+                style={{ transform: `translateX(-${activeSlide * 100}%)` }}
+              >
+                {carouselImages.map((url, i) => (
+                  <img
+                    key={url}
+                    src={url}
+                    alt={i === 0 ? event.title : `${event.title} ${i + 1}`}
+                    className="h-[200px] w-full shrink-0 object-cover"
+                  />
+                ))}
+              </div>
+              {/* Dots */}
+              <div className="absolute bottom-2.5 left-1/2 flex -translate-x-1/2 gap-1.5">
+                {carouselImages.map((_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => goToSlide(i)}
+                    className={`h-1.5 rounded-full transition-all duration-300 ${
+                      i === activeSlide
+                        ? "w-4 bg-white"
+                        : "w-1.5 bg-white/50"
+                    }`}
+                    aria-label={`Go to slide ${i + 1}`}
+                  />
+                ))}
+              </div>
+            </div>
           ) : (
             <img
               src={event.cover_url}
@@ -79,7 +129,7 @@ export function CollapsibleHeader({
               className="h-[200px] w-full object-cover"
             />
           )}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/20" />
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/20" />
           {/* Top buttons over cover */}
           <div className="absolute right-3 top-3 flex items-center gap-1.5">
             <button

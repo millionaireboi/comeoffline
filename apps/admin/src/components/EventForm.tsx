@@ -1797,6 +1797,7 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
   const [analyzingFloorPlan, setAnalyzingFloorPlan] = useState(false);
   const [coverUrl, setCoverUrl] = useState(event?.cover_url || "");
   const [coverType, setCoverType] = useState<"image" | "video">(event?.cover_type || "image");
+  const [galleryUrls, setGalleryUrls] = useState<string[]>(event?.gallery_urls || []);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -1950,6 +1951,7 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
       } : undefined,
       cover_url: coverUrl || undefined,
       cover_type: coverUrl ? coverType : undefined,
+      gallery_urls: coverType === "image" && galleryUrls.length > 0 ? galleryUrls : undefined,
       status: event?.status || "draft",
     } as Event;
   }
@@ -2077,6 +2079,7 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
       } : undefined,
       cover_url: coverUrl || undefined,
       cover_type: coverUrl ? coverType : undefined,
+      gallery_urls: coverType === "image" && galleryUrls.length > 0 ? galleryUrls : undefined,
       status,
     };
 
@@ -2234,9 +2237,28 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
             pathPrefix="events"
           />
           <p className="mt-1.5 font-mono text-[9px] text-muted/40">
-            shown at the top of the event card and detail page
+            shown at the top of the event card and detail page. recommended: 1200 x 800px, max 5MB for images, 30MB for video.
           </p>
         </div>
+
+        {/* Gallery Images (only for image cover type) */}
+        {coverType === "image" && (
+          <div>
+            <label className="mb-2 block font-mono text-[10px] uppercase tracking-[2px] text-muted">
+              gallery images
+            </label>
+            <ImageUpload
+              multiple
+              values={galleryUrls}
+              onChangeMultiple={setGalleryUrls}
+              pathPrefix="events"
+              label="add gallery photos"
+            />
+            <p className="mt-1.5 font-mono text-[9px] text-muted/40">
+              auto-carousel with the cover image. leave empty for single cover. recommended: 1200 x 800px, max 5MB each.
+            </p>
+          </div>
+        )}
 
         {/* Description */}
         <div>

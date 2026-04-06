@@ -31,6 +31,8 @@ interface MemberProfile {
     area?: string;
     age_range?: string;
     hot_take?: string;
+    email?: string;
+    phone_number?: string;
     drink_of_choice?: string;
     referral_source?: string;
     bio?: string;
@@ -421,6 +423,18 @@ export function MembersTab() {
                   <div>
                     <p className="mb-3 font-mono text-[9px] uppercase tracking-[1px] text-muted">details</p>
                     <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                      {profile.user.email && (
+                        <div className="col-span-2">
+                          <p className="font-mono text-[8px] uppercase tracking-[1px] text-muted">email</p>
+                          <p className="font-mono text-[11px] text-cream">{profile.user.email}</p>
+                        </div>
+                      )}
+                      {profile.user.phone_number && (
+                        <div className="col-span-2">
+                          <p className="font-mono text-[8px] uppercase tracking-[1px] text-muted">phone</p>
+                          <p className="font-mono text-[11px] text-cream">{profile.user.phone_number}</p>
+                        </div>
+                      )}
                       {profile.user.instagram_handle && (
                         <div>
                           <p className="font-mono text-[8px] uppercase tracking-[1px] text-muted">instagram</p>

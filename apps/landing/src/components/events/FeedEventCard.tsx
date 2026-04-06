@@ -71,13 +71,31 @@ export function FeedEventCard({ event, index, onOpen }: FeedEventCardProps) {
         animation: `fadeSlideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) ${index * 0.1}s both`,
       }}
     >
-      {/* Accent gradient top bar */}
-      <div
-        style={{
-          height: 4,
-          background: `linear-gradient(90deg, ${accent}, ${accent}60)`,
-        }}
-      />
+      {/* Cover image or accent bar */}
+      {event.cover_url ? (
+        <div style={{ position: "relative", height: 180, overflow: "hidden" }}>
+          {event.cover_type === "video" ? (
+            <video
+              src={event.cover_url}
+              style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: event.cover_focus || "center", display: "block" }}
+              muted
+              loop
+              playsInline
+              autoPlay
+              preload="metadata"
+            />
+          ) : (
+            <img
+              src={event.cover_url}
+              alt={event.title}
+              style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: event.cover_focus || "center", display: "block" }}
+            />
+          )}
+          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(255,255,255,0.5) 0%, transparent 50%)" }} />
+        </div>
+      ) : (
+        <div style={{ height: 4, background: `linear-gradient(90deg, ${accent}, ${accent}60)` }} />
+      )}
 
       <div style={{ padding: "18px 18px 0" }}>
         {/* Tag pill */}

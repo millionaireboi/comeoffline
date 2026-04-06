@@ -50,7 +50,7 @@ export const metadata: Metadata = {
     "no phone parties",
   ],
   icons: {
-    icon: "/favicon.ico",
+    icon: "/logo.png",
     apple: "/logo.png",
   },
   openGraph: {

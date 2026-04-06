@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect, useRef } from "react";
 import type { Event, TicketTier, CheckoutStep, CheckoutAddOn, TimeSlot, SeatingSection, Seat, SeatingConfig, AddonSeatingConfig, Spot } from "@comeoffline/types";
-import { useAnalytics, CHECKOUT_STARTED, CHECKOUT_STEP_VIEWED, CHECKOUT_STEP_COMPLETED, TIER_SELECTED, CHECKOUT_COMPLETED, CHECKOUT_ABANDONED } from "@comeoffline/analytics";
+import { useAnalytics, trackFbEvent, CHECKOUT_STARTED, CHECKOUT_STEP_VIEWED, CHECKOUT_STEP_COMPLETED, TIER_SELECTED, CHECKOUT_COMPLETED, CHECKOUT_ABANDONED } from "@comeoffline/analytics";
 import { useAuth } from "@/hooks/useAuth";
 import { apiFetch } from "@/lib/api";
 
@@ -1014,6 +1014,13 @@ export function CheckoutWizard({ event, onComplete, onClose, loading }: Checkout
       tier_count: tiers.length,
       total_steps: steps.length,
     });
+    trackFbEvent("InitiateCheckout", {
+      content_name: event.title,
+      content_ids: [event.id],
+      content_type: "product",
+      currency: "INR",
+      value: 0,
+    });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Track step views
@@ -1241,6 +1248,13 @@ export function CheckoutWizard({ event, onComplete, onClose, loading }: Checkout
         tier_price: selectedTier?.price,
         total_steps: steps.length,
         revenue: selectedTier?.price,
+        currency: "INR",
+      });
+      trackFbEvent("Purchase", {
+        content_name: event.title,
+        content_ids: [event.id],
+        content_type: "product",
+        value: selectedTier?.price || 0,
         currency: "INR",
       });
 

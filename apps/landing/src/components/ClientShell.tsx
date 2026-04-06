@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
-import { PostHogProvider } from "@comeoffline/analytics";
+import { PostHogProvider, FacebookPixel } from "@comeoffline/analytics";
 import { ChatProvider } from "@/components/chat/ChatProvider";
 import { ChatBot } from "@/components/chat/ChatBot";
 import { FloatingChatButton } from "@/components/chat/FloatingChatButton";
@@ -19,6 +19,7 @@ export function ClientShell({ children }: { children: React.ReactNode }) {
   return (
     <Suspense>
       <PostHogProvider appName="landing">
+        <FacebookPixel />
         <ChatProvider>
           <TabHeader />
           <div className="overflow-x-hidden">

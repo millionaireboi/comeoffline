@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useRef } from "react";
-import { PostHogProvider, useAnalytics } from "@comeoffline/analytics";
+import { PostHogProvider, useAnalytics, FacebookPixel } from "@comeoffline/analytics";
 import { useAppStore } from "@/store/useAppStore";
 
 function IdentitySync() {
@@ -39,6 +39,7 @@ export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
     <Suspense>
       <PostHogProvider appName="app">
         <IdentitySync />
+        <FacebookPixel />
         {children}
       </PostHogProvider>
     </Suspense>

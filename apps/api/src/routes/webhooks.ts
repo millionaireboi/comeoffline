@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { verifyWebhookSignature, fetchPaymentLinkStatus } from "../services/razorpay.service";
 import { confirmPayment } from "../services/ticket.service";
 import { posthog } from "../config/posthog";
+import { sendFbConversionEvent, hashForFb, isFbConfigured } from "../config/facebook";
 import { getDb } from "../config/firebase-admin";
 
 const router = Router();
@@ -81,11 +82,12 @@ router.post("/razorpay", async (req: Request, res: Response) => {
         }).catch((e) => console.warn("[webhook] Failed to write dedup record:", e));
       }
 
-      if (result.success && posthog) {
-        try {
-          const ticketDoc = await db.collection("tickets").doc(ticketId).get();
-          const ticket = ticketDoc.data();
-          if (ticket) {
+      if (result.success) {
+        const ticketDoc = await db.collection("tickets").doc(ticketId).get();
+        const ticket = ticketDoc.data();
+
+        if (ticket && posthog) {
+          try {
             posthog.capture({
               distinctId: ticket.user_id,
               event: "checkout_completed_server",
@@ -98,9 +100,38 @@ router.post("/razorpay", async (req: Request, res: Response) => {
                 source: "razorpay_webhook",
               },
             });
+          } catch (phErr) {
+            console.warn("[webhook] PostHog capture failed (non-blocking):", phErr);
           }
-        } catch (phErr) {
-          console.warn("[webhook] PostHog capture failed (non-blocking):", phErr);
+        }
+
+        if (ticket && isFbConfigured) {
+          try {
+            // Look up user for better matching
+            const userDoc = await db.collection("users").doc(ticket.user_id).get();
+            const user = userDoc.data();
+
+            const userData: Record<string, string> = {
+              external_id: await hashForFb(ticket.user_id),
+            };
+            if (user?.phone) userData.ph = await hashForFb(user.phone);
+            if (user?.email) userData.em = await hashForFb(user.email);
+
+            await sendFbConversionEvent({
+              event_name: "Purchase",
+              event_time: Math.floor(Date.now() / 1000),
+              action_source: "server",
+              user_data: userData,
+              custom_data: {
+                currency: "INR",
+                value: ticket.price || 0,
+                content_ids: [ticket.event_id],
+                content_type: "product",
+              },
+            });
+          } catch (fbErr) {
+            console.warn("[webhook] Facebook Conversions API failed (non-blocking):", fbErr);
+          }
         }
       }
 

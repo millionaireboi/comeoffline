@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { Event, RSVP, Ticket, WaitlistEntry } from "@comeoffline/types";
+import { trackFbEvent } from "@comeoffline/analytics";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppStore } from "@/store/useAppStore";
 import { apiFetch } from "@/lib/api";
@@ -90,6 +91,13 @@ export function EventFeed() {
         if (data.data) {
           setCurrentEvent(event);
           setActiveRsvp(data.data);
+          trackFbEvent("CompleteRegistration", {
+            content_name: event.title,
+            content_ids: [event.id],
+            status: true,
+            currency: "INR",
+            value: 0,
+          });
           showToast("you're in!", "success");
           setStage("countdown");
         }
@@ -181,6 +189,13 @@ export function EventFeed() {
   const openEventDetail = useCallback(
     async (event: Event) => {
       setDetailEvent(event);
+      trackFbEvent("ViewContent", {
+        content_name: event.title,
+        content_ids: [event.id],
+        content_type: "product",
+        currency: "INR",
+        value: 0,
+      });
       if (event.status === "announced") {
         try {
           const token = await getIdToken();

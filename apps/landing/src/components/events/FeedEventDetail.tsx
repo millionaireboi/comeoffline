@@ -43,7 +43,7 @@ function CoverMedia({ event }: { event: any }) {
       <div style={{ position: "relative", width: "100%", height: 200, overflow: "hidden", flexShrink: 0 }}>
         <video
           src={event.cover_url}
-          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+          style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: event.cover_focus || "center", display: "block" }}
           muted
           loop
           playsInline
@@ -82,6 +82,7 @@ function CoverMedia({ event }: { event: any }) {
                 width: "100%",
                 height: 200,
                 objectFit: "cover",
+                objectPosition: event.cover_focus || "center",
                 flexShrink: 0,
                 display: "block",
               }}
@@ -135,7 +136,7 @@ function CoverMedia({ event }: { event: any }) {
       <img
         src={event.cover_url}
         alt={event.title}
-        style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+        style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: event.cover_focus || "center", display: "block" }}
       />
       <div
         style={{

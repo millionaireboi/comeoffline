@@ -85,6 +85,7 @@ export function CollapsibleHeader({
             <video
               src={event.cover_url}
               className="h-[200px] w-full object-cover"
+              style={{ objectPosition: event.cover_focus || "center" }}
               muted
               loop
               playsInline
@@ -103,6 +104,7 @@ export function CollapsibleHeader({
                     src={url}
                     alt={i === 0 ? event.title : `${event.title} ${i + 1}`}
                     className="h-[200px] w-full shrink-0 object-cover"
+                    style={{ objectPosition: event.cover_focus || "center" }}
                   />
                 ))}
               </div>
@@ -127,6 +129,7 @@ export function CollapsibleHeader({
               src={event.cover_url}
               alt={event.title}
               className="h-[200px] w-full object-cover"
+              style={{ objectPosition: event.cover_focus || "center" }}
             />
           )}
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/20" />

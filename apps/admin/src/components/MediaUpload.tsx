@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { API_URL } from "@/lib/constants";
 
@@ -13,6 +13,22 @@ interface MediaUploadProps {
   maxImageWidth?: number;
   imageQuality?: number;
   className?: string;
+  focusPoint?: string;
+  onFocusChange?: (focus: string) => void;
+}
+
+function parseFocusPoint(fp?: string): [number, number] {
+  if (!fp) return [50, 50];
+  const named: Record<string, [number, number]> = {
+    center: [50, 50], top: [50, 5], bottom: [50, 95],
+    left: [5, 50], right: [95, 50],
+    "top left": [5, 5], "top right": [95, 5],
+    "bottom left": [5, 95], "bottom right": [95, 95],
+  };
+  if (named[fp]) return named[fp];
+  const m = fp.match(/^(\d+(?:\.\d+)?)%\s+(\d+(?:\.\d+)?)%$/);
+  if (m) return [parseFloat(m[1]), parseFloat(m[2])];
+  return [50, 50];
 }
 
 function compressImage(file: File, maxWidth: number, quality: number): Promise<string> {
@@ -59,12 +75,18 @@ export function MediaUpload({
   maxImageWidth = 1200,
   imageQuality = 0.8,
   className = "",
+  focusPoint,
+  onFocusChange,
 }: MediaUploadProps) {
   const { getIdToken } = useAuth();
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const dragState = useRef<{ startX: number; startY: number; startFx: number; startFy: number } | null>(null);
 
   const uploadFile = useCallback(async (file: File) => {
     const isImage = file.type.startsWith("image/");
@@ -143,6 +165,55 @@ export function MediaUpload({
     }
   }, [uploadFile]);
 
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (!onFocusChange) return;
+    e.preventDefault();
+    const [fx, fy] = parseFocusPoint(focusPoint);
+    dragState.current = { startX: e.clientX, startY: e.clientY, startFx: fx, startFy: fy };
+    setIsDragging(true);
+  }, [focusPoint, onFocusChange]);
+
+  useEffect(() => {
+    if (!onFocusChange) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!dragState.current || !imgRef.current || !containerRef.current) return;
+
+      const img = imgRef.current;
+      const container = containerRef.current;
+      const cW = container.offsetWidth;
+      const cH = container.offsetHeight;
+      const iW = img.naturalWidth || cW;
+      const iH = img.naturalHeight || cH;
+
+      // Calculate overflow from object-cover scaling
+      const scale = Math.max(cW / iW, cH / iH);
+      const overflowX = Math.max(iW * scale - cW, 1);
+      const overflowY = Math.max(iH * scale - cH, 1);
+
+      const dx = e.clientX - dragState.current.startX;
+      const dy = e.clientY - dragState.current.startY;
+
+      // Dragging right → show more left side → decrease x
+      const newFx = Math.max(0, Math.min(100, dragState.current.startFx - (dx / overflowX) * 100));
+      const newFy = Math.max(0, Math.min(100, dragState.current.startFy - (dy / overflowY) * 100));
+
+      onFocusChange(`${Math.round(newFx)}% ${Math.round(newFy)}%`);
+    };
+
+    const handleMouseUp = () => {
+      dragState.current = null;
+      setIsDragging(false);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [onFocusChange]);
+
   return (
     <div className={className}>
       {/* Preview */}
@@ -158,11 +229,26 @@ export function MediaUpload({
               autoPlay
             />
           ) : (
-            <img
-              src={value}
-              alt="Event cover"
-              className="h-40 w-full rounded-lg object-cover border border-white/10"
-            />
+            <div
+              ref={containerRef}
+              className="relative h-40 w-full overflow-hidden rounded-lg border border-white/10"
+              style={{ cursor: onFocusChange ? (isDragging ? "grabbing" : "grab") : "default" }}
+              onMouseDown={handleMouseDown}
+            >
+              <img
+                ref={imgRef}
+                src={value}
+                alt="Event cover"
+                className="h-full w-full object-cover"
+                style={{ objectPosition: focusPoint || "center", userSelect: "none" }}
+                draggable={false}
+              />
+              {onFocusChange && !isDragging && (
+                <span className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-2 py-0.5 font-mono text-[9px] text-white opacity-0 transition-opacity group-hover:opacity-100">
+                  drag to reposition
+                </span>
+              )}
+            </div>
           )}
           <button
             onClick={handleDelete}

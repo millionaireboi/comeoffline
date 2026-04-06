@@ -77,6 +77,7 @@ export async function getPublicEvents(): Promise<Partial<Event>[]> {
         status: e.status,
         cover_url: e.cover_url,
         cover_type: e.cover_type,
+        cover_focus: e.cover_focus,
         gallery_urls: e.gallery_urls,
         ...(venueRevealed && e.venue_name ? { venue_name: e.venue_name } : {}),
       };
@@ -156,6 +157,7 @@ export async function createEvent(
       : [],
     status: data.status || "draft",
     ...(data.cover_url ? { cover_url: data.cover_url, cover_type: data.cover_type || "image" } : {}),
+    ...(data.cover_url && data.cover_focus ? { cover_focus: data.cover_focus } : {}),
     ...(Array.isArray(data.gallery_urls) && data.gallery_urls.length > 0 ? { gallery_urls: data.gallery_urls } : {}),
   };
 

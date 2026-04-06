@@ -1797,6 +1797,7 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
   const [analyzingFloorPlan, setAnalyzingFloorPlan] = useState(false);
   const [coverUrl, setCoverUrl] = useState(event?.cover_url || "");
   const [coverType, setCoverType] = useState<"image" | "video">(event?.cover_type || "image");
+  const [coverFocus, setCoverFocus] = useState<string>(event?.cover_focus || "center");
   const [galleryUrls, setGalleryUrls] = useState<string[]>(event?.gallery_urls || []);
 
   const [saving, setSaving] = useState(false);
@@ -1951,6 +1952,7 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
       } : undefined,
       cover_url: coverUrl || undefined,
       cover_type: coverUrl ? coverType : undefined,
+      cover_focus: coverUrl ? (coverFocus || undefined) : undefined,
       gallery_urls: coverType === "image" && galleryUrls.length > 0 ? galleryUrls : undefined,
       status: event?.status || "draft",
     } as Event;
@@ -2079,6 +2081,7 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
       } : undefined,
       cover_url: coverUrl || undefined,
       cover_type: coverUrl ? coverType : undefined,
+      cover_focus: coverUrl ? (coverFocus || undefined) : undefined,
       gallery_urls: coverType === "image" && galleryUrls.length > 0 ? galleryUrls : undefined,
       status,
     };
@@ -2235,6 +2238,8 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
             onChange={(url, type) => { setCoverUrl(url); setCoverType(type); }}
             onClear={() => { setCoverUrl(""); setCoverType("image"); }}
             pathPrefix="events"
+            focusPoint={coverType === "image" ? coverFocus : undefined}
+            onFocusChange={coverType === "image" ? setCoverFocus : undefined}
           />
           <p className="mt-1.5 font-mono text-[9px] text-muted/40">
             shown at the top of the event card and detail page. recommended: 1200 x 800px, max 5MB for images, 30MB for video.

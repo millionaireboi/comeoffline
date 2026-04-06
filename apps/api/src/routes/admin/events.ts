@@ -114,6 +114,30 @@ router.get("/:id/waitlist", requireAdmin, async (req: AuthRequest, res) => {
   }
 });
 
+/** POST /api/admin/events/:id/duplicate — Duplicate an event as a new draft */
+router.post("/:id/duplicate", requireAdmin, async (req: AuthRequest, res) => {
+  try {
+    const id = req.params.id as string;
+    const source = await getEventById(id);
+    if (!source) {
+      res.status(404).json({ success: false, error: "Event not found" });
+      return;
+    }
+    const { id: _id, spots_taken: _spots, waitlist_count: _wl, ...rest } = source as Record<string, unknown>;
+    const copy = await createEvent({
+      ...rest,
+      title: `Copy of ${source.title}`,
+      status: "draft",
+      spots_taken: 0,
+    } as Parameters<typeof createEvent>[0]);
+    invalidateCache("admin-events");
+    res.status(201).json({ success: true, data: copy });
+  } catch (err) {
+    console.error("[admin/events] duplicate error:", err);
+    res.status(500).json({ success: false, error: "Failed to duplicate event" });
+  }
+});
+
 /** PUT /api/admin/events/:id/open-sales — Transition announced → listed and notify waitlist */
 router.put("/:id/open-sales", requireAdmin, async (req: AuthRequest, res) => {
   try {

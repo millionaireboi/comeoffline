@@ -43,6 +43,15 @@ export function EventsTab() {
     }
   }
 
+  async function duplicateEvent(eventId: string) {
+    try {
+      await apiClient.post(`/api/admin/events/${eventId}/duplicate`, {});
+      refetch();
+    } catch (err) {
+      console.error("Duplicate failed:", err);
+    }
+  }
+
   async function loadWaitlist(eventId: string) {
     if (expandedWaitlist === eventId) {
       setExpandedWaitlist(null);
@@ -230,6 +239,12 @@ export function EventsTab() {
                 className="flex-1 rounded-lg bg-white/5 px-3 py-2 font-mono text-[10px] text-cream transition-colors hover:bg-white/10"
               >
                 edit
+              </button>
+              <button
+                onClick={() => duplicateEvent(event.id)}
+                className="flex-1 rounded-lg bg-white/5 px-3 py-2 font-mono text-[10px] text-cream transition-colors hover:bg-white/10"
+              >
+                duplicate
               </button>
               {event.status === "draft" && (
                 <>

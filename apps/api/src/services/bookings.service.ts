@@ -324,6 +324,10 @@ export async function adminCancelTicket(
     const wasConfirmed = ticket.status === "confirmed";
     const quantity = ticket.quantity || 1;
 
+    // Read event before any writes (Firestore requires all reads before writes in a transaction)
+    const eventRef = db.collection("events").doc(ticket.event_id);
+    const eventDoc = wasConfirmed ? await tx.get(eventRef) : null;
+
     tx.update(ticketRef, {
       status: "cancelled",
       cancelled_at: new Date().toISOString(),
@@ -332,12 +336,10 @@ export async function adminCancelTicket(
     });
 
     if (wasConfirmed) {
-      const eventRef = db.collection("events").doc(ticket.event_id);
       tx.update(eventRef, { spots_taken: FieldValue.increment(-quantity) });
 
       // Release seating
-      const eventDoc = await tx.get(eventRef);
-      if (eventDoc.exists) {
+      if (eventDoc?.exists) {
         const event = eventDoc.data()!;
         const seating = event.seating;
         if (seating && seating.mode !== "none") {

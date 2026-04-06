@@ -123,7 +123,7 @@ router.post("/:id/duplicate", requireAdmin, async (req: AuthRequest, res) => {
       res.status(404).json({ success: false, error: "Event not found" });
       return;
     }
-    const { id: _id, spots_taken: _spots, waitlist_count: _wl, ...rest } = source as Record<string, unknown>;
+    const { id: _id, spots_taken: _spots, waitlist_count: _wl, ...rest } = source as unknown as Record<string, unknown>;
     const copy = await createEvent({
       ...rest,
       title: `Copy of ${source.title}`,

@@ -25,7 +25,11 @@ export async function getUserProfile(userId: string): Promise<ProfileData | null
   const userDoc = await db.collection("users").doc(userId).get();
   if (!userDoc.exists) return null;
 
-  const user = { id: userDoc.id, ...userDoc.data() } as User;
+  const rawData = userDoc.data()!;
+  if (rawData.created_at?.toDate) {
+    rawData.created_at = rawData.created_at.toDate().toISOString();
+  }
+  const user = { id: userDoc.id, ...rawData } as User;
 
   // Fetch stats in parallel — each query is independent and non-critical.
   // If any fails (e.g. missing index), return zeroed stats instead of crashing.

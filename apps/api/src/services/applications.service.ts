@@ -161,7 +161,7 @@ export async function getUsers(): Promise<Array<{
           vibe_tag: data.vibe_tag,
           entry_path: data.entry_path,
           status: data.status,
-          created_at: data.created_at,
+          created_at: data.created_at?.toDate ? data.created_at.toDate().toISOString() : (data.created_at || ""),
           events_count: 0, // Would need to aggregate from RSVPs
         };
       });

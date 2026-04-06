@@ -33,6 +33,10 @@ interface MemberProfile {
     hot_take?: string;
     drink_of_choice?: string;
     referral_source?: string;
+    bio?: string;
+    gender?: string;
+    interests?: string[];
+    community_intent?: string;
     created_at: string;
     vouched_by?: string;
     events_attended?: number;
@@ -445,6 +449,30 @@ export function MembersTab() {
                         <div>
                           <p className="font-mono text-[8px] uppercase tracking-[1px] text-muted">source</p>
                           <p className="font-mono text-[11px] text-cream">{profile.user.referral_source}</p>
+                        </div>
+                      )}
+                      {profile.user.gender && (
+                        <div>
+                          <p className="font-mono text-[8px] uppercase tracking-[1px] text-muted">gender</p>
+                          <p className="font-mono text-[11px] text-cream">{profile.user.gender}</p>
+                        </div>
+                      )}
+                      {profile.user.community_intent && (
+                        <div className="col-span-2">
+                          <p className="font-mono text-[8px] uppercase tracking-[1px] text-muted">community intent</p>
+                          <p className="font-mono text-[11px] text-cream">{profile.user.community_intent}</p>
+                        </div>
+                      )}
+                      {profile.user.bio && (
+                        <div className="col-span-2">
+                          <p className="font-mono text-[8px] uppercase tracking-[1px] text-muted">bio</p>
+                          <p className="font-mono text-[11px] text-cream">{profile.user.bio}</p>
+                        </div>
+                      )}
+                      {profile.user.interests && profile.user.interests.length > 0 && (
+                        <div className="col-span-2">
+                          <p className="font-mono text-[8px] uppercase tracking-[1px] text-muted">interests</p>
+                          <p className="font-mono text-[11px] text-cream">{profile.user.interests.join(", ")}</p>
                         </div>
                       )}
                       <div>

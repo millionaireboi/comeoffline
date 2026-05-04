@@ -1720,6 +1720,7 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
   const [venueAddress, setVenueAddress] = useState(event?.venue_address || "");
   const [venueDirectionsUrl, setVenueDirectionsUrl] = useState(event?.venue_directions_url || "");
   const [venueRevealDate, setVenueRevealDate] = useState(event?.venue_reveal_date || "");
+  const [venuePhotos, setVenuePhotos] = useState<string[]>(event?.venue_photos || []);
   const [pickupPoints, setPickupPoints] = useState<FormPickupPoint[]>(
     event?.pickup_points?.map((p) => ({
       name: p.name,
@@ -1870,6 +1871,7 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
       venue_address: venueAddress.trim(),
       venue_directions_url: venueDirectionsUrl.trim(),
       venue_reveal_date: venueRevealDate,
+      venue_photos: venuePhotos.length > 0 ? venuePhotos : undefined,
       pickup_points: pickupPoints.map((p) => ({
         name: p.name.trim(),
         time: p.time.trim(),
@@ -1990,6 +1992,7 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
       venue_address: venueAddress.trim(),
       venue_directions_url: venueDirectionsUrl.trim(),
       venue_reveal_date: venueRevealDate,
+      venue_photos: venuePhotos.length > 0 ? venuePhotos : undefined,
       pickup_points: pickupPoints.map((p) => ({
         name: p.name.trim(),
         time: p.time.trim(),
@@ -2523,6 +2526,17 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
                 onChange={(e) => setVenueRevealDate(e.target.value)}
                 className={inputClass}
               />
+            </div>
+            <div>
+              <span className="mb-1 block font-mono text-[9px] text-muted">venue photos</span>
+              <ImageUpload
+                multiple
+                values={venuePhotos}
+                onChangeMultiple={setVenuePhotos}
+                pathPrefix="events"
+                label="add venue photos"
+              />
+              <p className="mt-1 text-[9px] text-muted/50">shown on the event page once the venue is revealed. recommended: 1200 x 800px, max 5MB each.</p>
             </div>
           </div>
         </div>

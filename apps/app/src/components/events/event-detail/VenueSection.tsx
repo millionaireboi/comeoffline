@@ -6,6 +6,7 @@ interface VenueSectionProps {
   venueAddress?: string;
   venueDirectionsUrl?: string;
   venueRevealDate?: string;
+  venuePhotos?: string[];
   accent: string;
   accentDark: string;
 }
@@ -25,6 +26,7 @@ export function VenueSection({
   venueAddress,
   venueDirectionsUrl,
   venueRevealDate,
+  venuePhotos,
   accent,
   accentDark,
 }: VenueSectionProps) {
@@ -100,6 +102,29 @@ export function VenueSection({
               )}
             </div>
           </div>
+
+          {venuePhotos && venuePhotos.length > 0 && (
+            <div className="-mx-5 -mb-5 mt-4 overflow-x-auto pb-5 pl-5 pr-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <div className="flex gap-2">
+                {venuePhotos.map((url, idx) => (
+                  <a
+                    key={url}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block h-[120px] w-[160px] shrink-0 overflow-hidden rounded-xl bg-sand/40 transition-transform active:scale-[0.98]"
+                  >
+                    <img
+                      src={url}
+                      alt={`${venueName} photo ${idx + 1}`}
+                      loading="lazy"
+                      className="h-full w-full object-cover"
+                    />
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <div className="relative overflow-hidden rounded-2xl bg-near-black p-6 text-center">

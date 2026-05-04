@@ -80,6 +80,7 @@ export async function getPublicEvents(): Promise<Partial<Event>[]> {
         cover_focus: e.cover_focus,
         gallery_urls: e.gallery_urls,
         ...(venueRevealed && e.venue_name ? { venue_name: e.venue_name } : {}),
+        ...(venueRevealed && Array.isArray(e.venue_photos) && e.venue_photos.length > 0 ? { venue_photos: e.venue_photos } : {}),
       };
     });
 }
@@ -117,6 +118,7 @@ export async function getPublicEvent(eventId: string): Promise<Partial<Event> | 
     cover_type: e.cover_type,
     gallery_urls: e.gallery_urls,
     ...(venueRevealed && e.venue_name ? { venue_name: e.venue_name } : {}),
+    ...(venueRevealed && Array.isArray(e.venue_photos) && e.venue_photos.length > 0 ? { venue_photos: e.venue_photos } : {}),
   };
 }
 

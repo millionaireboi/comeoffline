@@ -278,6 +278,7 @@ export interface Event {
   venue_address?: string;
   venue_directions_url?: string;
   venue_reveal_date: string;
+  venue_photos?: string[]; // photos of the venue, surfaced post-reveal
   pickup_points: PickupPoint[];
   status: EventStatus;
   ticketing?: TicketingConfig;

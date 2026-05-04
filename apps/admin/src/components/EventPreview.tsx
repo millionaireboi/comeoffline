@@ -294,6 +294,18 @@ function DetailView({ event }: { event: Event }) {
                         {event.venue_address && <p className="mt-0.5 font-mono text-[11px] text-[#9B8E82]">{event.venue_address}</p>}
                       </div>
                     </div>
+                    {event.venue_photos && event.venue_photos.length > 0 && (
+                      <div className="-mx-5 -mb-5 mt-4 overflow-x-auto pb-5 pl-5 pr-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                        <div className="flex gap-2">
+                          {event.venue_photos.map((url, idx) => (
+                            <div key={url} className="h-[120px] w-[160px] shrink-0 overflow-hidden rounded-xl bg-[#E8DDD0]/40">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={url} alt={`venue photo ${idx + 1}`} loading="lazy" className="h-full w-full object-cover" />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="relative overflow-hidden rounded-2xl bg-[#1A1715] p-6 text-center">

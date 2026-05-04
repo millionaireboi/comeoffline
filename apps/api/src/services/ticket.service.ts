@@ -3,6 +3,12 @@ import { FieldValue } from "firebase-admin/firestore";
 import QRCode from "qrcode";
 import crypto from "crypto";
 import { env } from "../config/env";
+import { sendTemplate, uploadMedia } from "./whatsapp.service";
+import {
+  isScenarioEnabled,
+  getMappedTemplate,
+  recordScenarioFired,
+} from "./whatsapp-scenarios.service";
 
 /** Sign QR payload with HMAC-SHA256 to prevent forgery */
 export function signQrPayload(payload: { ticket_id: string; event_id: string }): string {
@@ -1064,4 +1070,141 @@ export async function getEventTickets(eventId: string) {
       user_handle: user?.handle || "",
     };
   });
+}
+
+/**
+ * Convert the ticket's QR data URL into a Buffer + mime type, then upload directly to
+ * WhatsApp Cloud API's media endpoint. Returns a media_id that can be referenced as the
+ * template's IMAGE header. The QR image never has a publicly addressable URL we own —
+ * Meta hosts the asset and only delivers it through the messaging system.
+ */
+async function uploadQrToWhatsapp(ticketId: string, qrDataUrl: string): Promise<string | null> {
+  const matches = qrDataUrl.match(/^data:image\/(\w+);base64,(.+)$/);
+  if (!matches) return null;
+  const mime = matches[1] === "jpeg" ? "image/jpeg" : `image/${matches[1]}`;
+  const buffer = Buffer.from(matches[2], "base64");
+
+  const result = await uploadMedia({
+    buffer,
+    mimeType: mime,
+    filename: `ticket-${ticketId}.png`,
+  });
+
+  if (!result.ok) {
+    console.error(`[uploadQrToWhatsapp] failed for ${ticketId}:`, result.error);
+    return null;
+  }
+  return result.mediaId;
+}
+
+/**
+ * Send a WhatsApp ticket-confirmation message — celebratory copy with the ticket QR as
+ * the image header and a soft nudge to add the app to the home screen (which is also our
+ * wrapper for the "personalize your profile" ask). Booking is already confirmed by the
+ * time this fires, so the message never frames profile completion as a booking gate.
+ *
+ * Fire-and-forget — never throws back to the caller, since notification failure shouldn't
+ * break a real purchase.
+ */
+export async function notifyTicketConfirmed(ticketId: string): Promise<void> {
+  try {
+    const db = await getDb();
+    const ticketSnap = await db.collection("tickets").doc(ticketId).get();
+    if (!ticketSnap.exists) return;
+    const ticket = ticketSnap.data() as {
+      user_id: string;
+      event_id: string;
+      status: string;
+      qr_code?: string;
+      price?: number;
+      tier_id?: string;
+    };
+    if (ticket.status !== "confirmed") return;
+
+    const isFree = (ticket.price ?? 0) === 0 || ticket.tier_id === "free";
+    const scenarioKey = isFree ? "rsvp_confirmed" : "payment_confirmed";
+
+    if (!(await isScenarioEnabled(scenarioKey))) {
+      console.log(`[notifyTicketConfirmed] scenario "${scenarioKey}" is disabled — skipping ${ticketId}`);
+      return;
+    }
+    const templateName = await getMappedTemplate(scenarioKey);
+    if (!templateName) {
+      console.warn(`[notifyTicketConfirmed] no template mapped for "${scenarioKey}" — skipping ${ticketId}`);
+      return;
+    }
+
+    const [userSnap, eventSnap] = await Promise.all([
+      db.collection("users").doc(ticket.user_id).get(),
+      db.collection("events").doc(ticket.event_id).get(),
+    ]);
+
+    const user = userSnap.data() as
+      | { name?: string; phone_number?: string; phone_verified_at?: string }
+      | undefined;
+    const event = eventSnap.data() as { title?: string; date?: string; time?: string } | undefined;
+
+    if (!user?.phone_number || !user.phone_verified_at) {
+      console.warn(`[notifyTicketConfirmed] skipping ${ticketId} — user has no verified phone`);
+      return;
+    }
+    if (!event?.title) {
+      console.warn(`[notifyTicketConfirmed] skipping ${ticketId} — event has no title`);
+      return;
+    }
+
+    const eventDateStr = (() => {
+      if (!event.date) return "soon";
+      const d = new Date(event.date);
+      if (isNaN(d.getTime())) return event.date;
+      const day = d.toLocaleDateString("en-IN", {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+      });
+      return event.time ? `${day} · ${event.time}` : day;
+    })();
+
+    const firstName = (user.name || "there").split(/\s+/)[0];
+    const eventUrl = `${env.appUrl.replace(/\/$/, "")}/events/${ticket.event_id}`;
+    const ticketUrl = `${env.appUrl.replace(/\/$/, "")}/tickets/${ticketId}`;
+
+    let result;
+    if (isFree) {
+      // rsvp_confirmed: 4 body vars (firstName, eventName, dateTime, url), no header
+      result = await sendTemplate({
+        to: user.phone_number,
+        templateName,
+        languageCode: "en_US",
+        bodyParams: [firstName, event.title, eventDateStr, eventUrl],
+      });
+    } else {
+      // payment_confirmed: 4 body vars + IMAGE header (QR)
+      if (!ticket.qr_code) {
+        console.warn(`[notifyTicketConfirmed] skipping ${ticketId} — no QR code on ticket`);
+        return;
+      }
+      const qrMediaId = await uploadQrToWhatsapp(ticketId, ticket.qr_code);
+      if (!qrMediaId) {
+        console.warn(`[notifyTicketConfirmed] skipping ${ticketId} — QR upload failed`);
+        return;
+      }
+      const amountStr = `₹${(ticket.price ?? 0).toLocaleString("en-IN")}`;
+      result = await sendTemplate({
+        to: user.phone_number,
+        templateName,
+        languageCode: "en_US",
+        headerImageId: qrMediaId,
+        bodyParams: [firstName, event.title, amountStr, ticketUrl],
+      });
+    }
+
+    if (!result.ok) {
+      console.error(`[notifyTicketConfirmed] WhatsApp send failed for ${ticketId} (${scenarioKey}):`, result.error);
+      return;
+    }
+    await recordScenarioFired(scenarioKey, null);
+  } catch (err) {
+    console.error(`[notifyTicketConfirmed] unexpected error for ${ticketId}:`, err);
+  }
 }

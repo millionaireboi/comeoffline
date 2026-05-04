@@ -62,6 +62,20 @@ interface AppState {
   profileCompleteMode: boolean;
   setProfileCompleteMode: (mode: boolean) => void;
 
+  // Full-profile wizard mode (triggered before ticket purchase when only core profile is done)
+  fullProfileMode: boolean;
+  setFullProfileMode: (mode: boolean) => void;
+
+  // Event the user was about to buy when the community-safety dialog interrupted them.
+  // EventFeed auto-reopens the detail sheet for this event after full-profile submit.
+  pendingPurchaseEventId: string | null;
+  setPendingPurchaseEventId: (id: string | null) => void;
+
+  // Shows the "you're in! complete your profile" dialog after a successful ticket purchase.
+  // Renders globally from page.tsx, regardless of which stage is active.
+  showCompletionDialog: boolean;
+  setShowCompletionDialog: (show: boolean) => void;
+
   // Toast notifications
   toast: { message: string; type: "error" | "success" | "info" } | null;
   showToast: (message: string, type?: "error" | "success" | "info") => void;
@@ -101,6 +115,15 @@ export const useAppStore = create<AppState>((set) => ({
 
   profileCompleteMode: false,
   setProfileCompleteMode: (mode) => set({ profileCompleteMode: mode }),
+
+  fullProfileMode: false,
+  setFullProfileMode: (mode) => set({ fullProfileMode: mode }),
+
+  pendingPurchaseEventId: null,
+  setPendingPurchaseEventId: (id) => set({ pendingPurchaseEventId: id }),
+
+  showCompletionDialog: false,
+  setShowCompletionDialog: (show) => set({ showCompletionDialog: show }),
 
   toast: null,
   showToast: (message, type = "error") => {

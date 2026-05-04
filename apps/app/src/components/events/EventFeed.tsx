@@ -6,6 +6,7 @@ import { trackFbEvent } from "@comeoffline/analytics";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppStore } from "@/store/useAppStore";
 import { apiFetch } from "@/lib/api";
+import { isFullProfileComplete } from "@/lib/profile-completion";
 import { GlitchText } from "@/components/ui/GlitchText";
 import { EventCard } from "@/components/events/EventCard";
 import { EventDetail } from "@/components/events/EventDetail";
@@ -16,7 +17,7 @@ import { PullToRefresh } from "@/components/shared/PullToRefresh";
 export function EventFeed() {
   const { getIdToken, loading: authLoading } = useAuth();
   const user = useAppStore((s) => s.user);
-  const { setCurrentEvent, setActiveRsvp, setActiveTicket, setActiveWaitlistEntry, setStage, setProfileCompleteMode, showToast } = useAppStore();
+  const { setCurrentEvent, setActiveRsvp, setActiveTicket, setActiveWaitlistEntry, setStage, setProfileCompleteMode, showToast, pendingPurchaseEventId, setPendingPurchaseEventId, setShowCompletionDialog } = useAppStore();
   const events = useAppStore((s) => s.events);
   const setEvents = useAppStore((s) => s.setEvents);
   const [loading, setLoading] = useState(events.length === 0);
@@ -75,6 +76,20 @@ export function EventFeed() {
     if (!authLoading) fetchEvents();
   }, [authLoading, fetchEvents]);
 
+  // Auto-reopen the event detail after the community-safety dialog round-trip:
+  // user tapped "i'm in" → safety dialog → "continue setup" → completed full profile →
+  // landed on feed. Reopen the same event's detail so they can pick up where they left off.
+  useEffect(() => {
+    if (!pendingPurchaseEventId || events.length === 0) return;
+    const target = events.find((e) => e.id === pendingPurchaseEventId);
+    if (target) {
+      setDetailEvent(target);
+      // Set as current event for any downstream views (countdown, etc.)
+      setCurrentEvent(target);
+    }
+    setPendingPurchaseEventId(null);
+  }, [pendingPurchaseEventId, events, setPendingPurchaseEventId, setCurrentEvent]);
+
   // Legacy RSVP flow for free events
   const handleRsvp = useCallback(
     async (event: Event) => {
@@ -99,7 +114,18 @@ export function EventFeed() {
             value: 0,
           });
           showToast("you're in!", "success");
-          setStage("countdown");
+          // Post-purchase routing priority:
+          // 1. !full profile → countdown + safety dialog (let dialog drive ProfileSetup)
+          // 2. !sign → sign_quiz (educate + collect, then on complete it routes to countdown)
+          // 3. else → countdown
+          if (!isFullProfileComplete(user)) {
+            setStage("countdown");
+            setShowCompletionDialog(true);
+          } else if (!user?.sign) {
+            setStage("sign_quiz");
+          } else {
+            setStage("countdown");
+          }
         }
       } catch (err) {
         console.error("RSVP failed:", err);
@@ -109,7 +135,7 @@ export function EventFeed() {
         setActionLoading(false);
       }
     },
-    [getIdToken, setCurrentEvent, setActiveRsvp, setStage],
+    [getIdToken, setCurrentEvent, setActiveRsvp, setStage, setShowCompletionDialog, user, showToast],
   );
 
   // Actually execute a ticket purchase (called directly or after quiz gate)
@@ -155,7 +181,16 @@ export function EventFeed() {
           setCurrentEvent(event);
           setActiveTicket(data.data);
           setDetailEvent(null);
-          setStage("countdown");
+          showToast("you're in!", "success");
+          // Same post-purchase routing priority as handleRsvp.
+          if (!isFullProfileComplete(user)) {
+            setStage("countdown");
+            setShowCompletionDialog(true);
+          } else if (!user?.sign) {
+            setStage("sign_quiz");
+          } else {
+            setStage("countdown");
+          }
         }
       } catch (err) {
         console.error("Ticket purchase failed:", err);
@@ -165,7 +200,7 @@ export function EventFeed() {
         setActionLoading(false);
       }
     },
-    [getIdToken, setCurrentEvent, setActiveTicket, setStage],
+    [getIdToken, setCurrentEvent, setActiveTicket, setStage, setShowCompletionDialog, user, showToast],
   );
 
   // Ticket purchase flow — quiz is no longer required before booking

@@ -26,6 +26,7 @@ export interface User {
   vibe_tag: string;
   email?: string;
   phone_number?: string; // E.164 format, e.g. "+919876543210"
+  phone_verified_at?: string; // ISO timestamp set after successful Firebase Phone Auth verification
   instagram_handle?: string;
   invite_code_used: string;
   vouched_by?: string;
@@ -48,6 +49,7 @@ export interface User {
   community_intent?: string;
   referral_source?: string;
   has_completed_profile?: boolean;
+  has_completed_full_profile?: boolean;
   has_completed_onboarding?: boolean;
   sign?: string;
   sign_scores?: Record<string, number>;
@@ -96,7 +98,7 @@ export interface PickupPoint {
   lng?: number;
 }
 
-export type EventStatus = "draft" | "announced" | "upcoming" | "listed" | "sold_out" | "live" | "completed";
+export type EventStatus = "draft" | "announced" | "upcoming" | "listed" | "sold_out" | "live" | "completed" | "cancelled";
 
 export interface TicketTier {
   id: string; // unique tier ID within event

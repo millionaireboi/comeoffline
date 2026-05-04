@@ -5,6 +5,7 @@ import type { Memories, Polaroid, OverheardQuote } from "@comeoffline/types";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppStore } from "@/store/useAppStore";
 import { apiFetch } from "@/lib/api";
+import { getDevStageOverride, MOCK_MEMORIES } from "@/lib/dev-stage";
 import { Noise } from "@/components/shared/Noise";
 import { PullToRefresh } from "@/components/shared/PullToRefresh";
 
@@ -22,10 +23,16 @@ export function MemoriesScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState<Polaroid | null>(null);
+  const [savingPhoto, setSavingPhoto] = useState(false);
 
   const fetchMemories = useCallback(async () => {
     if (!currentEvent) return;
     setError(false);
+    if (getDevStageOverride()?.mock) {
+      setMemories(MOCK_MEMORIES);
+      setLoading(false);
+      return;
+    }
     try {
       const token = await getIdToken();
       if (!token) { setError(true); setLoading(false); return; }
@@ -45,6 +52,16 @@ export function MemoriesScreen() {
   useEffect(() => {
     if (!authLoading) fetchMemories();
   }, [authLoading, fetchMemories]);
+
+  const handleSavePhoto = useCallback(async (photo: Polaroid) => {
+    if (savingPhoto) return;
+    setSavingPhoto(true);
+    try {
+      await savePolaroid(photo);
+    } finally {
+      setSavingPhoto(false);
+    }
+  }, [savingPhoto]);
 
   if (!currentEvent) return null;
 
@@ -213,9 +230,26 @@ export function MemoriesScreen() {
         <div className="animate-fadeIn fixed inset-0 z-[500] flex items-center justify-center bg-[rgba(10,9,7,0.85)]">
           <button
             onClick={() => setSelectedPhoto(null)}
+            aria-label="Close"
             className="absolute right-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm"
           >
             ✕
+          </button>
+          <button
+            onClick={() => handleSavePhoto(selectedPhoto)}
+            disabled={savingPhoto}
+            aria-label="Save photo"
+            className="absolute right-16 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm transition-opacity disabled:opacity-50"
+          >
+            {savingPhoto ? (
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+            )}
           </button>
           <div className="max-h-[80vh] max-w-[90vw] overflow-hidden rounded-2xl bg-white">
             <img
@@ -228,13 +262,22 @@ export function MemoriesScreen() {
                 e.currentTarget.className = "flex h-48 w-full items-center justify-center bg-sand/20 text-muted text-sm";
               }}
             />
-            <div className="p-4">
-              {selectedPhoto.caption && (
-                <p className="font-caveat text-lg text-near-black">{selectedPhoto.caption}</p>
-              )}
-              {selectedPhoto.who && (
-                <p className="mt-0.5 font-mono text-[11px] text-muted">{selectedPhoto.who}</p>
-              )}
+            <div className="flex items-end justify-between gap-3 p-4">
+              <div className="min-w-0">
+                {selectedPhoto.caption && (
+                  <p className="font-caveat text-lg text-near-black">{selectedPhoto.caption}</p>
+                )}
+                {selectedPhoto.who && (
+                  <p className="mt-0.5 font-mono text-[11px] text-muted">{selectedPhoto.who}</p>
+                )}
+              </div>
+              <button
+                onClick={() => handleSavePhoto(selectedPhoto)}
+                disabled={savingPhoto}
+                className="shrink-0 rounded-full bg-near-black px-4 py-2 font-mono text-[11px] text-white transition-opacity disabled:opacity-50"
+              >
+                {savingPhoto ? "saving..." : "save photo"}
+              </button>
             </div>
           </div>
         </div>
@@ -262,6 +305,53 @@ function PolaroidImage({ url, alt }: { url: string; alt?: string }) {
       />
     </div>
   );
+}
+
+async function savePolaroid(photo: Polaroid) {
+  const slug = (photo.caption || photo.id || "memory")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 40) || "memory";
+  const filename = `comeoffline-${slug}.jpg`;
+
+  let blob: Blob | null = null;
+  try {
+    const res = await fetch(photo.url, { mode: "cors" });
+    if (res.ok) blob = await res.blob();
+  } catch {
+    // CORS or network failure — handled below
+  }
+
+  // Web Share API (preferred on mobile — drops into photos / IG / messages)
+  if (blob && typeof navigator !== "undefined" && "share" in navigator) {
+    try {
+      const file = new File([blob], filename, { type: blob.type || "image/jpeg" });
+      const canShare = (navigator as Navigator & { canShare?: (data: { files: File[] }) => boolean }).canShare;
+      if (!canShare || canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: photo.caption || "come offline memory" });
+        return;
+      }
+    } catch {
+      // user cancelled or share unsupported — fall through to download
+    }
+  }
+
+  // Anchor download (desktop / Android Chrome)
+  if (blob) {
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    return;
+  }
+
+  // Last resort — open the image so the user can long-press / right-click to save
+  window.open(photo.url, "_blank", "noopener,noreferrer");
 }
 
 function QuoteCard({ quote, index }: { quote: OverheardQuote; index: number }) {

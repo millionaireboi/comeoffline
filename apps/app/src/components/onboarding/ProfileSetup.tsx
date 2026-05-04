@@ -62,6 +62,7 @@ interface ProfileDraft {
   handle: string;
   instagram: string;
   phone: string; // E.164 format
+  phoneVerifiedAt: string; // ISO timestamp once Firebase Phone Auth + backend confirm
   area: string;
   dob: string;
   showAge: boolean;
@@ -412,14 +413,140 @@ function InstagramCard({ value, onChange, email, onChangeEmail, prefilled }: {
 }
 
 // Card: Phone Number
-function PhoneNumberCard({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function PhoneNumberCard({
+  value,
+  onChange,
+  verifiedAt,
+  onVerified,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  verifiedAt: string;
+  onVerified: (ts: string) => void;
+}) {
   const valid = value ? isValidPhoneNumber(value) : null;
+  const { getIdToken } = useAuth();
+
+  type OtpPhase = "idle" | "sending" | "sent" | "verifying";
+  const [phase, setPhase] = useState<OtpPhase>("idle");
+  const [otp, setOtp] = useState("");
+  const [error, setError] = useState("");
+  const [cooldown, setCooldown] = useState(0);
+  const verifiedPhoneRef = useRef<string>(verifiedAt ? value : "");
+
+  const isVerified = !!verifiedAt && verifiedPhoneRef.current === value;
+
+  // Resend cooldown countdown
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
+
+  const sendCode = async () => {
+    if (!valid || phase === "sending" || cooldown > 0) return;
+    setError("");
+    setPhase("sending");
+    try {
+      const token = await getIdToken();
+      if (!token) {
+        setError("session expired. close and reopen the app.");
+        setPhase("idle");
+        return;
+      }
+
+      const res = await apiFetch<{ success: boolean; retry_after_seconds?: number }>(
+        "/api/auth/whatsapp-otp/send",
+        { method: "POST", token, body: JSON.stringify({ phone: value }) },
+      );
+
+      if (res.success) {
+        setPhase("sent");
+        setCooldown(30);
+      } else {
+        // Server errored without throwing — shouldn't happen, but keep state consistent
+        setError("couldn't send the code. try again.");
+        setPhase("idle");
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.toLowerCase().includes("already linked")) {
+        setError("this number is already linked to another account.");
+      } else if (msg.toLowerCase().includes("too many")) {
+        setError("too many code requests. try again in a few minutes.");
+      } else if (msg.toLowerCase().includes("invalid phone")) {
+        setError("that number doesn't look right. double-check and try again.");
+      } else {
+        setError(msg || "couldn't send the code. check your connection and try again.");
+        console.error("[PhoneNumberCard] sendCode failed:", err);
+      }
+      setPhase("idle");
+    }
+  };
+
+  const verifyCode = async () => {
+    if (otp.length !== 6 || phase === "verifying") return;
+    setError("");
+    setPhase("verifying");
+    try {
+      const token = await getIdToken();
+      if (!token) {
+        setError("session expired. close and reopen the app.");
+        setPhase("sent");
+        return;
+      }
+
+      const res = await apiFetch<{
+        success: boolean;
+        data?: { phone_verified_at: string };
+      }>("/api/auth/whatsapp-otp/verify", {
+        method: "POST",
+        token,
+        body: JSON.stringify({ phone: value, code: otp }),
+      });
+
+      if (res.data?.phone_verified_at) {
+        verifiedPhoneRef.current = value;
+        onVerified(res.data.phone_verified_at);
+        setPhase("idle");
+        setOtp("");
+      } else {
+        setError("couldn't verify. try once more.");
+        setPhase("sent");
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.toLowerCase().includes("wrong code")) {
+        setError("wrong code — try again.");
+      } else if (msg.toLowerCase().includes("expired")) {
+        setError("that code expired. tap resend.");
+      } else if (msg.toLowerCase().includes("too many")) {
+        setError("too many wrong attempts. tap resend.");
+      } else {
+        setError(msg || "couldn't verify. try once more.");
+        console.error("[PhoneNumberCard] verifyCode failed:", err);
+      }
+      setPhase("sent");
+    }
+  };
+
+  const handlePhoneChange = (v: string) => {
+    onChange(v || "");
+    // Changing the number invalidates any current verification + in-flight OTP
+    if (v !== verifiedPhoneRef.current) {
+      verifiedPhoneRef.current = "";
+      if (verifiedAt) onVerified("");
+      setOtp("");
+      setError("");
+      setPhase("idle");
+    }
+  };
 
   return (
     <CardShell animKey="phone">
       <h2 className="mb-2 font-serif text-[28px] font-normal text-cream">your phone number</h2>
       <p className="mb-6 font-sans text-[13px] leading-relaxed text-muted">
-        this is how you&apos;ll sign in next time. you can use your phone number instead of your handle.
+        we&apos;ll send you a one-time code on whatsapp to confirm it&apos;s really you.
       </p>
 
       <div className="phone-input-wrapper">
@@ -427,10 +554,12 @@ function PhoneNumberCard({ value, onChange }: { value: string; onChange: (v: str
           international
           defaultCountry="IN"
           value={value}
-          onChange={(v) => onChange(v || "")}
+          onChange={(v) => handlePhoneChange(v || "")}
+          disabled={isVerified || phase === "sending" || phase === "sent" || phase === "verifying"}
           className="w-full rounded-2xl bg-gate-dark px-4 py-[18px] font-sans text-base text-cream outline-none transition-all duration-300"
           style={{
-            border: `1.5px solid ${valid === false ? "rgba(196,112,77,0.4)" : valid === true ? "rgba(168,181,160,0.38)" : "rgba(155,142,130,0.13)"}`,
+            border: `1.5px solid ${isVerified ? "rgba(168,181,160,0.6)" : valid === false ? "rgba(196,112,77,0.4)" : valid === true ? "rgba(168,181,160,0.38)" : "rgba(155,142,130,0.13)"}`,
+            opacity: isVerified ? 0.7 : 1,
           }}
           numberInputProps={{
             className: "bg-transparent text-cream outline-none font-sans text-base w-full",
@@ -444,8 +573,74 @@ function PhoneNumberCard({ value, onChange }: { value: string; onChange: (v: str
       {valid === false && value && (
         <p className="mt-1.5 font-sans text-[11px] text-terracotta/70">enter a valid phone number</p>
       )}
-      {valid === true && (
-        <p className="animate-fadeIn mt-1.5 text-center font-mono text-[11px] text-sage">looks good</p>
+
+      {/* Send code button — shown when phone is valid + not yet verified + no OTP in flight */}
+      {valid === true && !isVerified && phase === "idle" && (
+        <button
+          onClick={sendCode}
+          disabled={cooldown > 0}
+          className="mt-3 w-full rounded-xl border-none py-[13px] font-sans text-[14px] font-medium transition-all"
+          style={{
+            background: cooldown > 0 ? "rgba(155,142,130,0.15)" : "rgba(212,165,116,0.18)",
+            color: cooldown > 0 ? "rgba(155,142,130,0.5)" : "#D4A574",
+            cursor: cooldown > 0 ? "default" : "pointer",
+          }}
+        >
+          {cooldown > 0 ? `resend in ${cooldown}s` : "send code on whatsapp →"}
+        </button>
+      )}
+
+      {phase === "sending" && (
+        <p className="animate-fadeIn mt-3 text-center font-mono text-[11px] text-muted">sending code...</p>
+      )}
+
+      {/* OTP input — shown after code is sent */}
+      {phase === "sent" || phase === "verifying" ? (
+        <div className="animate-fadeSlideUp mt-4">
+          <p className="mb-2 font-mono text-[11px] uppercase tracking-[2px] text-muted">enter the code from whatsapp</p>
+          <input
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            value={otp}
+            onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            onKeyDown={(e) => e.key === "Enter" && verifyCode()}
+            disabled={phase === "verifying"}
+            placeholder="••••••"
+            className="w-full rounded-2xl bg-gate-dark px-4 py-[18px] text-center font-mono text-2xl tracking-[8px] text-cream outline-none transition-all"
+            style={{ border: "1.5px solid rgba(155,142,130,0.13)" }}
+          />
+          <button
+            onClick={verifyCode}
+            disabled={otp.length !== 6 || phase === "verifying"}
+            className="mt-3 w-full rounded-xl border-none py-[13px] font-sans text-[14px] font-medium transition-all"
+            style={{
+              background: otp.length === 6 ? "#D4A574" : "rgba(155,142,130,0.15)",
+              color: otp.length === 6 ? "#0E0D0B" : "rgba(155,142,130,0.5)",
+              cursor: otp.length === 6 && phase !== "verifying" ? "pointer" : "default",
+            }}
+          >
+            {phase === "verifying" ? "verifying..." : "verify"}
+          </button>
+          <button
+            onClick={() => { setPhase("idle"); setOtp(""); setError(""); }}
+            className="mt-2 w-full border-none bg-transparent py-2 font-mono text-[11px] uppercase tracking-[2px] text-muted/60"
+            style={{ cursor: "pointer" }}
+          >
+            change number
+          </button>
+        </div>
+      ) : null}
+
+      {isVerified && (
+        <p className="animate-fadeIn mt-3 text-center font-mono text-[11px] tracking-[2px] text-sage">
+          ✓ phone verified
+        </p>
+      )}
+
+      {error && (
+        <p className="animate-fadeIn mt-3 text-center font-sans text-[12px] text-terracotta/80">{error}</p>
       )}
 
       <div className="mt-4 flex items-start gap-2 rounded-xl px-3 py-2.5" style={{ background: "rgba(155,142,130,0.05)" }}>
@@ -1378,51 +1573,70 @@ function InteractiveConfirmCard({ profile, onEditField }: { profile: ProfileDraf
 }
 
 /* ═══════════════════════════════════════════════
+   STEP LISTS (mode-aware)
+   ═══════════════════════════════════════════════ */
+// Core mode runs at first onboarding — phone+OTP is here to verify every account is a real human.
+// Full mode runs from the community-safety dialog before ticket purchase.
+const CORE_STEPS: readonly number[] = [0, 1, 2, 3, 6, 8];
+const FULL_STEPS: readonly number[] = [4, 5, 7, 9, 10, 11];
+
+/* ═══════════════════════════════════════════════
    MAIN PROFILE SETUP COMPONENT
    ═══════════════════════════════════════════════ */
-export function ProfileSetup() {
-  const { user, setUser, onboardingSource } = useAppStore();
+export type ProfileSetupMode = "core" | "full";
+
+export function ProfileSetup({ mode = "core" }: { mode?: ProfileSetupMode } = {}) {
+  const { user, setUser, onboardingSource, setFullProfileMode, setStage } = useAppStore();
   const { getIdToken } = useAuth();
   const isChatbot = onboardingSource === "landing_chatbot";
-  const totalSteps = 12;
+  const stepList = mode === "full" ? FULL_STEPS : CORE_STEPS;
+  const totalSteps = stepList.length;
 
-  // Initialize draft from user data (for chatbot pre-fill)
-  const [step, setStep] = useState(0);
+  // Initialize draft — seed from existing user fields so full mode shows what was already saved.
+  const [step, setStep] = useState<number>(stepList[0]);
+  const [editReturnStep, setEditReturnStep] = useState<number | null>(null);
   const [submitError, setSubmitError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [profile, setProfile] = useState<ProfileDraft>(() => ({
     avatar: null,
-    name: isChatbot && user?.name ? user.name : "",
-    handle: isChatbot && user?.handle ? user.handle.replace(/^@/, "") : "",
-    instagram: isChatbot && user?.instagram_handle ? user.instagram_handle.replace(/^@/, "") : "",
+    name: user?.name ?? (isChatbot && user?.name ? user.name : ""),
+    handle: user?.handle ? user.handle.replace(/^@/, "") : "",
+    instagram: user?.instagram_handle ? user.instagram_handle.replace(/^@/, "") : "",
     phone: user?.phone_number || "",
-    area: "",
-    dob: "",
-    showAge: true,
-    gender: "",
-    hotTake: "",
-    bio: "",
-    interests: [],
-    vibeTag: "",
-    intent: "",
-    source: "",
-    email: "",
+    phoneVerifiedAt: user?.phone_verified_at ?? "",
+    area: user?.area ?? "",
+    dob: user?.date_of_birth ?? "",
+    showAge: user?.show_age ?? true,
+    gender: user?.gender ?? "",
+    hotTake: user?.hot_take ?? "",
+    bio: user?.bio ?? "",
+    interests: user?.interests ?? [],
+    vibeTag: user?.vibe_tag ?? "",
+    intent: user?.community_intent ?? "",
+    source: user?.referral_source ?? "",
+    email: user?.email ?? "",
     pin: "",
     pinConfirm: "",
   }));
+
+  const displayStep = Math.max(0, stepList.indexOf(step));
+  const isLastDisplayStep = displayStep === totalSteps - 1;
 
   // Restore step position from localStorage on mount
   useEffect(() => {
     if (!user?.id) return;
     try {
-      const saved = localStorage.getItem(STORAGE_KEY_PREFIX + user.id);
+      const saved = localStorage.getItem(STORAGE_KEY_PREFIX + user.id + ":" + mode);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (typeof parsed.step === "number") setStep(Math.min(parsed.step, 10));
+        // Only restore step if it belongs to the current mode's step list
+        if (typeof parsed.step === "number" && stepList.includes(parsed.step)) {
+          setStep(parsed.step);
+        }
         if (parsed.draft) setProfile((prev) => ({ ...prev, ...parsed.draft }));
       }
     } catch { /* ignore */ }
-  }, [user?.id]);
+  }, [user?.id, mode]);
 
   // Restore onboardingSource from localStorage if Zustand lost it
   useEffect(() => {
@@ -1448,7 +1662,7 @@ export function ProfileSetup() {
       }
       case 4: return profile.area.length > 0; // gender (optional) + area
       case 5: return true; // instagram optional
-      case 6: return !profile.phone || isValidPhoneNumber(profile.phone); // phone — optional but must be valid if entered
+      case 6: return !!profile.phone && isValidPhoneNumber(profile.phone) && !!profile.phoneVerifiedAt; // phone required + verified in full mode
       case 7: return true; // personality all optional
       case 8: return profile.interests.length >= 1; // interests
       case 9: return profile.intent.length > 0; // intent + source (source optional)
@@ -1464,8 +1678,8 @@ export function ProfileSetup() {
       const token = await getIdToken();
       if (!token || !user?.id) return;
 
-      // Save step + draft to localStorage
-      try { localStorage.setItem(STORAGE_KEY_PREFIX + user.id, JSON.stringify({ step: currentStep, draft: currentProfile })); } catch { /* quota exceeded or private browsing */ }
+      // Save step + draft to localStorage (mode-scoped)
+      try { localStorage.setItem(STORAGE_KEY_PREFIX + user.id + ":" + mode, JSON.stringify({ step: currentStep, draft: currentProfile })); } catch { /* quota exceeded or private browsing */ }
 
       // Build partial updates from filled fields
       const updates: Record<string, unknown> = {};
@@ -1500,22 +1714,52 @@ export function ProfileSetup() {
         }).catch((err: unknown) => { console.warn("[ProfileSetup] partial save failed:", err); });
       }
     } catch (err) { console.warn("[ProfileSetup] partial save error:", err); }
-  }, [getIdToken, user?.id]);
+  }, [getIdToken, user?.id, mode]);
 
   const next = async () => {
-    if (step === totalSteps - 1) {
-      // Final submit
+    if (!canProceed()) return;
+
+    // Editing-from-confirm flow: jump back to confirm card after a single edit step
+    if (editReturnStep !== null) {
+      const target = editReturnStep;
+      setEditReturnStep(null);
+      setStep(target);
+      savePartialProgress(profile, target);
+      return;
+    }
+
+    // Final step → submit
+    if (isLastDisplayStep) {
       await submitProfile();
       return;
     }
-    if (canProceed()) {
-      const nextStep = step + 1;
-      setStep(nextStep);
-      savePartialProgress(profile, nextStep);
-    }
+
+    const nextActual = stepList[displayStep + 1];
+    setStep(nextActual);
+    savePartialProgress(profile, nextActual);
   };
 
-  const back = () => { if (step > 0) setStep(step - 1); };
+  const back = () => {
+    if (editReturnStep !== null) {
+      const target = editReturnStep;
+      setEditReturnStep(null);
+      setStep(target);
+      return;
+    }
+    if (displayStep > 0) setStep(stepList[displayStep - 1]);
+  };
+
+  const exitFullMode = () => {
+    if (user?.id) {
+      try { localStorage.removeItem(STORAGE_KEY_PREFIX + user.id + ":full"); } catch { /* ignore */ }
+    }
+    setFullProfileMode(false);
+    // If they came from a purchase, let them out to countdown — they have a real ticket.
+    // We don't bounce them through the sign quiz here; the existing feed banner + future
+    // post-purchase nudges can prompt them later. The dialog already gave them the choice.
+    const { activeTicket, activeRsvp } = useAppStore.getState();
+    setStage(activeTicket || activeRsvp ? "countdown" : "feed");
+  };
 
   const update = (key: keyof ProfileDraft) => (val: ProfileDraft[typeof key]) => {
     setProfile((p) => ({ ...p, [key]: val }));
@@ -1534,6 +1778,9 @@ export function ProfileSetup() {
         handle: profile.handle || user?.handle || "",
         has_completed_profile: true,
       };
+      if (mode === "full") {
+        updates.has_completed_full_profile = true;
+      }
 
       if (profile.instagram) updates.instagram_handle = profile.instagram.replace(/^@/, "");
       if (profile.phone && isValidPhoneNumber(profile.phone)) updates.phone_number = profile.phone;
@@ -1591,26 +1838,43 @@ export function ProfileSetup() {
           handle: updates.handle as string,
           instagram_handle: profile.instagram || user.instagram_handle,
           phone_number: profile.phone || user.phone_number,
-          area: profile.area || undefined,
-          date_of_birth: profile.dob || undefined,
+          phone_verified_at: profile.phoneVerifiedAt || user.phone_verified_at,
+          area: profile.area || user.area,
+          date_of_birth: profile.dob || user.date_of_birth,
           show_age: profile.showAge,
-          gender: profile.gender as User["gender"],
-          hot_take: profile.hotTake || undefined,
-          bio: profile.bio || undefined,
-          interests: profile.interests.length > 0 ? profile.interests : undefined,
+          gender: (profile.gender as User["gender"]) || user.gender,
+          hot_take: profile.hotTake || user.hot_take,
+          bio: profile.bio || user.bio,
+          interests: profile.interests.length > 0 ? profile.interests : user.interests,
           vibe_tag: profile.vibeTag || user.vibe_tag,
-          community_intent: profile.intent || undefined,
-          referral_source: profile.source || undefined,
+          community_intent: profile.intent || user.community_intent,
+          referral_source: profile.source || user.referral_source,
           has_completed_profile: true,
-          avatar_url: profile.avatar?.type === "gradient" ? `gradient:${profile.avatar.index}` : profile.avatar?.dataUrl || undefined,
-          avatar_type: profile.avatar?.type || undefined,
-          onboarding_source: onboardingSource || undefined,
+          has_completed_full_profile: mode === "full" ? true : user.has_completed_full_profile,
+          avatar_url: profile.avatar?.type === "gradient" ? `gradient:${profile.avatar.index}` : profile.avatar?.dataUrl || user.avatar_url,
+          avatar_type: profile.avatar?.type || user.avatar_type,
+          onboarding_source: onboardingSource || user.onboarding_source,
         });
       }
 
-      // Clear localStorage
+      // Clear localStorage for this mode
       if (user?.id) {
-        localStorage.removeItem(STORAGE_KEY_PREFIX + user.id);
+        localStorage.removeItem(STORAGE_KEY_PREFIX + user.id + ":" + mode);
+      }
+
+      // Full-mode finish: clear the wizard flag, then decide where to go next.
+      // Priority: active ticket/RSVP + no sign → sign_quiz; ticket only → countdown; else feed.
+      if (mode === "full") {
+        setFullProfileMode(false);
+        const { activeTicket, activeRsvp, user: storeUser } = useAppStore.getState();
+        const hasActive = !!(activeTicket || activeRsvp);
+        if (hasActive && !storeUser?.sign) {
+          setStage("sign_quiz");
+        } else if (hasActive) {
+          setStage("countdown");
+        } else {
+          setStage("feed");
+        }
       }
     } catch (err) {
       console.error("[ProfileSetup] submit error:", err);
@@ -1633,23 +1897,32 @@ export function ProfileSetup() {
       case 3: return <DobPickerCard dob={profile.dob} showAge={profile.showAge} onChangeDob={update("dob") as (v: string) => void} onChangeShowAge={update("showAge") as (v: boolean) => void} />;
       case 4: return <GenderAreaCard gender={profile.gender} area={profile.area} onChangeGender={update("gender") as (v: string) => void} onChangeArea={update("area") as (v: string) => void} />;
       case 5: return <InstagramCard value={profile.instagram} onChange={update("instagram") as (v: string) => void} email={profile.email} onChangeEmail={update("email") as (v: string) => void} prefilled={isChatbot && !!user?.instagram_handle} />;
-      case 6: return <PhoneNumberCard value={profile.phone} onChange={update("phone") as (v: string) => void} />;
+      case 6: return <PhoneNumberCard
+        value={profile.phone}
+        onChange={update("phone") as (v: string) => void}
+        verifiedAt={profile.phoneVerifiedAt}
+        onVerified={(ts) => setProfile((p) => ({ ...p, phoneVerifiedAt: ts }))}
+      />;
       case 7: return <PersonalityCard hotTake={profile.hotTake} bio={profile.bio} vibeTag={profile.vibeTag} onChangeHotTake={update("hotTake") as (v: string) => void} onChangeBio={update("bio") as (v: string) => void} onChangeVibeTag={update("vibeTag") as (v: string) => void} prefilled={isChatbot} />;
       case 8: return <InterestsCard value={profile.interests} onChange={update("interests") as (v: string[]) => void} />;
       case 9: return <IntentSourceCard intent={profile.intent} source={profile.source} onChangeIntent={update("intent") as (v: string) => void} onChangeSource={update("source") as (v: string) => void} />;
       case 10: return <PinSetupCard pin={profile.pin} pinConfirm={profile.pinConfirm} onChangePin={update("pin") as (v: string) => void} onChangePinConfirm={update("pinConfirm") as (v: string) => void} />;
-      case 11: return <InteractiveConfirmCard profile={profile} onEditField={(s) => setStep(s)} />;
+      case 11: return <InteractiveConfirmCard profile={profile} onEditField={(s) => { setEditReturnStep(11); setStep(s); }} />;
       default: return null;
     }
   };
 
   const getButtonLabel = () => {
+    if (editReturnStep !== null) return "save \u2192";
+    if (isLastDisplayStep) {
+      if (step === 8 && mode === "core") return "show me what\u2019s coming up \u2192";
+      if (step === 11) return "that\u2019s me \u2192";
+      return "done \u2192";
+    }
     if (step === 0) return "let\u2019s go \u2192";
-    if (step === 11) return "that\u2019s me \u2192";
     // Optional fields: show "skip" when empty
     if (step === 1 && !profile.avatar) return "skip \u2192";
     if (step === 5 && !profile.instagram) return "skip \u2192";
-    if (step === 6 && !profile.phone) return "skip \u2192";
     if (step === 7 && !profile.hotTake && !profile.bio && !profile.vibeTag) return "skip \u2192";
     return "next \u2192";
   };
@@ -1666,17 +1939,21 @@ export function ProfileSetup() {
 
       {/* Top bar */}
       <div className="relative z-[2] flex items-center justify-between px-7 pt-5">
-        {step > 0 ? (
+        {displayStep > 0 || editReturnStep !== null ? (
           <button onClick={back} className="border-none bg-transparent py-2 font-sans text-sm text-muted" style={{ cursor: "pointer" }}>
             {"\u2190"} back
           </button>
+        ) : mode === "full" ? (
+          <button onClick={exitFullMode} className="border-none bg-transparent py-2 font-sans text-sm text-muted" style={{ cursor: "pointer" }}>
+            {"\u2715"} close
+          </button>
         ) : <div />}
-        <span className="font-mono text-[10px] tracking-[1px]" style={{ color: "rgba(155,142,130,0.25)" }}>{step + 1}/{totalSteps}</span>
+        <span className="font-mono text-[10px] tracking-[1px]" style={{ color: "rgba(155,142,130,0.25)" }}>{displayStep + 1}/{totalSteps}</span>
       </div>
 
       {/* Progress dots */}
       <div className="relative z-[2] px-7 py-4">
-        <ProgressBar total={totalSteps} current={step} />
+        <ProgressBar total={totalSteps} current={displayStep} />
       </div>
 
       {/* Card */}
@@ -1692,7 +1969,7 @@ export function ProfileSetup() {
           </p>
         )}
         <NextButton onClick={next} disabled={!canProceed() || submitting} label={submitting ? "saving..." : getButtonLabel()} />
-        {step >= 3 && step < 10 && (
+        {mode === "core" && step >= 3 && step < 10 && (
           <button
             onClick={async () => {
               if (submitting) return;
@@ -1736,7 +2013,7 @@ export function ProfileSetup() {
                 if (user) {
                   setUser({ ...user, ...updates, has_completed_profile: true, has_completed_onboarding: true } as typeof user);
                 }
-                if (user?.id) localStorage.removeItem(STORAGE_KEY_PREFIX + user.id);
+                if (user?.id) localStorage.removeItem(STORAGE_KEY_PREFIX + user.id + ":" + mode);
               } catch (err) {
                 console.error("[ProfileSetup] finish later error:", err);
                 setSubmitError("couldn\u2019t save. check your connection and try again.");

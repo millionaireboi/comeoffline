@@ -35,25 +35,34 @@ export async function getValidationQueue(eventId?: string, limit = 30): Promise<
 
   const userIds = usersSnap.docs.map((d) => d.id);
 
-  // Batch query all tickets for provisional users
-  let ticketsQuery = db
-    .collection("tickets")
-    .where("user_id", "in", userIds.slice(0, 30)) // Firestore 'in' limit is 30
-    .where("status", "in", ["checked_in", "confirmed"]);
+  // Batch query all tickets for provisional users.
+  // Note: combining `where in user_id` (up to 30 values) with `where in status` (2 values)
+  // expands to 60 disjunctions, exceeding Firestore's max of 30. Split into two queries by
+  // status and merge the results.
+  const userIdsBatch = userIds.slice(0, 30); // Firestore 'in' limit is 30
+  const ticketStatuses: ("checked_in" | "confirmed")[] = ["checked_in", "confirmed"];
 
-  if (eventId) {
-    ticketsQuery = ticketsQuery.where("event_id", "==", eventId);
-  }
+  const ticketSnaps = await Promise.all(
+    ticketStatuses.map((status) => {
+      let q = db
+        .collection("tickets")
+        .where("user_id", "in", userIdsBatch)
+        .where("status", "==", status);
+      if (eventId) q = q.where("event_id", "==", eventId);
+      return q.get();
+    }),
+  );
 
-  const ticketsSnap = await ticketsQuery.get();
   const ticketsByUser = new Map<string, FirebaseFirestore.QueryDocumentSnapshot[]>();
-  ticketsSnap.docs.forEach((doc) => {
-    const userId = doc.data().user_id;
-    if (!ticketsByUser.has(userId)) {
-      ticketsByUser.set(userId, []);
-    }
-    ticketsByUser.get(userId)!.push(doc);
-  });
+  for (const snap of ticketSnaps) {
+    snap.docs.forEach((doc) => {
+      const userId = doc.data().user_id;
+      if (!ticketsByUser.has(userId)) {
+        ticketsByUser.set(userId, []);
+      }
+      ticketsByUser.get(userId)!.push(doc);
+    });
+  }
 
   // Batch query all connections for provisional users
   const connectionsSnap = await db

@@ -5,6 +5,7 @@ import { onAuthStateChanged, signInWithCustomToken, signOut } from "firebase/aut
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "@comeoffline/firebase";
 import { useAppStore } from "@/store/useAppStore";
+import { getDevStageOverride } from "@/lib/dev-stage";
 import type { User } from "@comeoffline/types";
 
 export function useAuth() {
@@ -12,6 +13,12 @@ export function useAuth() {
   const { user, setUser, setStage } = useAppStore();
 
   useEffect(() => {
+    // Dev preview mode skips auth entirely so the requested screen renders unauthed.
+    if (getDevStageOverride()) {
+      setLoading(false);
+      return;
+    }
+
     let lastUserId: string | null = null; // Track last processed user to prevent duplicate fetches
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {

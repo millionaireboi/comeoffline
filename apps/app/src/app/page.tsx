@@ -1,14 +1,16 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { usePWAInstall } from "@/hooks/usePWAInstall";
+import { useStandaloneTracking } from "@/hooks/useStandaloneTracking";
 import { useTokenHandoff } from "@/hooks/useTokenHandoff";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useStage } from "@/hooks/useStage";
 import { useNavigationHistory } from "@/hooks/useNavigationHistory";
 import { useAppStore } from "@/store/useAppStore";
 import { apiFetch } from "@/lib/api";
+import { isFullProfileComplete } from "@/lib/profile-completion";
 import type { Ticket, Event } from "@comeoffline/types";
 import { TheGate } from "@/components/gates/TheGate";
 import { PWAInstallPrompt } from "@/components/shared/PWAInstallPrompt";
@@ -32,16 +34,21 @@ import { InAppChat } from "@/components/chat/InAppChat";
 import { BottomNav } from "@/components/shared/BottomNav";
 import { Toast } from "@/components/shared/Toast";
 import { SignInScreen } from "@/components/gates/SignInScreen";
+import { CommunitySafetyDialog } from "@/components/gates/CommunitySafetyDialog";
+import { getDevStageOverride, MOCK_EVENT } from "@/lib/dev-stage";
 
 export default function Home() {
   const { loading, getIdToken, logout } = useAuth();
   const { triggerPrompt } = usePWAInstall();
   const { checking: tokenChecking } = useTokenHandoff();
   usePushNotifications();
+  useStandaloneTracking(); // Pings server with first-install timestamp + session count
   useStage(); // Auto stage transitions based on event dates + ticket/RSVP status
   useNavigationHistory(); // Browser back button / swipe-back support
   const stage = useAppStore((s) => s.stage);
   const user = useAppStore((s) => s.user);
+  const fullProfileMode = useAppStore((s) => s.fullProfileMode);
+  const showCompletionDialog = useAppStore((s) => s.showCompletionDialog);
   const [chatOpen, setChatOpen] = useState(false);
   const [quizActive, setQuizActive] = useState(false);
   const [showSignIn, setShowSignIn] = useState(false);
@@ -50,6 +57,16 @@ export default function Home() {
   const prevStageRef = useRef(stage);
   const ticketRestorationDone = useRef(false);
   const prevStageForPrompt = useRef<string | null>(null);
+
+  // Dev preview mode: jump straight to memories/reconnect with mock data.
+  // Activated by `?devStage=memories|reconnect&mock=1`. Disabled in production.
+  const devOverride = useMemo(() => getDevStageOverride(), []);
+  useEffect(() => {
+    if (!devOverride) return;
+    const { setStage, setCurrentEvent } = useAppStore.getState();
+    setCurrentEvent(MOCK_EVENT);
+    setStage(devOverride.stage);
+  }, [devOverride]);
 
   // Reset sign-in view when leaving the gate stage (e.g. after successful login)
   useEffect(() => {
@@ -165,10 +182,18 @@ export default function Home() {
           if (!signal.cancelled) {
             const ticket = ticketRes.data?.find((t) => t.id === ticketId);
             if (ticket && eventRes.data) {
-              const { setActiveTicket, setCurrentEvent, setStage } = useAppStore.getState();
+              const { setActiveTicket, setCurrentEvent, setStage, setShowCompletionDialog, user: storeUser } = useAppStore.getState();
               setCurrentEvent(eventRes.data);
               setActiveTicket(ticket);
-              setStage("countdown");
+              // Same post-purchase routing as EventFeed: full-profile dialog → sign quiz → countdown.
+              if (!isFullProfileComplete(storeUser)) {
+                setStage("countdown");
+                setShowCompletionDialog(true);
+              } else if (!storeUser?.sign) {
+                setStage("sign_quiz");
+              } else {
+                setStage("countdown");
+              }
             }
             setPaymentProcessing(false);
           }
@@ -311,14 +336,24 @@ export default function Home() {
       screen = <AcceptanceScreen />;
       break;
     case "profile_setup":
-      screen = <ProfileSetup />;
+      screen = <ProfileSetup mode={fullProfileMode && user?.has_completed_profile ? "full" : "core"} />;
       break;
     case "app_education":
       screen = <AppEducation />;
       break;
     case "sign_quiz":
       screen = quizActive
-        ? <SignQuiz onComplete={() => { setQuizActive(false); }} mode="onboarding" />
+        ? <SignQuiz
+            onComplete={() => {
+              setQuizActive(false);
+              // After the quiz finishes, route based on whether the user came from a purchase.
+              // Active ticket/RSVP → countdown (post-purchase journey continues).
+              // Otherwise → feed (they took the quiz from the feed banner).
+              const { activeTicket, activeRsvp, setStage } = useAppStore.getState();
+              setStage(activeTicket || activeRsvp ? "countdown" : "feed");
+            }}
+            mode="onboarding"
+          />
         : <SignQuizOffer onStartQuiz={() => setQuizActive(true)} />;
       break;
     case "feed":
@@ -371,6 +406,19 @@ export default function Home() {
       {chatOpen && <InAppChat onClose={() => setChatOpen(false)} />}
       <PWAInstallPrompt />
       <Toast />
+      {showCompletionDialog && (
+        <CommunitySafetyDialog
+          onContinue={() => {
+            const { setShowCompletionDialog, setFullProfileMode, setStage } = useAppStore.getState();
+            setShowCompletionDialog(false);
+            setFullProfileMode(true);
+            setStage("profile_setup");
+          }}
+          onLater={() => {
+            useAppStore.getState().setShowCompletionDialog(false);
+          }}
+        />
+      )}
     </>
   );
 }

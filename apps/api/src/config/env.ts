@@ -36,4 +36,9 @@ export const env = {
   razorpayWebhookSecret: requireEnv("RAZORPAY_WEBHOOK_SECRET"),
   appUrl: process.env.APP_URL || "http://localhost:3001",
   qrSigningSecret: requireEnv("QR_SIGNING_SECRET"),
+  whatsappPhoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || "",
+  whatsappAccessToken: process.env.WHATSAPP_ACCESS_TOKEN || "",
+  whatsappVerifyToken: process.env.WHATSAPP_VERIFY_TOKEN || "",
+  whatsappAppSecret: process.env.WHATSAPP_APP_SECRET || "",
+  whatsappWabaId: process.env.WHATSAPP_WABA_ID || "",
 } as const;

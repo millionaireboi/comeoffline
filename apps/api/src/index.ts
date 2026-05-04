@@ -8,6 +8,7 @@ import healthRouter from "./routes/health";
 import authRouter from "./routes/auth";
 import eventsRouter, { publicEventsRouter } from "./routes/events";
 import adminEventsRouter from "./routes/admin/events";
+import adminEventWhatsappRouter from "./routes/admin/event-whatsapp";
 import rsvpRouter from "./routes/rsvp";
 import waitlistRouter from "./routes/waitlist";
 import memoriesRouter from "./routes/memories";
@@ -30,7 +31,9 @@ import brandsRouter from "./routes/brands";
 import adminUploadRouter from "./routes/admin/upload";
 import adminFloorplanRouter from "./routes/admin/floorplan";
 import adminBookingsRouter from "./routes/admin/bookings";
+import adminWhatsappRouter from "./routes/admin/whatsapp";
 import webhooksRouter from "./routes/webhooks";
+import whatsappWebhookRouter from "./routes/webhooks-whatsapp";
 import { shutdownPostHog } from "./config/posthog";
 
 const app = express();
@@ -53,6 +56,7 @@ app.use("/api/events/public", publicEventsRouter);
 
 // Admin routes — only adminLimiter, exempt from generalLimiter to avoid double-counting
 app.use("/api/admin/events", adminLimiter, adminEventsRouter);
+app.use("/api/admin/events", adminLimiter, adminEventWhatsappRouter);
 app.use("/api/admin/events", adminLimiter, adminContentRouter);
 app.use("/api/admin/applications", adminLimiter, applicationsRouter);
 app.use("/api/admin/members", adminLimiter, adminMembersRouter);
@@ -66,6 +70,7 @@ app.use("/api/admin/brands", adminLimiter, brandsRouter);
 app.use("/api/admin", adminLimiter, adminUploadRouter);
 app.use("/api/admin", adminLimiter, adminFloorplanRouter);
 app.use("/api/admin/bookings", adminLimiter, adminBookingsRouter);
+app.use("/api/admin", adminLimiter, adminWhatsappRouter);
 
 // Apply general rate limiting to all non-admin routes
 app.use("/api", generalLimiter);
@@ -87,6 +92,7 @@ app.use("/api/events", pollsRouter);
 app.use("/api/contact", formLimiter, contactRouter);
 app.use("/api/brands", formLimiter, brandsRouter);
 app.use("/api/webhooks", webhooksRouter);
+app.use("/api/webhooks/whatsapp", whatsappWebhookRouter);
 
 // Error handling
 app.use(errorHandler);
@@ -212,6 +218,36 @@ app.listen(env.port, () => {
   }, HOLD_CLEANUP_INTERVAL_MS);
 
   console.log("[api] Seat hold cleanup + reconciliation interval started (every 2 min)");
+
+  // ── WhatsApp T-24h reminders + add-to-home-screen nudges ──
+  // Both run on the same 30-min cadence with their own distributed locks + per-user dedup.
+  const WA_CRON_INTERVAL_MS = 30 * 60 * 1000;
+  const fireWaCrons = async () => {
+    try {
+      const { runDayBeforeReminders, runInstallNudges } = await import(
+        "./services/whatsapp-cron.service"
+      );
+      const reminders = await runDayBeforeReminders();
+      if (reminders.triggered && (reminders.sent > 0 || reminders.failed > 0)) {
+        console.log(
+          `[whatsapp-cron] day-before reminders: ${reminders.sent} sent, ${reminders.alreadySent} already-sent, ${reminders.skippedNoPhone} no-phone, ${reminders.failed} failed across ${reminders.eventsConsidered} events`,
+        );
+      }
+      const nudges = await runInstallNudges();
+      if (nudges.triggered && (nudges.sent > 0 || nudges.failed > 0)) {
+        console.log(
+          `[whatsapp-cron] install nudges: ${nudges.sent} sent, ${nudges.alreadySent} already-sent, ${nudges.alreadyInstalled} already-installed, ${nudges.skippedNoPhone} no-phone, ${nudges.failed} failed across ${nudges.candidatesConsidered} candidates`,
+        );
+      }
+    } catch (err) {
+      console.error("[whatsapp-cron] cycle error:", err);
+    }
+  };
+  // Kick off ~60s after boot so a freshly-deployed instance immediately covers any pending
+  // sends, then settle into the 30-min cadence.
+  setTimeout(fireWaCrons, 60_000);
+  setInterval(fireWaCrons, WA_CRON_INTERVAL_MS);
+  console.log("[api] WhatsApp crons started: T-24h reminders + install nudges (every 30 min)");
 });
 
 export default app;

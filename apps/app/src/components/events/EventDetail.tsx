@@ -83,6 +83,8 @@ export function EventDetail({ event, onClose, onRsvp, onTicketPurchase, onJoinWa
   };
 
   const handleCTA = () => {
+    // Purchase / RSVP is no longer gated on the rest of the profile — buying is the highest-intent
+    // moment, so don't block it. The remaining onboarding fields are collected post-purchase.
     if (isTicketed && hasCheckoutWizard && onTicketPurchase) {
       setShowWizard(true);
     } else if (isTicketed && onTicketPurchase && selectedTierId) {
@@ -217,6 +219,7 @@ export function EventDetail({ event, onClose, onRsvp, onTicketPurchase, onJoinWa
           onDone={() => setShowExitSurvey(false)}
         />
       )}
+
     </div>
   );
 }

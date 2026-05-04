@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useAppStore, type AppStage } from "@/store/useAppStore";
+import { getDevStageOverride } from "@/lib/dev-stage";
 import type { Event, RSVP, Ticket } from "@comeoffline/types";
 
 /**
@@ -9,11 +10,14 @@ import type { Event, RSVP, Ticket } from "@comeoffline/types";
  * Polls every 60s to handle time-based transitions (countdown->reveal->dayof).
  */
 export function useStage() {
-  const { user, currentEvent, activeRsvp, activeTicket, stage, setStage, navigationOrigin } = useAppStore();
+  const { user, currentEvent, activeRsvp, activeTicket, stage, setStage, navigationOrigin, fullProfileMode } = useAppStore();
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     function recalculate() {
+      // Dev preview mode: leave stage alone so a `?devStage=...` URL stays sticky.
+      if (getDevStageOverride()) return;
+
       if (!user) {
         setStage("gate");
         return;
@@ -32,16 +36,20 @@ export function useStage() {
         return;
       }
 
+      // Full-profile wizard — triggered from the community-safety dialog before ticket purchase
+      if (fullProfileMode && !user.has_completed_full_profile && !isGrandfathered) {
+        setStage("profile_setup");
+        return;
+      }
+
       if (!user.has_completed_onboarding && !isGrandfathered) {
         setStage("app_education");
         return;
       }
 
-      // Offer sign quiz after onboarding if not yet completed
-      if (!user.sign && !isGrandfathered && !["feed", "sign_quiz", "bookings", "profile", "poll"].includes(stage)) {
-        setStage("sign_quiz");
-        return;
-      }
+      // Note: sign quiz is no longer auto-routed after onboarding. It now triggers
+      // post-purchase from EventFeed/payment-callback/ProfileSetup so it shows up at
+      // a higher-intent moment, when the user has actually committed to an event.
 
       // Manual stages that shouldn't be auto-overridden
       // sign_quiz should only stay manual while the quiz is incomplete
@@ -70,7 +78,7 @@ export function useStage() {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [user, currentEvent, activeRsvp, activeTicket, stage, setStage, navigationOrigin]);
+  }, [user, currentEvent, activeRsvp, activeTicket, stage, setStage, navigationOrigin, fullProfileMode]);
 
   return stage;
 }

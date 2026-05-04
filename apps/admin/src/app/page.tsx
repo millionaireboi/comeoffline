@@ -17,12 +17,13 @@ import { ContactTab } from "@/components/tabs/ContactTab";
 import { BrandsTab } from "@/components/tabs/BrandsTab";
 import { SettingsTab } from "@/components/tabs/SettingsTab";
 import { BookingsTab } from "@/components/tabs/BookingsTab";
+import { WhatsAppTab } from "@/components/tabs/WhatsAppTab";
 import { LoginScreen } from "@/components/tabs/LoginScreen";
 import { TabErrorBoundary } from "@/components/TabErrorBoundary";
 
 const TABS: Tab[] = [
   "dashboard", "events", "bookings", "check-in", "validation", "content",
-  "applications", "members", "invite-codes", "contact", "brands", "settings",
+  "applications", "members", "invite-codes", "contact", "brands", "whatsapp", "settings",
 ];
 
 export default function Home() {
@@ -126,6 +127,7 @@ function AdminDashboard() {
         {tab === "invite-codes" && <TabErrorBoundary tabName="invite-codes" key="invite-codes"><InviteCodesTab /></TabErrorBoundary>}
         {tab === "contact" && <TabErrorBoundary tabName="contact" key="contact"><ContactTab /></TabErrorBoundary>}
         {tab === "brands" && <TabErrorBoundary tabName="brands" key="brands"><BrandsTab /></TabErrorBoundary>}
+        {tab === "whatsapp" && <TabErrorBoundary tabName="whatsapp" key="whatsapp"><WhatsAppTab /></TabErrorBoundary>}
         {tab === "settings" && <TabErrorBoundary tabName="settings" key="settings"><SettingsTab /></TabErrorBoundary>}
       </main>
     </div>

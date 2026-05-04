@@ -9,6 +9,7 @@ import {
   checkInTicket,
   getEventTickets,
   attachPaymentLink,
+  notifyTicketConfirmed,
 } from "../services/ticket.service";
 import { createPaymentLink, cancelPaymentLink } from "../services/razorpay.service";
 import { getDb } from "../config/firebase-admin";
@@ -103,6 +104,12 @@ router.post("/create", requireAuth, strictLimiter, async (req: AuthRequest, res)
       result.ticket.payment_link_id = linkResult.payment_link_id;
     }
 
+    // For free events the ticket is already confirmed — fire WhatsApp confirmation now.
+    // For paid events we wait until the Razorpay webhook flips status to "confirmed".
+    if (result.ticket?.status === "confirmed" && result.ticket?.id) {
+      void notifyTicketConfirmed(result.ticket.id as string);
+    }
+
     res.status(201).json({ success: true, data: result.ticket });
   } catch (err) {
     console.error("[tickets] create error:", err);
@@ -127,6 +134,7 @@ router.post("/confirm-payment", requireAdmin, async (req: AuthRequest, res) => {
       return;
     }
 
+    void notifyTicketConfirmed(ticket_id);
     res.json({ success: true });
   } catch (err) {
     console.error("[tickets] confirm-payment error:", err);

@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { verifyWebhookSignature, fetchPaymentLinkStatus } from "../services/razorpay.service";
-import { confirmPayment } from "../services/ticket.service";
+import { confirmPayment, notifyTicketConfirmed } from "../services/ticket.service";
 import { posthog } from "../config/posthog";
 import { sendFbConversionEvent, hashForFb, isFbConfigured } from "../config/facebook";
 import { getDb } from "../config/firebase-admin";
@@ -83,6 +83,9 @@ router.post("/razorpay", async (req: Request, res: Response) => {
       }
 
       if (result.success) {
+        // WhatsApp ticket-confirmation + complete-profile nudge (fire-and-forget)
+        void notifyTicketConfirmed(ticketId);
+
         const ticketDoc = await db.collection("tickets").doc(ticketId).get();
         const ticket = ticketDoc.data();
 

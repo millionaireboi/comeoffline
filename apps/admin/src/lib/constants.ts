@@ -3,7 +3,7 @@ export const instrumentSerif = {
   variable: "--font-instrument-serif",
 };
 
-export type Tab = "dashboard" | "events" | "bookings" | "check-in" | "validation" | "content" | "applications" | "members" | "invite-codes" | "contact" | "brands" | "settings";
+export type Tab = "dashboard" | "events" | "bookings" | "check-in" | "validation" | "content" | "applications" | "members" | "invite-codes" | "contact" | "brands" | "whatsapp" | "settings";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 

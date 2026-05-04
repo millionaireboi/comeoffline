@@ -18,6 +18,14 @@ export function usePushNotifications() {
     if (!user || registered.current) return;
     if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
 
+    // Skip push registration on local dev hosts — the FCM HTTP API + VAPID setup
+    // isn't worth wiring locally, and the 401 noise drowns out real errors.
+    const host = window.location.hostname;
+    if (host === "localhost" || host === "127.0.0.1" || /^192\.168\./.test(host) || host.endsWith(".local")) {
+      registered.current = true;
+      return;
+    }
+
     async function setup() {
       try {
         const reg = await navigator.serviceWorker.register("/sw.js");

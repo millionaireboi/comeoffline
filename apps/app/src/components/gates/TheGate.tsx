@@ -200,10 +200,10 @@ export function TheGate({ onSignIn }: { onSignIn?: () => void }) {
               ref={inputRef}
               type="text"
               value={code}
-              onChange={(e) => setCode(e.target.value.toUpperCase().slice(0, 12))}
+              onChange={(e) => setCode(e.target.value.toUpperCase().slice(0, 32))}
               onKeyDown={(e) => e.key === "Enter" && submit()}
               placeholder="enter invite code"
-              maxLength={12}
+              maxLength={32}
               disabled={status === "checking"}
               className="w-full rounded-2xl border-[1.5px] bg-gate-dark px-5 py-[18px] text-center font-mono text-base uppercase tracking-[3px] text-cream outline-none transition-all duration-300 placeholder:text-sand"
               style={{

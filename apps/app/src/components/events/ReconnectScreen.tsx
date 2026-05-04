@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppStore } from "@/store/useAppStore";
 import { apiFetch } from "@/lib/api";
+import { getDevStageOverride, MOCK_ATTENDEES } from "@/lib/dev-stage";
 import { Noise } from "@/components/shared/Noise";
 import { PullToRefresh } from "@/components/shared/PullToRefresh";
 
@@ -68,6 +69,11 @@ export function ReconnectScreen() {
   const fetchAttendees = useCallback(async () => {
     if (!currentEvent) return;
     setError(false);
+    if (getDevStageOverride()?.mock) {
+      setAttendees(MOCK_ATTENDEES);
+      setLoading(false);
+      return;
+    }
     try {
       const token = await getIdToken();
       if (!token) { setError(true); setLoading(false); return; }
@@ -92,6 +98,19 @@ export function ReconnectScreen() {
     async (attendee: AttendeeInfo) => {
       if (!currentEvent || timeLeft.expired) return;
       setConnectingId(attendee.id);
+      if (getDevStageOverride()?.mock) {
+        await new Promise((r) => setTimeout(r, 400));
+        const mutual = attendee.id === "u1"; // first attendee mocks as mutual
+        const ig = mutual ? `${attendee.handle}.ig` : undefined;
+        setAttendees((prev) =>
+          prev.map((a) =>
+            a.id === attendee.id ? { ...a, connected: true, mutual, instagram_handle: ig ?? a.instagram_handle } : a,
+          ),
+        );
+        if (mutual) setMutualMatch({ ...attendee, connected: true, mutual: true, instagram_handle: ig });
+        setConnectingId(null);
+        return;
+      }
       try {
         const token = await getIdToken();
         if (!token) return;
@@ -218,49 +237,50 @@ export function ReconnectScreen() {
 
       {/* Attendee list */}
       <section className="flex flex-col gap-3 px-4">
-        {attendees.map((attendee, i) => (
+        {attendees.map((attendee, i) => {
+          const accent = attendee.sign_color || "#D4A574";
+          return (
           <div
             key={attendee.id}
-            className="animate-fadeSlideUp flex items-center gap-4 rounded-[16px] bg-white p-4 shadow-[0_1px_3px_rgba(26,23,21,0.04)]"
+            className="animate-fadeSlideUp flex items-center gap-4 rounded-[18px] bg-white p-4 shadow-[0_1px_3px_rgba(26,23,21,0.04)]"
             style={{ animationDelay: `${0.2 + i * 0.06}s` }}
           >
-            <div
-              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-xl"
-              style={{ background: attendee.sign_color ? attendee.sign_color + "20" : "#D4A57420" }}
-            >
-              {attendee.sign_emoji || attendee.name.charAt(0)}
+            <div className="relative shrink-0">
+              <div
+                className="flex h-14 w-14 items-center justify-center rounded-full text-[26px]"
+                style={{
+                  background: accent + "1F",
+                  boxShadow: `0 0 0 2.5px ${accent}`,
+                }}
+              >
+                {attendee.sign_emoji || attendee.name.charAt(0)}
+              </div>
+              {attendee.compat_score != null && (
+                <div
+                  className="absolute -bottom-1 -right-1 flex h-[22px] min-w-[34px] items-center justify-center rounded-full bg-white px-1 shadow-[0_2px_6px_rgba(26,23,21,0.12)]"
+                  style={{ border: `1.5px solid ${accent}` }}
+                >
+                  <span className="font-mono text-[10px] font-semibold leading-none" style={{ color: accent }}>
+                    {attendee.compat_score}%
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="flex-1 overflow-hidden">
-              <div className="flex items-center gap-2">
-                <p className="font-sans text-[15px] font-medium text-near-black">{attendee.name}</p>
-                {attendee.compat_score != null && (
-                  <span
-                    className="rounded-full px-1.5 py-0.5 font-mono text-[9px] font-medium"
-                    style={{
-                      color: attendee.sign_color || "#D4A574",
-                      background: (attendee.sign_color || "#D4A574") + "15",
-                    }}
-                  >
-                    {attendee.compat_score}%
-                  </span>
-                )}
-              </div>
+              <p className="font-sans text-[16px] font-medium leading-tight text-near-black">{attendee.name}</p>
               <p className="font-mono text-[10px] text-muted">@{attendee.handle}</p>
-              <div className="mt-1 flex items-center gap-1.5">
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
                 {attendee.sign_label && (
                   <span
-                    className="inline-block rounded-full px-2 py-0.5 font-mono text-[9px] italic"
-                    style={{
-                      color: attendee.sign_color || "#D4A574",
-                      background: (attendee.sign_color || "#D4A574") + "15",
-                    }}
+                    className="inline-flex items-center rounded-full px-2.5 py-1 font-mono text-[10px] font-medium tracking-tight"
+                    style={{ color: accent, background: accent + "1A" }}
                   >
                     {attendee.sign_label}
                   </span>
                 )}
                 {attendee.compat_label && (
-                  <span className="font-mono text-[9px] text-muted">
+                  <span className="font-mono text-[10px] text-muted">
                     {attendee.compat_emoji} {attendee.compat_label}
                   </span>
                 )}
@@ -269,9 +289,20 @@ export function ReconnectScreen() {
 
             <div className="shrink-0">
               {attendee.mutual ? (
-                <div className="text-center">
-                  <span className="block text-xs">&#x1F91D;</span>
-                  <span className="font-mono text-[9px] text-sage">mutual</span>
+                <div className="flex flex-col items-end gap-1">
+                  <span className="text-sm leading-none">&#x1F91D;</span>
+                  {attendee.instagram_handle ? (
+                    <a
+                      href={`https://instagram.com/${attendee.instagram_handle}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-mono text-[10px] font-medium text-sage underline-offset-2 hover:underline"
+                    >
+                      @{attendee.instagram_handle}
+                    </a>
+                  ) : (
+                    <span className="font-mono text-[9px] text-sage">mutual</span>
+                  )}
                 </div>
               ) : attendee.connected ? (
                 <span className="font-mono text-[10px] text-muted">sent &#x2713;</span>
@@ -289,7 +320,8 @@ export function ReconnectScreen() {
               )}
             </div>
           </div>
-        ))}
+          );
+        })}
 
         {attendees.length === 0 && (
           <div className="animate-fadeSlideUp py-12 text-center" style={{ animationDelay: "0.2s" }}>

@@ -1,10 +1,14 @@
 import { Router } from "express";
 import crypto from "crypto";
+import { isValidPhoneNumber } from "libphonenumber-js";
 import { validateCode, validateHandoffToken, chatbotEntry, signInByHandle, generateHandoffToken } from "../services/auth.service";
 import { strictLimiter, signInLimiter } from "../middleware/rateLimit";
 import { isValidPin, verifyPin, hashPin } from "../services/pin.service";
 import { sendPinResetEmail } from "../services/email.service";
 import { getDb } from "../config/firebase-admin";
+import { requireAuth, type AuthRequest } from "../middleware/auth";
+import { sendPhoneOtp, verifyPhoneOtp } from "../services/whatsapp-otp.service";
+import { updateUserProfile } from "../services/profile.service";
 
 const router = Router();
 
@@ -339,6 +343,98 @@ router.post("/chatbot-entry", strictLimiter, async (req, res) => {
     });
   } catch (err) {
     console.error("[auth] chatbot-entry error:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+});
+
+/**
+ * POST /api/auth/whatsapp-otp/send — request a 6-digit OTP delivered via WhatsApp.
+ *
+ * Replaces Firebase Phone Auth's verification step with WhatsApp Cloud API. The caller
+ * must already be signed in (custom token from invite code) so we know which user the
+ * OTP record belongs to. Phone uniqueness is enforced — can't send an OTP to a number
+ * already verified by another account.
+ */
+router.post("/whatsapp-otp/send", requireAuth, strictLimiter, async (req: AuthRequest, res) => {
+  try {
+    const { phone } = req.body as { phone?: string };
+
+    if (!phone || typeof phone !== "string" || !isValidPhoneNumber(phone)) {
+      res.status(400).json({ success: false, error: "Invalid phone number. Please use international format (e.g. +919876543210)" });
+      return;
+    }
+
+    // Phone uniqueness — block sending to a number another active user owns
+    const db = await getDb();
+    const existingPhone = await db.collection("users")
+      .where("phone_number", "==", phone)
+      .limit(1)
+      .get();
+    if (!existingPhone.empty && existingPhone.docs[0].id !== req.uid) {
+      res.status(409).json({ success: false, error: "This phone number is already linked to another account" });
+      return;
+    }
+
+    const result = await sendPhoneOtp(req.uid!, phone);
+    if (!result.ok) {
+      const status = result.error.toLowerCase().includes("too many") ? 429 : 500;
+      res.status(status).json({ success: false, error: result.error, retry_after_seconds: result.retry_after_seconds });
+      return;
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("[auth] whatsapp-otp/send error:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+});
+
+/**
+ * POST /api/auth/whatsapp-otp/verify — confirm the 6-digit OTP and mark the phone verified.
+ *
+ * On success, persists `phone_number` + `phone_verified_at` on the user record. Same trust
+ * outcome as the previous Firebase Phone Auth path — the rest of the app reads
+ * `user.phone_verified_at` to gate flows.
+ */
+router.post("/whatsapp-otp/verify", requireAuth, strictLimiter, async (req: AuthRequest, res) => {
+  try {
+    const { phone, code } = req.body as { phone?: string; code?: string };
+
+    if (!phone || typeof phone !== "string" || !isValidPhoneNumber(phone)) {
+      res.status(400).json({ success: false, error: "Invalid phone number" });
+      return;
+    }
+    if (!code || typeof code !== "string" || !/^\d{6}$/.test(code)) {
+      res.status(400).json({ success: false, error: "Code must be 6 digits" });
+      return;
+    }
+
+    // Re-check uniqueness at verify time — race-condition guard
+    const db = await getDb();
+    const existingPhone = await db.collection("users")
+      .where("phone_number", "==", phone)
+      .limit(1)
+      .get();
+    if (!existingPhone.empty && existingPhone.docs[0].id !== req.uid) {
+      res.status(409).json({ success: false, error: "This phone number is already linked to another account" });
+      return;
+    }
+
+    const result = await verifyPhoneOtp(req.uid!, phone, code);
+    if (!result.ok) {
+      res.status(400).json({ success: false, error: result.error });
+      return;
+    }
+
+    const verifiedAt = new Date().toISOString();
+    await updateUserProfile(req.uid!, {
+      phone_number: phone,
+      phone_verified_at: verifiedAt,
+    });
+
+    res.json({ success: true, data: { phone_number: phone, phone_verified_at: verifiedAt } });
+  } catch (err) {
+    console.error("[auth] whatsapp-otp/verify error:", err);
     res.status(500).json({ success: false, error: "Internal server error" });
   }
 });

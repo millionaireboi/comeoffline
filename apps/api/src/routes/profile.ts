@@ -34,6 +34,52 @@ router.get("/check-handle/:handle", requireAuth, async (req: AuthRequest, res) =
   }
 });
 
+/**
+ * POST /api/users/me/installed-pwa
+ * Body: { source?: "android-prompt" | "ios-instructions" | "standalone-detected" }
+ *
+ * Idempotent ping called on every standalone-mode page load. Stamps first-install timestamp,
+ * bumps last-standalone-at, increments session counter. Used to track who's actually USING
+ * the installed PWA (not just installed-and-forgotten).
+ */
+router.post("/me/installed-pwa", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const { source } = (req.body ?? {}) as {
+      source?: "android-prompt" | "ios-instructions" | "standalone-detected";
+    };
+    const db = await getDb();
+    const userRef = db.collection("users").doc(req.uid!);
+    const snap = await userRef.get();
+    const existing = snap.data() as
+      | {
+          pwa_installed_at?: string;
+          pwa_install_source?: string;
+          pwa_standalone_session_count?: number;
+        }
+      | undefined;
+    const now = new Date().toISOString();
+    const update: Record<string, unknown> = {
+      pwa_last_standalone_at: now,
+      pwa_standalone_session_count: (existing?.pwa_standalone_session_count ?? 0) + 1,
+    };
+    if (!existing?.pwa_installed_at) {
+      update.pwa_installed_at = now;
+      update.pwa_install_source = source ?? "standalone-detected";
+    }
+    await userRef.set(update, { merge: true });
+    res.json({
+      success: true,
+      data: {
+        first_install: !existing?.pwa_installed_at,
+        session_count: update.pwa_standalone_session_count,
+      },
+    });
+  } catch (err) {
+    console.error("[profile] installed-pwa ping error:", err);
+    res.status(500).json({ success: false, error: "Failed to record install" });
+  }
+});
+
 /** GET /api/users/me — Get current user's profile */
 router.get("/me", requireAuth, async (req: AuthRequest, res) => {
   try {
@@ -57,7 +103,7 @@ router.put("/me", requireAuth, async (req: AuthRequest, res) => {
       avatar_url, avatar_type, area, age_range, gender, hot_take, bio,
       interests, date_of_birth, show_age,
       drink_of_choice, community_intent, referral_source, has_completed_profile,
-      has_completed_onboarding, onboarding_source,
+      has_completed_full_profile, has_completed_onboarding, onboarding_source,
       sign, sign_scores, sign_label, sign_emoji, sign_color, quiz_completed_at,
     } = req.body;
 
@@ -91,6 +137,8 @@ router.put("/me", requireAuth, async (req: AuthRequest, res) => {
     if (phone_number !== undefined) {
       if (phone_number === "") {
         updates.phone_number = "";
+        // Clearing the number invalidates any prior verification
+        updates.phone_verified_at = null;
       } else if (typeof phone_number !== "string" || phone_number.length > 20 || !isValidPhoneNumber(phone_number)) {
         res.status(400).json({ success: false, error: "Invalid phone number. Please use international format (e.g. +919876543210)" }); return;
       } else {
@@ -99,6 +147,13 @@ router.put("/me", requireAuth, async (req: AuthRequest, res) => {
         const existingPhone = await db.collection("users").where("phone_number", "==", phone_number).limit(1).get();
         if (!existingPhone.empty && existingPhone.docs[0].id !== req.uid) {
           res.status(409).json({ success: false, error: "This phone number is already linked to another account" }); return;
+        }
+        // If the number is changing from a previously verified one, clear the verified flag —
+        // verification belongs to a specific number. /me/verify-phone is the only path to set it.
+        const currentDoc = await db.collection("users").doc(req.uid!).get();
+        const currentPhone = currentDoc.exists ? currentDoc.data()?.phone_number : undefined;
+        if (currentPhone && currentPhone !== phone_number) {
+          updates.phone_verified_at = null;
         }
         updates.phone_number = phone_number;
       }
@@ -159,6 +214,7 @@ router.put("/me", requireAuth, async (req: AuthRequest, res) => {
     if (community_intent !== undefined) updates.community_intent = String(community_intent).slice(0, 200);
     if (referral_source !== undefined) updates.referral_source = String(referral_source).slice(0, 100);
     if (has_completed_profile !== undefined) updates.has_completed_profile = !!has_completed_profile;
+    if (has_completed_full_profile !== undefined) updates.has_completed_full_profile = !!has_completed_full_profile;
     if (has_completed_onboarding !== undefined) updates.has_completed_onboarding = !!has_completed_onboarding;
     if (onboarding_source !== undefined) {
       if (!VALID_ONBOARDING_SOURCES.includes(onboarding_source)) {

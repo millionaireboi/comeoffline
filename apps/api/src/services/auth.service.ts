@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import crypto from "crypto";
 import { isCodeUsable, recordCodeUsage } from "./vouch.service";
 import { evaluateVibeCheck } from "./vibe-check.service";
+import { sendPhoneOtp, verifyPhoneOtp } from "./whatsapp-otp.service";
 import type { VouchCode, VouchCodeUsage, DiscoverySource } from "@comeoffline/types";
 
 /** Strip sensitive fields from user data before sending to client */
@@ -374,6 +375,96 @@ export async function signInByHandle(
   // Don't allow inactive users to sign back in
   if (rawData.status === "inactive") {
     return { valid: false, error: "Account is no longer active" };
+  }
+
+  const userData = { id: userDoc.id, ...rawData };
+  const firebaseToken = await auth.createCustomToken(userDoc.id);
+
+  return {
+    valid: true,
+    token: firebaseToken,
+    user: sanitizeUser(userData),
+    has_seen_welcome: (rawData.has_seen_welcome as boolean) ?? false,
+  };
+}
+
+interface PhoneSignInSendResult {
+  ok: boolean;
+  error?: string;
+  retry_after_seconds?: number;
+}
+
+/**
+ * Sign-in path: send a WhatsApp OTP to a phone number that already belongs to a user.
+ *
+ * Unlike the onboarding OTP send (which keys the OTP record by the *currently signed-in*
+ * UID), this path looks up the user by phone first and keys the OTP by their UID. That
+ * way it shares the same per-user rate limits and storage as the onboarding flow.
+ */
+export async function sendSignInOtp(phone: string): Promise<PhoneSignInSendResult> {
+  const db = await getDb();
+
+  const phoneSnap = await db
+    .collection("users")
+    .where("phone_number", "==", phone)
+    .limit(2)
+    .get();
+
+  if (phoneSnap.empty) {
+    return { ok: false, error: "No account found with that phone number" };
+  }
+
+  if (phoneSnap.size > 1) {
+    // Shouldn't happen — uniqueness is enforced at signup — but guard anyway.
+    return { ok: false, error: "Multiple accounts share this number. Please sign in with your handle instead." };
+  }
+
+  const userDoc = phoneSnap.docs[0];
+  const userData = userDoc.data();
+  if (userData.status === "inactive") {
+    return { ok: false, error: "Account is no longer active" };
+  }
+
+  const result = await sendPhoneOtp(userDoc.id, phone);
+  if (!result.ok) {
+    return { ok: false, error: result.error, retry_after_seconds: result.retry_after_seconds };
+  }
+  return { ok: true };
+}
+
+/** Sign-in path: verify the OTP and mint a Firebase custom token for the matched user. */
+export async function signInByPhoneOtp(
+  phone: string,
+  code: string,
+): Promise<HandoffTokenResult> {
+  const db = await getDb();
+  const auth = await getAuthService();
+
+  const phoneSnap = await db
+    .collection("users")
+    .where("phone_number", "==", phone)
+    .limit(2)
+    .get();
+
+  if (phoneSnap.empty) {
+    // Generic "Invalid code" so a probe can't tell "wrong code" from "no such phone"
+    return { valid: false, error: "Invalid code" };
+  }
+
+  if (phoneSnap.size > 1) {
+    return { valid: false, error: "Multiple accounts share this number. Please sign in with your handle instead." };
+  }
+
+  const userDoc = phoneSnap.docs[0];
+  const rawData = userDoc.data()!;
+
+  if (rawData.status === "inactive") {
+    return { valid: false, error: "Account is no longer active" };
+  }
+
+  const verifyResult = await verifyPhoneOtp(userDoc.id, phone, code);
+  if (!verifyResult.ok) {
+    return { valid: false, error: verifyResult.error };
   }
 
   const userData = { id: userDoc.id, ...rawData };

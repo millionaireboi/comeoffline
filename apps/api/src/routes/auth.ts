@@ -1,7 +1,7 @@
 import { Router } from "express";
 import crypto from "crypto";
 import { isValidPhoneNumber } from "libphonenumber-js";
-import { validateCode, validateHandoffToken, chatbotEntry, signInByHandle, generateHandoffToken } from "../services/auth.service";
+import { validateCode, validateHandoffToken, chatbotEntry, signInByHandle, generateHandoffToken, sendSignInOtp, signInByPhoneOtp } from "../services/auth.service";
 import { strictLimiter, signInLimiter } from "../middleware/rateLimit";
 import { isValidPin, verifyPin, hashPin } from "../services/pin.service";
 import { sendPinResetEmail } from "../services/email.service";
@@ -343,6 +343,90 @@ router.post("/chatbot-entry", strictLimiter, async (req, res) => {
     });
   } catch (err) {
     console.error("[auth] chatbot-entry error:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+});
+
+/**
+ * POST /api/auth/sign-in/phone/send — send a WhatsApp OTP for a returning user.
+ *
+ * Public (no requireAuth). Looks up an existing user by phone_number; if found and
+ * active, dispatches an OTP keyed by that user's UID. Rate-limited per-IP via
+ * signInLimiter and per-user inside the OTP service.
+ */
+router.post("/sign-in/phone/send", signInLimiter, async (req, res) => {
+  try {
+    const { phone } = req.body as { phone?: string };
+
+    if (!phone || typeof phone !== "string" || !isValidPhoneNumber(phone)) {
+      res.status(400).json({ success: false, error: "Invalid phone number. Please use international format (e.g. +919876543210)" });
+      return;
+    }
+
+    const result = await sendSignInOtp(phone);
+    if (!result.ok) {
+      const errLower = (result.error || "").toLowerCase();
+      const status = errLower.includes("too many") ? 429
+        : errLower.includes("no account") ? 404
+        : errLower.includes("not active") || errLower.includes("no longer active") ? 403
+        : 500;
+      res.status(status).json({ success: false, error: result.error, retry_after_seconds: result.retry_after_seconds });
+      return;
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("[auth] sign-in/phone/send error:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+});
+
+/**
+ * POST /api/auth/sign-in/phone/verify — verify the OTP and mint a custom token.
+ *
+ * Public (no requireAuth). Returns user data + Firebase custom token so the client
+ * can call signInWithCustomToken — same shape as /sign-in.
+ */
+router.post("/sign-in/phone/verify", signInLimiter, async (req, res) => {
+  try {
+    const { phone, code, source } = req.body as { phone?: string; code?: string; source?: string };
+
+    if (!phone || typeof phone !== "string" || !isValidPhoneNumber(phone)) {
+      res.status(400).json({ success: false, error: "Invalid phone number" });
+      return;
+    }
+    if (!code || typeof code !== "string" || !/^\d{6}$/.test(code)) {
+      res.status(400).json({ success: false, error: "Code must be 6 digits" });
+      return;
+    }
+
+    const result = await signInByPhoneOtp(phone, code);
+    if (!result.valid) {
+      res.status(401).json({ success: false, error: result.error });
+      return;
+    }
+
+    const userData = result.user as Record<string, unknown>;
+    const userId = userData.id as string | undefined;
+    let handoffToken: string | undefined;
+    if (source === "landing" && userId) {
+      const userStatus = (userData.status === "active" || userData.status === "provisional")
+        ? userData.status as "active" | "provisional"
+        : "active";
+      handoffToken = await generateHandoffToken(userId, "landing", userStatus);
+    }
+
+    res.json({
+      success: true,
+      data: {
+        token: result.token,
+        ...(handoffToken && { handoff_token: handoffToken }),
+        user: userData,
+        has_seen_welcome: result.has_seen_welcome,
+      },
+    });
+  } catch (err) {
+    console.error("[auth] sign-in/phone/verify error:", err);
     res.status(500).json({ success: false, error: "Internal server error" });
   }
 });

@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import PhoneInput, { isValidPhoneNumber } from "react-phone-number-input";
+import "react-phone-number-input/style.css";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppStore } from "@/store/useAppStore";
 import { apiFetch } from "@/lib/api";
@@ -17,7 +19,7 @@ const notFoundLines = [
 export function SignInScreen({ onBack }: { onBack: () => void }) {
   const [handle, setHandle] = useState("");
   const [pin, setPin] = useState("");
-  const [step, setStep] = useState<"handle" | "pin" | "forgot" | "reset">("handle");
+  const [step, setStep] = useState<"handle" | "pin" | "forgot" | "reset" | "phone" | "phone-otp">("handle");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -25,14 +27,25 @@ export function SignInScreen({ onBack }: { onBack: () => void }) {
   const [resetCode, setResetCode] = useState("");
   const [newPin, setNewPin] = useState("");
   const [newPinConfirm, setNewPinConfirm] = useState("");
+  const [phone, setPhone] = useState("");
+  const [phoneOtp, setPhoneOtp] = useState("");
+  const [phoneCooldown, setPhoneCooldown] = useState(0);
   const { loginWithToken } = useAuth();
   const pinRef = useRef<HTMLInputElement>(null);
   const codeRef = useRef<HTMLInputElement>(null);
+  const phoneOtpRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (step === "pin") pinRef.current?.focus();
     if (step === "reset") codeRef.current?.focus();
+    if (step === "phone-otp") phoneOtpRef.current?.focus();
   }, [step]);
+
+  useEffect(() => {
+    if (phoneCooldown <= 0) return;
+    const t = setTimeout(() => setPhoneCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [phoneCooldown]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -153,11 +166,105 @@ export function SignInScreen({ onBack }: { onBack: () => void }) {
     }
   }
 
+  async function handleSendPhoneOtp(e?: React.FormEvent) {
+    if (e) e.preventDefault();
+    if (loading || phoneCooldown > 0) return;
+    if (!phone || !isValidPhoneNumber(phone)) {
+      setError("enter a valid phone number with country code");
+      return;
+    }
+
+    setError("");
+    setLoading(true);
+    try {
+      await apiFetch("/api/auth/sign-in/phone/send", {
+        method: "POST",
+        body: JSON.stringify({ phone }),
+      });
+      setStep("phone-otp");
+      setPhoneOtp("");
+      setPhoneCooldown(30);
+      setSuccess("we sent a code on whatsapp.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.toLowerCase().includes("no account")) {
+        setError("no account with that number. check it or sign in with your handle.");
+      } else if (msg.toLowerCase().includes("multiple accounts")) {
+        setError("more than one account uses this number. sign in with your handle instead.");
+      } else if (msg.toLowerCase().includes("too many") || msg.toLowerCase().includes("wait a moment")) {
+        setError("too many code requests. try again in a few minutes.");
+      } else if (msg.toLowerCase().includes("not active") || msg.toLowerCase().includes("no longer active")) {
+        setError("this account is no longer active.");
+      } else if (msg.includes("Failed to fetch") || msg.includes("NetworkError")) {
+        setError("can't reach the server. check your connection.");
+      } else {
+        setError("couldn't send the code. try again.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleVerifyPhoneOtp(e: React.FormEvent) {
+    e.preventDefault();
+    if (loading) return;
+    if (phoneOtp.length !== 6) {
+      setError("enter the 6-digit code");
+      return;
+    }
+
+    setError("");
+    setSuccess("");
+    setLoading(true);
+    try {
+      const res = await apiFetch<{
+        success: boolean;
+        data: { token: string; user: Record<string, unknown> };
+      }>("/api/auth/sign-in/phone/verify", {
+        method: "POST",
+        body: JSON.stringify({ phone, code: phoneOtp }),
+      });
+
+      if (res.data.user) {
+        const { setUser } = useAppStore.getState();
+        setUser(res.data.user as unknown as User);
+      }
+      await loginWithToken(res.data.token);
+
+      if (typeof window !== "undefined" && window.location.pathname === "/sign-in") {
+        window.location.href = "/";
+      }
+    } catch (err) {
+      const currentUser = useAppStore.getState().user;
+      if (currentUser) {
+        if (typeof window !== "undefined" && window.location.pathname === "/sign-in") {
+          window.location.href = "/";
+        }
+        return;
+      }
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.toLowerCase().includes("wrong code") || msg.toLowerCase().includes("invalid code")) {
+        setError("wrong code. try again.");
+        setPhoneOtp("");
+      } else if (msg.toLowerCase().includes("expired")) {
+        setError("that code expired. tap resend.");
+      } else if (msg.toLowerCase().includes("too many")) {
+        setError("too many wrong attempts. tap resend.");
+      } else {
+        setError("couldn't verify. try once more.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
   function goBack() {
     setError("");
     setSuccess("");
     if (step === "reset" || step === "forgot") { setStep("pin"); return; }
     if (step === "pin") { setStep("handle"); setPin(""); return; }
+    if (step === "phone-otp") { setStep("phone"); setPhoneOtp(""); return; }
+    if (step === "phone") { setStep("handle"); setPhone(""); return; }
     onBack();
   }
 
@@ -222,6 +329,120 @@ export function SignInScreen({ onBack }: { onBack: () => void }) {
             }}
           >
             {loading ? "finding you..." : "next \u2192"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { setError(""); setSuccess(""); setStep("phone"); }}
+            disabled={loading}
+            className="w-full border-none bg-transparent py-2 font-mono text-[11px] uppercase tracking-[3px] text-muted/60 transition-colors hover:text-caramel"
+            style={{ cursor: "pointer" }}
+          >
+            sign in with whatsapp otp
+          </button>
+        </form>
+      )}
+
+      {/* Step: Phone \u2014 enter phone number to receive OTP */}
+      {step === "phone" && (
+        <form onSubmit={handleSendPhoneOtp} className="w-full max-w-[320px] space-y-4">
+          <div>
+            <label className="mb-2 block font-mono text-[11px] uppercase tracking-[2px] text-muted">
+              your phone number
+            </label>
+            <div className="phone-input-wrapper">
+              <PhoneInput
+                international
+                defaultCountry="IN"
+                value={phone}
+                onChange={(v) => { setPhone(v || ""); setError(""); }}
+                disabled={loading}
+                className="w-full rounded-[14px] bg-white/5 px-4 py-3 font-sans text-base text-cream outline-none transition-all duration-300"
+                style={{ border: "1px solid rgba(255,255,255,0.1)" }}
+              />
+            </div>
+            <p className="mt-2 font-mono text-[10px] text-muted/50">
+              we&apos;ll send a 6-digit code on whatsapp.
+            </p>
+          </div>
+
+          {error && <ErrorBox message={error} />}
+
+          <button
+            type="submit"
+            disabled={loading || !phone || !isValidPhoneNumber(phone || "")}
+            className="w-full rounded-[14px] border-none py-4 font-sans text-[15px] font-medium transition-all duration-300"
+            style={{
+              background: phone && isValidPhoneNumber(phone) ? "#FAF6F0" : "rgba(155,142,130,0.12)",
+              color: phone && isValidPhoneNumber(phone) ? "#0E0D0B" : "rgba(155,142,130,0.4)",
+              cursor: phone && isValidPhoneNumber(phone) ? "pointer" : "default",
+              opacity: loading ? 0.5 : 1,
+            }}
+          >
+            {loading ? "sending..." : "send code \u2192"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { setError(""); setSuccess(""); setStep("handle"); }}
+            disabled={loading}
+            className="w-full border-none bg-transparent py-2 font-mono text-[11px] uppercase tracking-[3px] text-muted/60 transition-colors hover:text-caramel"
+            style={{ cursor: "pointer" }}
+          >
+            use handle instead
+          </button>
+        </form>
+      )}
+
+      {/* Step: Phone OTP \u2014 enter the 6-digit code */}
+      {step === "phone-otp" && (
+        <form onSubmit={handleVerifyPhoneOtp} className="w-full max-w-[320px] space-y-4">
+          <p className="mb-1 text-center font-sans text-[13px] text-muted">
+            sent to <span className="text-cream">{phone}</span>
+          </p>
+          <div>
+            <label className="mb-2 block font-mono text-[11px] uppercase tracking-[2px] text-muted">
+              6-digit code
+            </label>
+            <input
+              ref={phoneOtpRef}
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={6}
+              value={phoneOtp}
+              onChange={(e) => setPhoneOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              autoComplete="one-time-code"
+              className="w-full rounded-[14px] border border-white/10 bg-white/5 px-5 py-4 text-center font-mono text-xl tracking-[8px] text-cream placeholder:text-muted/20 focus:border-caramel/50 focus:outline-none"
+              placeholder="000000"
+            />
+          </div>
+
+          {success && <SuccessBox message={success} />}
+          {error && <ErrorBox message={error} />}
+
+          <button
+            type="submit"
+            disabled={loading || phoneOtp.length !== 6}
+            className="w-full rounded-[14px] border-none py-4 font-sans text-[15px] font-medium transition-all duration-300"
+            style={{
+              background: phoneOtp.length === 6 ? "#FAF6F0" : "rgba(155,142,130,0.12)",
+              color: phoneOtp.length === 6 ? "#0E0D0B" : "rgba(155,142,130,0.4)",
+              cursor: phoneOtp.length === 6 ? "pointer" : "default",
+              opacity: loading ? 0.5 : 1,
+            }}
+          >
+            {loading ? "verifying..." : "sign in \u2192"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleSendPhoneOtp()}
+            disabled={loading || phoneCooldown > 0}
+            className="w-full border-none bg-transparent py-2 font-mono text-[11px] text-muted/40 transition-colors hover:text-caramel"
+            style={{ cursor: phoneCooldown > 0 ? "default" : "pointer" }}
+          >
+            {phoneCooldown > 0 ? `resend in ${phoneCooldown}s` : "resend code"}
           </button>
         </form>
       )}

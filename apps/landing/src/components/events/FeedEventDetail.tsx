@@ -1366,7 +1366,7 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
                     },
                     {
                       q: "where is it?",
-                      a: "Swaasthya Fitness & Physiotherapy, Whitefield. exact directions drop on WhatsApp before the event.",
+                      a: "two spots in Whitefield — workout + dance at Swaasthya Fitness & Physiotherapy, brunch at Kavu nearby. exact directions for both drop on WhatsApp before the event.",
                     },
                     {
                       q: "coming solo?",

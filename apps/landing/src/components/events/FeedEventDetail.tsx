@@ -175,6 +175,9 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
   const signInInputRef = useRef<HTMLInputElement>(null);
   const pinInputRef = useRef<HTMLInputElement>(null);
 
+  // FAQ accordion — collapsed by default, only one open at a time
+  const [openFaqIdx, setOpenFaqIdx] = useState<number | null>(null);
+
   const accent = event.accent || P.caramel;
   const accentDark = event.accent_dark || P.deepCaramel;
   const spotsLeft = event.total_spots - event.spots_taken;
@@ -1346,6 +1349,94 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
                   </div>
                 </div>
               )}
+
+              {/* FAQ — handles common cold-buyer objections */}
+              <div style={{ marginBottom: 20 }}>
+                <span
+                  className="font-mono text-[10px] uppercase tracking-[2px]"
+                  style={{ color: P.muted, display: "block", marginBottom: 10 }}
+                >
+                  good to know
+                </span>
+                <div style={{ borderTop: `1px solid ${P.sand}` }}>
+                  {[
+                    {
+                      q: "what time?",
+                      a: "7am to 12pm. five hours of move, groove, and brunch.",
+                    },
+                    {
+                      q: "where is it?",
+                      a: "Swaasthya Fitness & Physiotherapy, Whitefield. exact directions drop on WhatsApp before the event.",
+                    },
+                    {
+                      q: "coming solo?",
+                      a: "you come solo and go back with memories. that's the whole point.",
+                    },
+                    {
+                      q: "what do I bring?",
+                      a: "yourself and the energy. we'll handle everything else.",
+                    },
+                    {
+                      q: "refunds?",
+                      a: "no refunds — your spot, your brunch, your DJ slot are all reserved the moment you book. exception: if we don't approve your entry, you get a full refund.",
+                    },
+                  ].map((item, idx) => {
+                    const isOpen = openFaqIdx === idx;
+                    return (
+                      <div key={idx} style={{ borderBottom: `1px solid ${P.sand}` }}>
+                        <button
+                          onClick={() => setOpenFaqIdx(isOpen ? null : idx)}
+                          aria-expanded={isOpen}
+                          style={{
+                            width: "100%",
+                            background: "none",
+                            border: "none",
+                            padding: "14px 0",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            cursor: "pointer",
+                            textAlign: "left",
+                          }}
+                        >
+                          <span
+                            className="font-sans text-[13px] font-medium"
+                            style={{ color: P.nearBlack }}
+                          >
+                            {item.q}
+                          </span>
+                          <span
+                            style={{
+                              color: accentDark,
+                              fontSize: 16,
+                              transform: isOpen ? "rotate(45deg)" : "rotate(0deg)",
+                              transition: "transform 0.2s ease",
+                              lineHeight: 1,
+                              flexShrink: 0,
+                              marginLeft: 12,
+                            }}
+                          >
+                            +
+                          </span>
+                        </button>
+                        {isOpen && (
+                          <p
+                            className="font-sans text-[13px]"
+                            style={{
+                              color: P.warmBrown,
+                              margin: "0 0 14px",
+                              lineHeight: 1.55,
+                              animation: "gateFadeIn 0.2s ease",
+                            }}
+                          >
+                            {item.a}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
 
               {/* Spots bar + scarcity microcopy */}
               <div style={{ marginBottom: 20 }}>

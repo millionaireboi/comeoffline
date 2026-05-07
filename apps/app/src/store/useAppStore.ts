@@ -68,8 +68,15 @@ interface AppState {
 
   // Event the user was about to buy when the community-safety dialog interrupted them.
   // EventFeed auto-reopens the detail sheet for this event after full-profile submit.
+  // Also used as a deep-link target — landing-page handoff sets this so the user lands
+  // on the right event detail instead of the home feed.
   pendingPurchaseEventId: string | null;
   setPendingPurchaseEventId: (id: string | null) => void;
+
+  // Tier preselected from a landing-page deep-link (?tier=<id>). Consumed by EventDetail
+  // so the user doesn't have to pick the tier again inside the app.
+  pendingDeepLinkTierId: string | null;
+  setPendingDeepLinkTierId: (id: string | null) => void;
 
   // Shows the "you're in! complete your profile" dialog after a successful ticket purchase.
   // Renders globally from page.tsx, regardless of which stage is active.
@@ -121,6 +128,9 @@ export const useAppStore = create<AppState>((set) => ({
 
   pendingPurchaseEventId: null,
   setPendingPurchaseEventId: (id) => set({ pendingPurchaseEventId: id }),
+
+  pendingDeepLinkTierId: null,
+  setPendingDeepLinkTierId: (id) => set({ pendingDeepLinkTierId: id }),
 
   showCompletionDialog: false,
   setShowCompletionDialog: (show) => set({ showCompletionDialog: show }),

@@ -15,6 +15,7 @@ import { AttendeeList } from "./AttendeeList";
 
 interface EventDetailProps {
   event: Event;
+  initialTierId?: string | null;
   onClose: () => void;
   onRsvp?: () => void;
   onTicketPurchase?: (
@@ -31,7 +32,7 @@ interface EventDetailProps {
   loading?: boolean;
 }
 
-export function EventDetail({ event, onClose, onRsvp, onTicketPurchase, onJoinWaitlist, onLeaveWaitlist, loading }: EventDetailProps) {
+export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPurchase, onJoinWaitlist, onLeaveWaitlist, loading }: EventDetailProps) {
   const user = useAppStore((s) => s.user);
   const activeWaitlistEntry = useAppStore((s) => s.activeWaitlistEntry);
   const isAnnounced = event.status === "announced";
@@ -40,10 +41,17 @@ export function EventDetail({ event, onClose, onRsvp, onTicketPurchase, onJoinWa
   const tiers = event.ticketing?.tiers || [];
   const hasCheckoutWizard = !!(event.checkout?.enabled && (event.checkout?.steps?.length || 0) > 0);
 
-  const [activeSection, setActiveSection] = useState<"overview" | "tickets" | "seating" | "attendees">("overview");
+  // If a tier was passed in via deep-link (landing → app), open straight on the
+  // tickets tab so the user sees their preselected tier highlighted with a price-aware CTA.
+  const initialTierStillAvailable = !!initialTierId && tiers.some((t) => t.id === initialTierId && t.sold < t.capacity);
+  const [activeSection, setActiveSection] = useState<"overview" | "tickets" | "seating" | "attendees">(
+    initialTierStillAvailable ? "tickets" : "overview",
+  );
   const [scrolled, setScrolled] = useState(false);
   const [selectedTierId, setSelectedTierId] = useState<string | null>(
-    tiers.length === 1 && tiers[0].sold < tiers[0].capacity ? tiers[0].id : null,
+    initialTierStillAvailable
+      ? initialTierId!
+      : tiers.length === 1 && tiers[0].sold < tiers[0].capacity ? tiers[0].id : null,
   );
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<string | null>(null);
   const [selectedPickup, setSelectedPickup] = useState<string | null>(

@@ -41,6 +41,17 @@ export function useTokenHandoff() {
       return;
     }
 
+    // Capture deep-link targets BEFORE we strip the URL — landing sends
+    // ?event=<id>&tier=<id> so we can drop the user on the right event detail
+    // with the right tier preselected, instead of the home feed.
+    const deepLinkEventId = params.get("event");
+    const deepLinkTierId = params.get("tier");
+    if (deepLinkEventId) {
+      const { setPendingPurchaseEventId, setPendingDeepLinkTierId } = useAppStore.getState();
+      setPendingPurchaseEventId(deepLinkEventId);
+      if (deepLinkTierId) setPendingDeepLinkTierId(deepLinkTierId);
+    }
+
     // Clean URL immediately (security: don't leave token visible)
     const cleanUrl = window.location.pathname;
     window.history.replaceState({ stage: "gate" }, "", cleanUrl);

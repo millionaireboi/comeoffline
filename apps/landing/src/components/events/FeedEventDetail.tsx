@@ -283,7 +283,13 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
           const data = await res.json();
           if (data.success && data.data?.handoff_token) {
             track(CODE_VALIDATED, { event_id: event.id, source: "url_param" });
-            window.location.href = `${APP_URL}?token=${data.data.handoff_token}`;
+            // Deep-link: pass event id + selected tier so the app drops them straight
+            // into the Suprabhatham checkout instead of the home feed.
+            const redirect = new URL(APP_URL);
+            redirect.searchParams.set("token", data.data.handoff_token);
+            redirect.searchParams.set("event", event.id);
+            if (selectedTierId) redirect.searchParams.set("tier", selectedTierId);
+            window.location.href = redirect.toString();
           } else {
             // Prefilled code failed — drop user to manual gate as a fallback
             track(CODE_FAILED, { event_id: event.id, error: "prefilled_invalid", message: data.message });

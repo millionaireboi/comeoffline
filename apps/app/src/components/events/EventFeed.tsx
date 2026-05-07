@@ -17,12 +17,15 @@ import { PullToRefresh } from "@/components/shared/PullToRefresh";
 export function EventFeed() {
   const { getIdToken, loading: authLoading } = useAuth();
   const user = useAppStore((s) => s.user);
-  const { setCurrentEvent, setActiveRsvp, setActiveTicket, setActiveWaitlistEntry, setStage, setProfileCompleteMode, showToast, pendingPurchaseEventId, setPendingPurchaseEventId, setShowCompletionDialog } = useAppStore();
+  const { setCurrentEvent, setActiveRsvp, setActiveTicket, setActiveWaitlistEntry, setStage, setProfileCompleteMode, showToast, pendingPurchaseEventId, setPendingPurchaseEventId, pendingDeepLinkTierId, setPendingDeepLinkTierId, setShowCompletionDialog } = useAppStore();
   const events = useAppStore((s) => s.events);
   const setEvents = useAppStore((s) => s.setEvents);
   const [loading, setLoading] = useState(events.length === 0);
   const [fetchError, setFetchError] = useState(false);
   const [detailEvent, setDetailEvent] = useState<Event | null>(null);
+  // Tier passed in from a landing-page deep-link, consumed by EventDetail's initialTierId
+  // and then cleared so the user gets normal behaviour on subsequent opens.
+  const [detailInitialTierId, setDetailInitialTierId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const actionLockRef = useRef(false);
   const [showQuizGate, setShowQuizGate] = useState(false);
@@ -79,16 +82,21 @@ export function EventFeed() {
   // Auto-reopen the event detail after the community-safety dialog round-trip:
   // user tapped "i'm in" → safety dialog → "continue setup" → completed full profile →
   // landed on feed. Reopen the same event's detail so they can pick up where they left off.
+  // Also handles landing-page deep-links (?event=<id>&tier=<id>) — drops ad clickers
+  // straight onto the right event detail with the right tier preselected.
   useEffect(() => {
     if (!pendingPurchaseEventId || events.length === 0) return;
     const target = events.find((e) => e.id === pendingPurchaseEventId);
     if (target) {
       setDetailEvent(target);
-      // Set as current event for any downstream views (countdown, etc.)
       setCurrentEvent(target);
+      if (pendingDeepLinkTierId) {
+        setDetailInitialTierId(pendingDeepLinkTierId);
+        setPendingDeepLinkTierId(null);
+      }
     }
     setPendingPurchaseEventId(null);
-  }, [pendingPurchaseEventId, events, setPendingPurchaseEventId, setCurrentEvent]);
+  }, [pendingPurchaseEventId, events, setPendingPurchaseEventId, setCurrentEvent, pendingDeepLinkTierId, setPendingDeepLinkTierId]);
 
   // Legacy RSVP flow for free events
   const handleRsvp = useCallback(
@@ -463,7 +471,8 @@ export function EventFeed() {
       {detailEvent && (
         <EventDetail
           event={detailEvent}
-          onClose={() => setDetailEvent(null)}
+          initialTierId={detailInitialTierId}
+          onClose={() => { setDetailEvent(null); setDetailInitialTierId(null); }}
           onRsvp={() => handleRsvp(detailEvent)}
           onTicketPurchase={(tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId) =>
             handleTicketPurchase(detailEvent, tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId)

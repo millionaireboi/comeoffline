@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { useAnalytics, EVENT_DETAIL_OPENED, GATE_OPENED, CODE_VALIDATED, CODE_FAILED, CHATBOT_OPENED, EVENT_SHARED, SIGNIN_STARTED, SIGNIN_SUCCESS, SIGNIN_FAILED } from "@comeoffline/analytics";
+import { useAnalytics, EVENT_DETAIL_OPENED, GATE_OPENED, CODE_VALIDATED, CODE_FAILED, CHATBOT_OPENED, EVENT_SHARED, SIGNIN_STARTED, SIGNIN_SUCCESS, SIGNIN_FAILED, trackFbEvent } from "@comeoffline/analytics";
 import { P, API_URL, APP_URL } from "@/components/shared/P";
 import { SpotsBar } from "@/components/events/SpotsBar";
 import { useChat } from "@/components/chat/ChatProvider";
@@ -161,6 +161,10 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
   const [validating, setValidating] = useState(false);
   const codeInputRef = useRef<HTMLInputElement>(null);
 
+  // Prefilled code + UTMs from URL (e.g. ad link with ?code=SUNDAYFUNDAY&utm_source=meta)
+  const [prefilledCode, setPrefilledCode] = useState<string | null>(null);
+  const prefilledUtmRef = useRef<{ utm_source?: string; utm_medium?: string; utm_campaign?: string }>({});
+
   // Sign-in state
   const [signInStep, setSignInStep] = useState<SignInStep>("handle");
   const [signInHandle, setSignInHandle] = useState("");
@@ -184,14 +188,36 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
     daysUntilVenue = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
   }
 
-  // Track event detail opened
+  // Track event detail opened + Meta Pixel ViewContent
   useEffect(() => {
     track(EVENT_DETAIL_OPENED, {
       event_id: event.id,
       event_title: event.title,
       spots_remaining: spotsLeft,
     });
+    trackFbEvent("ViewContent", {
+      content_ids: [event.id],
+      content_type: "product",
+      content_name: event.title,
+      content_category: event.tag,
+      currency: "INR",
+    });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Capture invite code + UTMs from URL (e.g. from Meta ads with ?code=SUNDAYFUNDAY).
+  // We don't redirect immediately — the visitor reads the event detail first, then "I'm in"
+  // skips the manual gate and validates the prefilled code in the background.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const urlCode = params.get("code");
+    if (urlCode) setPrefilledCode(urlCode.trim().toUpperCase());
+    prefilledUtmRef.current = {
+      ...(params.get("utm_source") && { utm_source: params.get("utm_source") as string }),
+      ...(params.get("utm_medium") && { utm_medium: params.get("utm_medium") as string }),
+      ...(params.get("utm_campaign") && { utm_campaign: params.get("utm_campaign") as string }),
+    };
+  }, []);
 
   // Lock body scroll when detail is open
   useEffect(() => {
@@ -221,13 +247,51 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
 
   const handleImIn = useCallback(() => {
     track(GATE_OPENED, { event_id: event.id, event_title: event.title });
+
+    // If a code was prefilled via URL (ad traffic), skip the gate UI and validate directly.
+    if (prefilledCode) {
+      setGateStage("confirmed");
+      (async () => {
+        try {
+          const res = await fetch(`${API_URL}/api/auth/validate-code`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              code: prefilledCode,
+              source: "landing",
+              ...prefilledUtmRef.current,
+            }),
+          });
+          const data = await res.json();
+          if (data.success && data.data?.handoff_token) {
+            track(CODE_VALIDATED, { event_id: event.id, source: "url_param" });
+            window.location.href = `${APP_URL}?token=${data.data.handoff_token}`;
+          } else {
+            // Prefilled code failed — drop user to manual gate as a fallback
+            track(CODE_FAILED, { event_id: event.id, error: "prefilled_invalid", message: data.message });
+            setGateTab("join");
+            setSignInStep("handle");
+            setSignInHandle("");
+            setSignInPin("");
+            setSignInError("");
+            setGateStage("gate");
+          }
+        } catch {
+          track(CODE_FAILED, { event_id: event.id, error: "prefilled_network" });
+          setGateTab("join");
+          setGateStage("gate");
+        }
+      })();
+      return;
+    }
+
     setGateTab("join");
     setSignInStep("handle");
     setSignInHandle("");
     setSignInPin("");
     setSignInError("");
     setGateStage("gate");
-  }, [event.id, event.title, track]);
+  }, [event.id, event.title, track, prefilledCode]);
 
   const handleValidateCode = useCallback(async () => {
     if (!code.trim()) {

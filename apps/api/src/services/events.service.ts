@@ -45,6 +45,57 @@ export async function getEventById(eventId: string): Promise<Event | null> {
   return { id: doc.id, ...doc.data() } as Event;
 }
 
+/** Sanitize ticketing config for public consumption — drops capacity numbers
+ *  but exposes tier labels, prices, descriptions, deadlines and a sold-out flag.
+ *  Includes a "low_stock" hint instead of raw capacity/sold counts. */
+function sanitizeTicketingPublic(t: Event["ticketing"]): {
+  enabled: boolean;
+  tiers: Array<{
+    id: string;
+    label: string;
+    price: number;
+    description?: string;
+    deadline?: string;
+    opens_at?: string;
+    per_person?: number;
+    sold_out: boolean;
+    low_stock: boolean;
+  }>;
+  max_per_user?: number;
+} | undefined {
+  if (!t || !t.enabled) return undefined;
+  const now = Date.now();
+  const tiers = (t.tiers || [])
+    .slice()
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    .map((tier) => {
+      const remaining = Math.max(0, (tier.capacity ?? 0) - (tier.sold ?? 0));
+      const soldOut = remaining === 0;
+      const closed = tier.deadline ? new Date(tier.deadline).getTime() < now : false;
+      const notYetOpen = tier.opens_at ? new Date(tier.opens_at).getTime() > now : false;
+      // "low_stock" only when meaningfully scarce — avoids fake urgency
+      const lowStock = !soldOut && !closed && !notYetOpen && tier.capacity > 0
+        ? remaining / tier.capacity <= 0.3 || remaining <= 10
+        : false;
+      return {
+        id: tier.id,
+        label: tier.label,
+        price: tier.price,
+        ...(tier.description && { description: tier.description }),
+        ...(tier.deadline && { deadline: tier.deadline }),
+        ...(tier.opens_at && { opens_at: tier.opens_at }),
+        ...(tier.per_person && tier.per_person > 1 && { per_person: tier.per_person }),
+        sold_out: soldOut || closed,
+        low_stock: lowStock,
+      };
+    });
+  return {
+    enabled: t.enabled,
+    tiers,
+    ...(t.max_per_user && { max_per_user: t.max_per_user }),
+  };
+}
+
 /** Fetch public-facing events (stripped of venue secrets) */
 export async function getPublicEvents(): Promise<Partial<Event>[]> {
   const db = await getDb();
@@ -57,6 +108,7 @@ export async function getPublicEvents(): Promise<Partial<Event>[]> {
     .filter((e) => validStatuses.has(e.status))
     .map((e) => {
       const venueRevealed = !!e.venue_reveal_date && new Date(e.venue_reveal_date) <= now;
+      const ticketing = sanitizeTicketingPublic(e.ticketing);
       return {
         id: e.id,
         title: e.title,
@@ -79,6 +131,7 @@ export async function getPublicEvents(): Promise<Partial<Event>[]> {
         cover_type: e.cover_type,
         cover_focus: e.cover_focus,
         gallery_urls: e.gallery_urls,
+        ...(ticketing && { ticketing: ticketing as unknown as Event["ticketing"] }),
         ...(venueRevealed && e.venue_name ? { venue_name: e.venue_name } : {}),
         ...(venueRevealed && Array.isArray(e.venue_photos) && e.venue_photos.length > 0 ? { venue_photos: e.venue_photos } : {}),
       };
@@ -96,6 +149,7 @@ export async function getPublicEvent(eventId: string): Promise<Partial<Event> | 
   if (!validStatuses.has(e.status)) return null;
 
   const venueRevealed = !!e.venue_reveal_date && new Date(e.venue_reveal_date) <= new Date();
+  const ticketing = sanitizeTicketingPublic(e.ticketing);
   return {
     id: e.id,
     title: e.title,
@@ -117,6 +171,7 @@ export async function getPublicEvent(eventId: string): Promise<Partial<Event> | 
     cover_url: e.cover_url,
     cover_type: e.cover_type,
     gallery_urls: e.gallery_urls,
+    ...(ticketing && { ticketing: ticketing as unknown as Event["ticketing"] }),
     ...(venueRevealed && e.venue_name ? { venue_name: e.venue_name } : {}),
     ...(venueRevealed && Array.isArray(e.venue_photos) && e.venue_photos.length > 0 ? { venue_photos: e.venue_photos } : {}),
   };

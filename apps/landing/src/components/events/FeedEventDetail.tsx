@@ -179,6 +179,24 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
   const accentDark = event.accent_dark || P.deepCaramel;
   const spotsLeft = event.total_spots - event.spots_taken;
 
+  // Ticketing — public-facing tiers (no capacity numbers; just sold_out + low_stock flags)
+  const tiers = (event.ticketing?.enabled ? event.ticketing.tiers || [] : []) as Array<{
+    id: string;
+    label: string;
+    price: number;
+    description?: string;
+    sold_out: boolean;
+    low_stock: boolean;
+    per_person?: number;
+  }>;
+  const availableTiers = tiers.filter((t) => !t.sold_out);
+  const cheapestPrice = availableTiers.length > 0 ? Math.min(...availableTiers.map((t) => t.price)) : null;
+  const [selectedTierId, setSelectedTierId] = useState<string | null>(null);
+  const selectedTier = tiers.find((t) => t.id === selectedTierId) || null;
+  const isFree = tiers.length === 0 || (cheapestPrice !== null && cheapestPrice === 0);
+  const fillPct = event.total_spots > 0 ? (event.spots_taken / event.total_spots) * 100 : 0;
+  const fillingFast = !isFree && fillPct >= 70 && spotsLeft > 0;
+
   // Compute days until venue reveal
   let daysUntilVenue: number | null = null;
   if (event.venue_reveal_date) {
@@ -1008,11 +1026,22 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
                 style={{
                   color: P.warmBrown,
                   fontStyle: "italic",
-                  margin: "0 0 16px",
+                  margin: "0 0 8px",
                   lineHeight: 1.4,
                 }}
               >
                 {event.tagline}
+              </p>
+
+              {/* Trust line */}
+              <p
+                className="font-mono text-[10px] uppercase tracking-[1.5px]"
+                style={{
+                  color: P.muted,
+                  margin: "0 0 16px",
+                }}
+              >
+                by come offline · bangalore
               </p>
             </div>
 
@@ -1025,14 +1054,15 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
                 WebkitOverflowScrolling: "touch",
               }}
             >
-              {/* Date & time */}
+              {/* Date & time + price */}
               <div
                 style={{
                   display: "flex",
-                  gap: 24,
+                  gap: 20,
                   marginBottom: 16,
                   paddingBottom: 16,
                   borderBottom: `1px solid ${P.sand}`,
+                  flexWrap: "wrap",
                 }}
               >
                 <div>
@@ -1051,6 +1081,16 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
                     {event.time}
                   </p>
                 </div>
+                {cheapestPrice !== null && (
+                  <div>
+                    <span className="font-mono text-[9px] uppercase tracking-[1px]" style={{ color: P.muted }}>
+                      from
+                    </span>
+                    <p className="font-sans text-[14px] font-medium" style={{ color: accentDark, margin: "4px 0 0" }}>
+                      {cheapestPrice === 0 ? "free" : `₹${cheapestPrice.toLocaleString("en-IN")}`}
+                    </p>
+                  </div>
+                )}
                 {(daysUntilVenue !== null || event.venue_name) && (
                   <div>
                     <span className="font-mono text-[9px] uppercase tracking-[1px]" style={{ color: P.muted }}>
@@ -1066,6 +1106,111 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
                   </div>
                 )}
               </div>
+
+              {/* Tier cards — pricing transparency for cold traffic */}
+              {tiers.length > 0 && !isFree && (
+                <div style={{ marginBottom: 24 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
+                    <span
+                      className="font-mono text-[10px] uppercase tracking-[2px]"
+                      style={{ color: P.muted }}
+                    >
+                      pick your vibe
+                    </span>
+                    {fillingFast && (
+                      <span
+                        className="font-hand text-[12px]"
+                        style={{ color: accentDark }}
+                      >
+                        filling fast · {spotsLeft} left
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {tiers.map((tier) => {
+                      const isSelected = selectedTierId === tier.id;
+                      const isSoldOut = tier.sold_out;
+                      return (
+                        <button
+                          key={tier.id}
+                          onClick={() => !isSoldOut && setSelectedTierId(tier.id)}
+                          disabled={isSoldOut}
+                          style={{
+                            background: isSelected ? `linear-gradient(135deg, ${accent}18, ${P.cream})` : isSoldOut ? P.sand + "40" : "#FFFFFF",
+                            border: `1.5px solid ${isSelected ? accentDark : isSoldOut ? P.sand : accent + "30"}`,
+                            borderRadius: 14,
+                            padding: "14px 16px",
+                            textAlign: "left",
+                            cursor: isSoldOut ? "default" : "pointer",
+                            opacity: isSoldOut ? 0.55 : 1,
+                            transition: "all 0.18s ease",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 12,
+                            position: "relative",
+                          }}
+                        >
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+                              <span
+                                className="font-sans text-[14px] font-medium"
+                                style={{ color: isSoldOut ? P.muted : P.nearBlack }}
+                              >
+                                {tier.label}
+                              </span>
+                              {tier.low_stock && !isSoldOut && (
+                                <span
+                                  className="font-mono text-[9px] uppercase tracking-[1px]"
+                                  style={{
+                                    background: accentDark + "18",
+                                    color: accentDark,
+                                    padding: "2px 6px",
+                                    borderRadius: 6,
+                                  }}
+                                >
+                                  few left
+                                </span>
+                              )}
+                            </div>
+                            {tier.description && (
+                              <p
+                                className="font-sans text-[12px]"
+                                style={{ color: P.muted, margin: 0, lineHeight: 1.35 }}
+                              >
+                                {tier.description}
+                              </p>
+                            )}
+                          </div>
+                          <div style={{ textAlign: "right", flexShrink: 0 }}>
+                            <span
+                              className="font-mono text-[18px] font-medium"
+                              style={{ color: isSoldOut ? P.muted : accentDark, display: "block" }}
+                            >
+                              {tier.price === 0 ? "free" : `₹${tier.price.toLocaleString("en-IN")}`}
+                            </span>
+                            {isSoldOut && (
+                              <span
+                                className="font-mono text-[9px] uppercase tracking-[1px]"
+                                style={{ color: P.muted }}
+                              >
+                                sold out
+                              </span>
+                            )}
+                            {!isSoldOut && tier.per_person && tier.per_person > 1 && (
+                              <span
+                                className="font-mono text-[9px]"
+                                style={{ color: P.muted }}
+                              >
+                                for {tier.per_person}
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Description */}
               {event.description && (
@@ -1196,9 +1341,17 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
                 </div>
               )}
 
-              {/* Spots bar */}
+              {/* Spots bar + scarcity microcopy */}
               <div style={{ marginBottom: 20 }}>
                 <SpotsBar spotsLeft={spotsLeft} totalSpots={event.total_spots} accent={accent} />
+                {fillingFast && spotsLeft <= 15 && (
+                  <p
+                    className="font-hand text-[12px]"
+                    style={{ color: accentDark, margin: "8px 0 0", textAlign: "center" }}
+                  >
+                    only {spotsLeft} spot{spotsLeft === 1 ? "" : "s"} left · don&apos;t sleep on it
+                  </p>
+                )}
               </div>
             </div>
 
@@ -1223,22 +1376,31 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
                 style={{
                   display: "block",
                   width: "100%",
-                  background: accent,
-                  color: "#FFFFFF",
+                  background: spotsLeft === 0 ? P.sand : accent,
+                  color: spotsLeft === 0 ? P.muted : "#FFFFFF",
                   border: "none",
                   borderRadius: 12,
                   padding: "13px 0",
-                  cursor: "pointer",
+                  cursor: spotsLeft === 0 ? "default" : "pointer",
                   letterSpacing: 0.3,
                 }}
+                disabled={spotsLeft === 0}
               >
-                i&apos;m in &rarr;
+                {spotsLeft === 0
+                  ? "sold out"
+                  : selectedTier
+                    ? `i'm in · ${selectedTier.price === 0 ? "free" : `₹${selectedTier.price.toLocaleString("en-IN")}`} →`
+                    : cheapestPrice !== null && cheapestPrice > 0
+                      ? `i'm in · from ₹${cheapestPrice.toLocaleString("en-IN")} →`
+                      : "i'm in →"}
               </button>
               <span
                 className="font-hand text-[11px]"
                 style={{ color: P.muted + "60" }}
               >
-                you&apos;ll need an invite code
+                {prefilledCode
+                  ? "secure payment via razorpay"
+                  : "you'll need an invite code"}
               </span>
             </div>
           </>

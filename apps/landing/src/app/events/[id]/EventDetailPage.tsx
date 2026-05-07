@@ -3,6 +3,18 @@
 import { useRouter } from "next/navigation";
 import { FeedEventDetail } from "@/components/events/FeedEventDetail";
 
+interface PublicEventTier {
+  id: string;
+  label: string;
+  price: number;
+  description?: string;
+  deadline?: string;
+  opens_at?: string;
+  per_person?: number;
+  sold_out: boolean;
+  low_stock: boolean;
+}
+
 interface EventDetailPageProps {
   event: {
     id: string;
@@ -25,6 +37,11 @@ interface EventDetailPageProps {
     cover_url?: string;
     cover_type?: "image" | "video";
     gallery_urls?: string[];
+    ticketing?: {
+      enabled: boolean;
+      tiers: PublicEventTier[];
+      max_per_user?: number;
+    };
   };
 }
 

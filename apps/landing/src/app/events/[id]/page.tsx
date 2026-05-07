@@ -3,6 +3,18 @@ import { EventDetailPage } from "./EventDetailPage";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
+interface PublicEventTier {
+  id: string;
+  label: string;
+  price: number;
+  description?: string;
+  deadline?: string;
+  opens_at?: string;
+  per_person?: number;
+  sold_out: boolean;
+  low_stock: boolean;
+}
+
 interface PublicEvent {
   id: string;
   title: string;
@@ -24,6 +36,11 @@ interface PublicEvent {
   cover_url?: string;
   cover_type?: "image" | "video";
   gallery_urls?: string[];
+  ticketing?: {
+    enabled: boolean;
+    tiers: PublicEventTier[];
+    max_per_user?: number;
+  };
 }
 
 async function getEvent(id: string): Promise<PublicEvent | null> {

@@ -512,6 +512,47 @@ router.get("/whatsapp/install-stats", requireAdmin, async (_req: AuthRequest, re
   }
 });
 
+/**
+ * POST /api/admin/whatsapp/run-crons
+ * Manually fires the WhatsApp cron jobs (T-24h reminders + add-to-home-screen nudges).
+ *
+ * Why this exists: Cloud Run throttles idle instances, so the in-process setInterval cron
+ * in index.ts is unreliable. Cloud Scheduler should hit this endpoint every 30 min instead.
+ *
+ * Auth: admin user OR `x-cron-secret` header matching env CRON_SECRET (for Cloud Scheduler).
+ */
+router.post("/whatsapp/run-crons", async (req, res) => {
+  try {
+    const cronSecret = process.env.CRON_SECRET;
+    const headerSecret = req.header("x-cron-secret");
+    const hasValidSecret = !!cronSecret && headerSecret === cronSecret;
+
+    if (!hasValidSecret) {
+      // Fall back to admin auth
+      const { requireAdmin } = await import("../../middleware/auth");
+      await new Promise<void>((resolve, reject) => {
+        requireAdmin(req as AuthRequest, res, (err?: unknown) => (err ? reject(err) : resolve()));
+      }).catch(() => undefined);
+      if (res.headersSent) return; // requireAdmin already responded with 401/403
+    }
+
+    const { runDayBeforeReminders, runInstallNudges } = await import(
+      "../../services/whatsapp-cron.service"
+    );
+    const reminders = await runDayBeforeReminders();
+    const nudges = await runInstallNudges();
+
+    console.log(
+      `[admin/whatsapp] manual cron run — reminders: ${JSON.stringify(reminders)} nudges: ${JSON.stringify(nudges)}`,
+    );
+    res.json({ success: true, data: { reminders, nudges } });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Internal server error";
+    console.error("[admin/whatsapp] run-crons error:", message);
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
 // ────────────────────────────────────────────────────────────────────────────────
 // Scenarios — the admin-facing mapping of platform events → WhatsApp templates.
 // ────────────────────────────────────────────────────────────────────────────────

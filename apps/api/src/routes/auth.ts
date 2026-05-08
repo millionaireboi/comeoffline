@@ -15,7 +15,7 @@ const router = Router();
 /** POST /api/auth/validate-code — Validate invite/vouch code */
 router.post("/validate-code", async (req, res) => {
   try {
-    const { code, name, handle, vibe_tag, source, utm_source, utm_medium, utm_campaign } = req.body;
+    const { code, name, handle, vibe_tag, source, utm_source, utm_medium, utm_campaign, utm_content } = req.body;
 
     if (!code || typeof code !== "string") {
       res.status(400).json({ success: false, error: "Code is required" });
@@ -40,8 +40,8 @@ router.post("/validate-code", async (req, res) => {
     const trimmedName = typeof name === "string" ? name.trim() : undefined;
     const trimmedHandle = typeof handle === "string" ? handle.trim() : undefined;
 
-    const utmParams = (utm_source || utm_medium || utm_campaign)
-      ? { utm_source, utm_medium, utm_campaign }
+    const utmParams = (utm_source || utm_medium || utm_campaign || utm_content)
+      ? { utm_source, utm_medium, utm_campaign, utm_content }
       : undefined;
 
     const result = await validateCode(code, trimmedName, trimmedHandle, vibe_tag, source, utmParams);

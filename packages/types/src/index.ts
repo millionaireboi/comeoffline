@@ -406,6 +406,7 @@ export interface VouchCodeUsage {
   utm_source?: string;
   utm_medium?: string;
   utm_campaign?: string;
+  utm_content?: string; // creative-level attribution (e.g. which reel produced this signup)
 }
 
 export interface VouchCodeRules {

@@ -110,7 +110,7 @@ export async function validateCode(
   handle?: string,
   vibeTag?: string,
   source?: DiscoverySource,
-  utmParams?: { utm_source?: string; utm_medium?: string; utm_campaign?: string },
+  utmParams?: { utm_source?: string; utm_medium?: string; utm_campaign?: string; utm_content?: string },
 ): Promise<ValidateCodeResult> {
   const db = await getDb();
   const auth = await getAuthService();
@@ -222,6 +222,7 @@ export async function validateCode(
     ...(utmParams?.utm_source && { utm_source: utmParams.utm_source }),
     ...(utmParams?.utm_medium && { utm_medium: utmParams.utm_medium }),
     ...(utmParams?.utm_campaign && { utm_campaign: utmParams.utm_campaign }),
+    ...(utmParams?.utm_content && { utm_content: utmParams.utm_content }),
   };
 
   try {

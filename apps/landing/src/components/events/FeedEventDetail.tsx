@@ -163,7 +163,7 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
 
   // Prefilled code + UTMs from URL (e.g. ad link with ?code=SUNDAYFUNDAY&utm_source=meta)
   const [prefilledCode, setPrefilledCode] = useState<string | null>(null);
-  const prefilledUtmRef = useRef<{ utm_source?: string; utm_medium?: string; utm_campaign?: string }>({});
+  const prefilledUtmRef = useRef<{ utm_source?: string; utm_medium?: string; utm_campaign?: string; utm_content?: string }>({});
 
   // Sign-in state
   const [signInStep, setSignInStep] = useState<SignInStep>("handle");
@@ -246,6 +246,7 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
       ...(params.get("utm_source") && { utm_source: params.get("utm_source") as string }),
       ...(params.get("utm_medium") && { utm_medium: params.get("utm_medium") as string }),
       ...(params.get("utm_campaign") && { utm_campaign: params.get("utm_campaign") as string }),
+      ...(params.get("utm_content") && { utm_content: params.get("utm_content") as string }),
     };
   }, []);
 

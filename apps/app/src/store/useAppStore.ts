@@ -42,6 +42,11 @@ interface AppState {
   currentEvent: Event | null;
   setCurrentEvent: (event: Event | null) => void;
 
+  // Whether the event detail sheet is currently open. When true, the bottom nav
+  // is hidden so the conversion flow gets the full viewport.
+  eventDetailOpen: boolean;
+  setEventDetailOpen: (open: boolean) => void;
+
   // Active RSVP (legacy, for free events)
   activeRsvp: RSVP | null;
   setActiveRsvp: (rsvp: RSVP | null) => void;
@@ -107,6 +112,9 @@ export const useAppStore = create<AppState>((set) => ({
 
   currentEvent: null,
   setCurrentEvent: (event) => set({ currentEvent: event }),
+
+  eventDetailOpen: false,
+  setEventDetailOpen: (open) => set({ eventDetailOpen: open }),
 
   activeRsvp: null,
   setActiveRsvp: (rsvp) => set({ activeRsvp: rsvp }),

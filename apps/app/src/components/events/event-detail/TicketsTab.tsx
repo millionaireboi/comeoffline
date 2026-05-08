@@ -5,6 +5,7 @@ interface TicketsTabProps {
   tiers: TicketTier[];
   selectedTierId: string | null;
   onSelectTier: (id: string) => void;
+  /** unused — refund policy is rendered once in the overview block */
   maxPerUser?: number;
   refundPolicy?: string;
   accent: string;
@@ -103,9 +104,12 @@ function TierCard({
           )}
         </div>
         <div className="text-right">
-          {!unavailable && (
-            <p className="mb-0.5 font-mono text-[11px] text-muted">
-              {remaining} left of {tier.capacity}
+          {!unavailable && remaining <= 15 && (
+            <p
+              className="mb-0.5 font-mono text-[11px]"
+              style={{ color: remaining <= 5 ? "#C44A26" : accentDark }}
+            >
+              only {remaining} left
             </p>
           )}
           {closed && !soldOut && (
@@ -150,8 +154,6 @@ export function TicketsTab({
   tiers,
   selectedTierId,
   onSelectTier,
-  maxPerUser,
-  refundPolicy,
   accent,
   accentDark,
 }: TicketsTabProps) {
@@ -159,16 +161,16 @@ export function TicketsTab({
     <div className="relative">
       <GhostWatermark text="₹" className="-top-5 -right-2 text-[140px]" />
 
-      {/* Intro */}
+      {/* Section header */}
       <p
-        className="mb-5 inline-block font-hand text-sm"
-        style={{ color: "#D4A574", transform: "rotate(-0.5deg)" }}
+        className="mb-3 inline-block font-hand text-sm"
+        style={{ color: accentDark, transform: "rotate(-0.5deg)" }}
       >
         early bird gets the best deal. obviously.
       </p>
 
       {/* Tier cards */}
-      <div className="mb-6 flex flex-col gap-3">
+      <div className="flex flex-col gap-3">
         {tiers.map((tier) => (
           <TierCard
             key={tier.id}
@@ -180,13 +182,6 @@ export function TicketsTab({
           />
         ))}
       </div>
-
-      {/* Refund policy */}
-      {refundPolicy && (
-        <div className="rounded-xl bg-sand/25 px-4 py-3.5 text-center">
-          <p className="font-mono text-[10px] text-muted">{refundPolicy}</p>
-        </div>
-      )}
     </div>
   );
 }

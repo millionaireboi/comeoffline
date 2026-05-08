@@ -8,6 +8,7 @@ import { VenueSection } from "./VenueSection";
 import { PickupSection } from "./PickupSection";
 import { ScheduleSection } from "./ScheduleSection";
 import { OrganizerMessage } from "./OrganizerMessage";
+import { FAQSection } from "./FAQSection";
 
 interface OverviewTabProps {
   event: Event;
@@ -26,27 +27,33 @@ export function OverviewTab({ event }: OverviewTabProps) {
       />
 
       {/* Description */}
-      <p className="relative mb-7 font-sans text-[15px] leading-[1.75] text-warm-brown">
-        {event.description}
-      </p>
+      {event.description && (
+        <p className="relative mb-7 font-sans text-[15px] leading-[1.75] text-warm-brown">
+          {event.description}
+        </p>
+      )}
 
-      {/* Zones — dark full-bleed section */}
-      <ZonesSection
-        zones={event.zones}
-        accent={event.accent || "#D4A574"}
-        accentDark={event.accent_dark || "#B8845A"}
-      />
-
-      {/* What's included */}
+      {/* What's included — backs up the price */}
       <IncludesSection
         includes={event.includes}
         accent={event.accent || "#D4A574"}
         accentDark={event.accent_dark || "#B8845A"}
       />
 
-      {/* Dress code */}
-      <DressCodeCard
-        dressCode={event.dress_code}
+      {/* Schedule (pre-booking teaser) */}
+      {event.post_booking?.sections && (
+        <div className="mb-6">
+          <ScheduleSection
+            sections={event.post_booking.sections}
+            accent={event.accent || "#D4A574"}
+            accentDark={event.accent_dark || "#B8845A"}
+          />
+        </div>
+      )}
+
+      {/* Zones — dark full-bleed section */}
+      <ZonesSection
+        zones={event.zones}
         accent={event.accent || "#D4A574"}
         accentDark={event.accent_dark || "#B8845A"}
       />
@@ -70,6 +77,19 @@ export function OverviewTab({ event }: OverviewTabProps) {
         accentDark={event.accent_dark || "#B8845A"}
       />
 
+      {/* Dress code */}
+      <DressCodeCard
+        dressCode={event.dress_code}
+        accent={event.accent || "#D4A574"}
+        accentDark={event.accent_dark || "#B8845A"}
+      />
+
+      {/* FAQ — cold-buyer objection handling, ported from public landing */}
+      <FAQSection
+        accent={event.accent || "#D4A574"}
+        accentDark={event.accent_dark || "#B8845A"}
+      />
+
       {/* Refund policy */}
       {isTicketed && event.ticketing?.refund_policy && (
         <div className="mb-5 rounded-xl bg-sand/30 px-4 py-3 text-center">
@@ -87,17 +107,6 @@ export function OverviewTab({ event }: OverviewTabProps) {
           accent={event.accent_dark || "#B8845A"}
         />
       </div>
-
-      {/* Schedule sections (pre-booking teaser) */}
-      {event.post_booking?.sections && (
-        <div className="mt-5">
-          <ScheduleSection
-            sections={event.post_booking.sections}
-            accent={event.accent || "#D4A574"}
-            accentDark={event.accent_dark || "#B8845A"}
-          />
-        </div>
-      )}
 
       {/* Organizer message */}
       {event.post_booking?.custom_message && (

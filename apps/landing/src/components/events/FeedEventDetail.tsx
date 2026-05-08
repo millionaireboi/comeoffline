@@ -40,7 +40,7 @@ function CoverMedia({ event }: { event: any }) {
 
   if (isVideo) {
     return (
-      <div style={{ position: "relative", width: "100%", height: 200, overflow: "hidden", flexShrink: 0 }}>
+      <div style={{ position: "relative", width: "100%", height: 170, overflow: "hidden", flexShrink: 0 }}>
         <video
           src={event.cover_url}
           style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: event.cover_focus || "center", display: "block" }}
@@ -64,7 +64,7 @@ function CoverMedia({ event }: { event: any }) {
 
   if (hasCarousel) {
     return (
-      <div style={{ position: "relative", width: "100%", height: 200, overflow: "hidden", flexShrink: 0 }}>
+      <div style={{ position: "relative", width: "100%", height: 170, overflow: "hidden", flexShrink: 0 }}>
         <div
           style={{
             display: "flex",
@@ -80,7 +80,7 @@ function CoverMedia({ event }: { event: any }) {
               alt={i === 0 ? event.title : `${event.title} ${i + 1}`}
               style={{
                 width: "100%",
-                height: 200,
+                height: 170,
                 objectFit: "cover",
                 objectPosition: event.cover_focus || "center",
                 flexShrink: 0,
@@ -132,7 +132,7 @@ function CoverMedia({ event }: { event: any }) {
 
   // Single image
   return (
-    <div style={{ position: "relative", width: "100%", height: 200, overflow: "hidden", flexShrink: 0 }}>
+    <div style={{ position: "relative", width: "100%", height: 170, overflow: "hidden", flexShrink: 0 }}>
       <img
         src={event.cover_url}
         alt={event.title}
@@ -194,20 +194,29 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
   }>;
   const availableTiers = tiers.filter((t) => !t.sold_out);
   const cheapestPrice = availableTiers.length > 0 ? Math.min(...availableTiers.map((t) => t.price)) : null;
-  const [selectedTierId, setSelectedTierId] = useState<string | null>(null);
-  const selectedTier = tiers.find((t) => t.id === selectedTierId) || null;
+  // Auto-select the cheapest available tier so the CTA is one-tap from the moment
+  // the page loads — no "select a tier" dead-end gate.
+  const [selectedTierId, setSelectedTierId] = useState<string | null>(() => {
+    if (availableTiers.length === 0) return null;
+    return availableTiers.reduce(
+      (min, t) => (t.price < min.price ? t : min),
+      availableTiers[0],
+    ).id;
+  });
   const isFree = tiers.length === 0 || (cheapestPrice !== null && cheapestPrice === 0);
   const fillPct = event.total_spots > 0 ? (event.spots_taken / event.total_spots) * 100 : 0;
   const fillingFast = !isFree && fillPct >= 70 && spotsLeft > 0;
 
-  // Compute days until venue reveal
-  let daysUntilVenue: number | null = null;
-  if (event.venue_reveal_date) {
+  // Compute days until venue reveal — client-only to avoid SSR/hydration drift,
+  // since `new Date()` differs between server render and client hydrate.
+  const [daysUntilVenue, setDaysUntilVenue] = useState<number | null>(null);
+  useEffect(() => {
+    if (!event.venue_reveal_date) return;
     const now = new Date();
     const reveal = new Date(event.venue_reveal_date);
     const diffMs = reveal.getTime() - now.getTime();
-    daysUntilVenue = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
-  }
+    setDaysUntilVenue(Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24))));
+  }, [event.venue_reveal_date]);
 
   // Track event detail opened + Meta Pixel ViewContent
   useEffect(() => {
@@ -1012,46 +1021,75 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
                 </div>
               </div>
 
-              {/* Title + emoji */}
-              <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 4 }}>
-                <h2
-                  className="font-serif font-normal"
-                  style={{
-                    fontSize: 26,
-                    lineHeight: 1.15,
-                    color: P.nearBlack,
-                    margin: 0,
-                    flex: 1,
-                  }}
-                >
-                  {event.title}
-                </h2>
-                <span style={{ fontSize: 30, flexShrink: 0 }}>{event.emoji}</span>
-              </div>
+              {/* Title — only renders when there's no cover image. When the cover is
+                  present, the artwork itself carries the title (Option A). */}
+              {!event.cover_url && (
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 4 }}>
+                  <h2
+                    className="font-serif font-normal"
+                    style={{
+                      fontSize: 24,
+                      lineHeight: 1.15,
+                      color: P.nearBlack,
+                      margin: 0,
+                      flex: 1,
+                    }}
+                  >
+                    {event.title}
+                  </h2>
+                  <span style={{ fontSize: 28, flexShrink: 0 }}>{event.emoji}</span>
+                </div>
+              )}
 
               {/* Tagline */}
-              <p
-                className="font-sans text-[14px]"
+              {event.tagline && (
+                <p
+                  className="font-sans text-[13px]"
+                  style={{
+                    color: P.warmBrown,
+                    fontStyle: "italic",
+                    margin: event.cover_url ? "0 0 6px" : "0 0 6px",
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {event.tagline}
+                </p>
+              )}
+
+              {/* Date · location — single quiet row replacing the old 4-column grid */}
+              <div
+                className="font-sans text-[12px]"
                 style={{
                   color: P.warmBrown,
-                  fontStyle: "italic",
-                  margin: "0 0 8px",
-                  lineHeight: 1.4,
+                  display: "flex",
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                  gap: "0 12px",
+                  margin: "0 0 14px",
                 }}
               >
-                {event.tagline}
-              </p>
-
-              {/* Trust line */}
-              <p
-                className="font-mono text-[10px] uppercase tracking-[1.5px]"
-                style={{
-                  color: P.muted,
-                  margin: "0 0 16px",
-                }}
-              >
-                by come offline · bangalore
-              </p>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 11 }}>📅</span>
+                  <span>
+                    {event.date} · {event.time}
+                  </span>
+                </span>
+                {(event.venue_name || event.venue_area || (daysUntilVenue !== null && daysUntilVenue > 0)) && (
+                  <>
+                    <span style={{ opacity: 0.4, fontSize: 10 }}>·</span>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 11 }}>📍</span>
+                      <span>
+                        {event.venue_name
+                          || event.venue_area
+                          || (daysUntilVenue && daysUntilVenue > 0
+                              ? `venue drops in ${daysUntilVenue}d`
+                              : "venue dropping soon")}
+                      </span>
+                    </span>
+                  </>
+                )}
+              </div>
             </div>
 
             {/* Scrollable body */}
@@ -1063,59 +1101,6 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
                 WebkitOverflowScrolling: "touch",
               }}
             >
-              {/* Date & time + price */}
-              <div
-                style={{
-                  display: "flex",
-                  gap: 20,
-                  marginBottom: 16,
-                  paddingBottom: 16,
-                  borderBottom: `1px solid ${P.sand}`,
-                  flexWrap: "wrap",
-                }}
-              >
-                <div>
-                  <span className="font-mono text-[9px] uppercase tracking-[1px]" style={{ color: P.muted }}>
-                    date
-                  </span>
-                  <p className="font-sans text-[14px] font-medium" style={{ color: P.nearBlack, margin: "4px 0 0" }}>
-                    {event.date}
-                  </p>
-                </div>
-                <div>
-                  <span className="font-mono text-[9px] uppercase tracking-[1px]" style={{ color: P.muted }}>
-                    time
-                  </span>
-                  <p className="font-sans text-[14px] font-medium" style={{ color: P.nearBlack, margin: "4px 0 0" }}>
-                    {event.time}
-                  </p>
-                </div>
-                {cheapestPrice !== null && (
-                  <div>
-                    <span className="font-mono text-[9px] uppercase tracking-[1px]" style={{ color: P.muted }}>
-                      from
-                    </span>
-                    <p className="font-sans text-[14px] font-medium" style={{ color: accentDark, margin: "4px 0 0" }}>
-                      {cheapestPrice === 0 ? "free" : `₹${cheapestPrice.toLocaleString("en-IN")}`}
-                    </p>
-                  </div>
-                )}
-                {(daysUntilVenue !== null || event.venue_name) && (
-                  <div>
-                    <span className="font-mono text-[9px] uppercase tracking-[1px]" style={{ color: P.muted }}>
-                      venue
-                    </span>
-                    <p className="font-sans text-[14px] font-medium" style={{ color: event.venue_name ? P.nearBlack : accent, margin: "4px 0 0" }}>
-                      {event.venue_name
-                        ? event.venue_name
-                        : daysUntilVenue && daysUntilVenue > 0
-                          ? `drops in ${daysUntilVenue}d`
-                          : "dropping soon"}
-                    </p>
-                  </div>
-                )}
-              </div>
-
               {/* Tier cards — pricing transparency for cold traffic */}
               {tiers.length > 0 && !isFree && (
                 <div style={{ marginBottom: 24 }}>
@@ -1452,7 +1437,7 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
               </div>
             </div>
 
-            {/* Sticky bottom CTA */}
+            {/* Sticky bottom CTA — clean "Buy Tickets" pill, no price, no sub-line */}
             <div
               style={{
                 position: "absolute",
@@ -1460,45 +1445,32 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
                 left: 0,
                 right: 0,
                 background: `linear-gradient(to top, ${P.cream} 70%, ${P.cream}00)`,
-                padding: "24px 20px 28px",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: 6,
+                padding: "20px 20px calc(24px + env(safe-area-inset-bottom, 0px))",
               }}
             >
               <button
                 onClick={handleImIn}
-                className="font-sans text-[14px] font-medium"
+                disabled={spotsLeft === 0}
+                className="font-sans text-[15px] font-semibold"
                 style={{
                   display: "block",
                   width: "100%",
-                  background: spotsLeft === 0 ? P.sand : accent,
+                  background: spotsLeft === 0 ? "#E8DDD0" : "#1A1715",
                   color: spotsLeft === 0 ? P.muted : "#FFFFFF",
                   border: "none",
-                  borderRadius: 12,
-                  padding: "13px 0",
+                  borderRadius: 100,
+                  padding: "16px 0",
                   cursor: spotsLeft === 0 ? "default" : "pointer",
                   letterSpacing: 0.3,
+                  boxShadow:
+                    spotsLeft === 0
+                      ? "none"
+                      : "0 6px 24px rgba(26,23,21,0.28), 0 0 0 1px rgba(155,142,130,0.08)",
+                  transition: "transform 0.18s ease",
                 }}
-                disabled={spotsLeft === 0}
               >
-                {spotsLeft === 0
-                  ? "sold out"
-                  : selectedTier
-                    ? `i'm in · ${selectedTier.price === 0 ? "free" : `₹${selectedTier.price.toLocaleString("en-IN")}`} →`
-                    : cheapestPrice !== null && cheapestPrice > 0
-                      ? `i'm in · from ₹${cheapestPrice.toLocaleString("en-IN")} →`
-                      : "i'm in →"}
+                {spotsLeft === 0 ? "Sold Out" : isFree ? "I'm In" : "Buy Tickets"}
               </button>
-              <span
-                className="font-hand text-[11px]"
-                style={{ color: P.muted + "60" }}
-              >
-                {prefilledCode
-                  ? "secure payment via razorpay"
-                  : "you'll need an invite code"}
-              </span>
             </div>
           </>
         )}

@@ -49,6 +49,7 @@ export default function Home() {
   const user = useAppStore((s) => s.user);
   const fullProfileMode = useAppStore((s) => s.fullProfileMode);
   const showCompletionDialog = useAppStore((s) => s.showCompletionDialog);
+  const eventDetailOpen = useAppStore((s) => s.eventDetailOpen);
   const [chatOpen, setChatOpen] = useState(false);
   const [quizActive, setQuizActive] = useState(false);
   const [showSignIn, setShowSignIn] = useState(false);
@@ -321,8 +322,9 @@ export default function Home() {
     );
   }
 
-  // Show bottom nav on authenticated stages
-  const showNav = user && !["gate", "accepted", "install", "profile_setup", "app_education", "sign_quiz"].includes(stage);
+  // Show bottom nav on authenticated stages, but hide it while the event detail
+  // sheet is open so the conversion flow gets the full viewport.
+  const showNav = user && !eventDetailOpen && !["gate", "accepted", "install", "profile_setup", "app_education", "sign_quiz"].includes(stage);
 
   // Route based on stage
   let screen: React.ReactNode;

@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import type { Event } from "@comeoffline/types";
 import { useAppStore } from "@/store/useAppStore";
 import { CheckoutWizard } from "@/components/events/CheckoutWizard";
 import { ExitSurvey } from "@/components/events/ExitSurvey";
 import { CollapsibleHeader } from "./event-detail/CollapsibleHeader";
-import { SectionTabs } from "./event-detail/SectionTabs";
 import { OverviewTab } from "./event-detail/OverviewTab";
 import { TicketsTab } from "./event-detail/TicketsTab";
 import { SeatingTab } from "./event-detail/SeatingTab";
@@ -35,23 +34,34 @@ interface EventDetailProps {
 export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPurchase, onJoinWaitlist, onLeaveWaitlist, loading }: EventDetailProps) {
   const user = useAppStore((s) => s.user);
   const activeWaitlistEntry = useAppStore((s) => s.activeWaitlistEntry);
+  const setEventDetailOpen = useAppStore((s) => s.setEventDetailOpen);
   const isAnnounced = event.status === "announced";
   const spotsLeft = (event.total_spots ?? 0) - (event.spots_taken ?? 0);
   const isTicketed = !!(event.ticketing?.enabled && !event.is_free);
   const tiers = event.ticketing?.tiers || [];
   const hasCheckoutWizard = !!(event.checkout?.enabled && (event.checkout?.steps?.length || 0) > 0);
+  const hasSeating = !!(event.seating?.mode && event.seating.mode !== "none" && !isAnnounced);
 
-  // If a tier was passed in via deep-link (landing → app), open straight on the
-  // tickets tab so the user sees their preselected tier highlighted with a price-aware CTA.
+  // Mark the detail sheet as open so the bottom nav hides itself, freeing the
+  // full viewport for the conversion flow.
+  useEffect(() => {
+    setEventDetailOpen(true);
+    return () => setEventDetailOpen(false);
+  }, [setEventDetailOpen]);
+
+  // Auto-select the cheapest available tier on open. Deep-link tier wins if
+  // still available; otherwise we pick the lowest-priced tier with capacity.
   const initialTierStillAvailable = !!initialTierId && tiers.some((t) => t.id === initialTierId && t.sold < t.capacity);
-  const [activeSection, setActiveSection] = useState<"overview" | "tickets" | "seating" | "attendees">(
-    initialTierStillAvailable ? "tickets" : "overview",
-  );
-  const [scrolled, setScrolled] = useState(false);
+  const cheapestAvailableTier = useMemo(() => {
+    const available = tiers.filter((t) => t.sold < t.capacity);
+    if (available.length === 0) return null;
+    return available.reduce((min, t) => (t.price < min.price ? t : min), available[0]);
+  }, [tiers]);
+
   const [selectedTierId, setSelectedTierId] = useState<string | null>(
     initialTierStillAvailable
       ? initialTierId!
-      : tiers.length === 1 && tiers[0].sold < tiers[0].capacity ? tiers[0].id : null,
+      : cheapestAvailableTier?.id ?? null,
   );
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<string | null>(null);
   const [selectedPickup, setSelectedPickup] = useState<string | null>(
@@ -60,6 +70,7 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
   const [showWizard, setShowWizard] = useState(false);
   const [showExitSurvey, setShowExitSurvey] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const ticketsRef = useRef<HTMLDivElement>(null);
 
   const selectedTier = tiers.find((t) => t.id === selectedTierId);
   const timeSlotsEnabled = event.ticketing?.time_slots_enabled && (event.ticketing?.time_slots?.length || 0) > 0;
@@ -75,21 +86,6 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
     return Math.min(...available.map((t) => t.price));
   }, [isTicketed, tiers]);
 
-  const sectionTabs = useMemo(() => {
-    const tabs: Array<{ id: string; label: string }> = [{ id: "overview", label: "overview" }];
-    if (isTicketed && !isAnnounced) tabs.push({ id: "tickets", label: "tickets" });
-    if (event.seating?.mode && event.seating.mode !== "none" && !isAnnounced) {
-      tabs.push({ id: "seating", label: "seating" });
-    }
-    if (!isAnnounced) tabs.push({ id: "attendees", label: "attendees" });
-    return tabs;
-  }, [isTicketed, isAnnounced, event.seating?.mode]);
-
-  const handleTabSwitch = (id: string) => {
-    setActiveSection(id as "overview" | "tickets" | "seating" | "attendees");
-    scrollRef.current?.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
-  };
-
   const handleCTA = () => {
     // Purchase / RSVP is no longer gated on the rest of the profile — buying is the highest-intent
     // moment, so don't block it. The remaining onboarding fields are collected post-purchase.
@@ -102,9 +98,8 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
     }
   };
 
-  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    const s = e.currentTarget.scrollTop > 30;
-    if (s !== scrolled) setScrolled(s);
+  const scrollToTickets = () => {
+    ticketsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   return (
@@ -119,7 +114,8 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
       <div
         className="relative flex w-full max-w-[430px] flex-col overflow-hidden rounded-t-[28px] bg-cream"
         style={{
-          maxHeight: "92dvh",
+          maxHeight: "100dvh",
+          height: "100dvh",
           animation: "chatSlideIn 0.4s cubic-bezier(0.16,1,0.3,1) both",
         }}
       >
@@ -132,52 +128,51 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
           }}
         />
 
-        {/* Collapsible header */}
+        {/* Compact header — hero + pill + tagline + date/location row */}
         <CollapsibleHeader
           event={event}
-          scrolled={scrolled}
           onClose={onClose}
-          cheapestPrice={cheapestPrice}
         />
 
-        {/* Section tabs */}
-        <SectionTabs
-          tabs={sectionTabs}
-          active={activeSection}
-          onSelect={handleTabSwitch}
-          accentDark={event.accent_dark || "#B8845A"}
-        />
-
-        {/* Scrollable content */}
+        {/* Single-scroll content: tiers → social proof → about → includes → schedule → venue → FAQ */}
         <div
           ref={scrollRef}
-          onScroll={handleScroll}
-          className="flex-1 overflow-y-auto px-6 pb-6 pt-5"
+          className="flex-1 overflow-y-auto px-6 pb-6 pt-3"
         >
-          {activeSection === "overview" && <OverviewTab event={event} />}
-
-          {activeSection === "tickets" && isTicketed && (
-            <TicketsTab
-              tiers={tiers}
-              selectedTierId={selectedTierId}
-              onSelectTier={setSelectedTierId}
-              maxPerUser={event.ticketing?.max_per_user}
-              refundPolicy={event.ticketing?.refund_policy}
-              accent={event.accent || "#D4A574"}
-              accentDark={event.accent_dark || "#B8845A"}
-            />
+          {/* Tickets — first thing visible after the header. This is the conversion moment. */}
+          {isTicketed && !isAnnounced && (
+            <div ref={ticketsRef} className="mb-6">
+              <TicketsTab
+                tiers={tiers}
+                selectedTierId={selectedTierId}
+                onSelectTier={setSelectedTierId}
+                maxPerUser={event.ticketing?.max_per_user}
+                refundPolicy={event.ticketing?.refund_policy}
+                accent={event.accent || "#D4A574"}
+                accentDark={event.accent_dark || "#B8845A"}
+              />
+            </div>
           )}
 
-          {activeSection === "seating" && event.seating && (
-            <SeatingTab
-              seating={event.seating}
-              accent={event.accent || "#D4A574"}
-              accentDark={event.accent_dark || "#B8845A"}
-            />
+          {/* Seating — if the event uses it */}
+          {hasSeating && event.seating && (
+            <div className="mb-6">
+              <SeatingTab
+                seating={event.seating}
+                accent={event.accent || "#D4A574"}
+                accentDark={event.accent_dark || "#B8845A"}
+              />
+            </div>
           )}
 
-          {activeSection === "attendees" && (
-            <AttendeeList eventId={event.id} />
+          {/* About / includes / schedule / venue / FAQ — everything that used to live on OVERVIEW */}
+          <OverviewTab event={event} />
+
+          {/* Attendees — at the bottom, no longer a tab */}
+          {!isAnnounced && (
+            <div className="mt-6">
+              <AttendeeList eventId={event.id} />
+            </div>
           )}
         </div>
 
@@ -187,15 +182,13 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
           isTicketed={isTicketed}
           hasCheckoutWizard={hasCheckoutWizard}
           selectedTier={selectedTier}
-          activeSection={activeSection}
           cheapestPrice={cheapestPrice}
           onCTA={handleCTA}
-          onSwitchToTickets={() => handleTabSwitch("tickets")}
+          onScrollToTickets={scrollToTickets}
           canPurchase={canPurchase}
           loading={loading}
           accent={event.accent || "#D4A574"}
           accentDark={event.accent_dark || "#B8845A"}
-          quizPending={!user?.sign}
           isAnnounced={isAnnounced}
           waitlistCount={event.waitlist_count || 0}
           activeWaitlistEntry={activeWaitlistEntry}

@@ -6,15 +6,13 @@ interface FloatingCTAProps {
   isTicketed: boolean;
   hasCheckoutWizard: boolean;
   selectedTier: TicketTier | undefined;
-  activeSection: string;
   cheapestPrice: number | null;
   onCTA: () => void;
-  onSwitchToTickets: () => void;
+  onScrollToTickets: () => void;
   canPurchase: boolean;
   loading?: boolean;
   accent: string;
   accentDark: string;
-  quizPending?: boolean;
   isAnnounced?: boolean;
   waitlistCount?: number;
   activeWaitlistEntry?: WaitlistEntry | null;
@@ -27,15 +25,13 @@ export function FloatingCTA({
   isTicketed,
   hasCheckoutWizard,
   selectedTier,
-  activeSection,
   cheapestPrice,
   onCTA,
-  onSwitchToTickets,
+  onScrollToTickets,
   canPurchase,
   loading,
   accent,
   accentDark,
-  quizPending,
   isAnnounced,
   waitlistCount,
   activeWaitlistEntry,
@@ -45,14 +41,17 @@ export function FloatingCTA({
   const soldOut = spotsLeft === 0;
   const [spotsWanted, setSpotsWanted] = useState(1);
 
+  // Bottom nav is hidden while the event detail is open, so the CTA only needs
+  // to clear the iOS home indicator — no 56px reserved for the nav.
+  const safeAreaPadding = "calc(0.75rem + env(safe-area-inset-bottom, 0px))";
+
   // Announced event — waitlist mode
   if (isAnnounced) {
     return (
-      <div className="relative z-[5] shrink-0 px-5 pt-3" style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom, 0px))" }}>
+      <div className="relative z-[5] shrink-0 px-5 pt-3" style={{ paddingBottom: safeAreaPadding }}>
         <div className="pointer-events-none absolute -top-6 left-0 right-0 h-6 bg-gradient-to-t from-cream to-transparent" />
 
         {activeWaitlistEntry ? (
-          // Already on waitlist
           <div className="rounded-[20px] bg-near-black p-[14px_20px] shadow-[0_4px_24px_rgba(26,23,21,0.25),0_0_0_1px_rgba(155,142,130,0.1)]">
             <div className="mb-2.5 flex items-center justify-between">
               <span className="font-sans text-xs text-cream/90">you&apos;re on the list</span>
@@ -73,7 +72,6 @@ export function FloatingCTA({
             </button>
           </div>
         ) : (
-          // Join waitlist
           <div className="rounded-[20px] bg-near-black p-[14px_20px] shadow-[0_4px_24px_rgba(26,23,21,0.25),0_0_0_1px_rgba(155,142,130,0.1)]">
             <div className="mb-2.5 flex items-center justify-between">
               <span className="font-sans text-xs text-cream/90">how many spots?</span>
@@ -117,86 +115,61 @@ export function FloatingCTA({
     );
   }
 
+  // Single sticky CTA — always shows price + action when a tier is selected.
+  // Tap goes straight to checkout (one-step), no "select a tier → enable button → buy".
+  const handleTap = () => {
+    if (soldOut || loading) return;
+    if (!isTicketed) {
+      onCTA();
+      return;
+    }
+    if (!selectedTier) {
+      // Edge case: no tier auto-selected (e.g. all sold out). Bounce the user
+      // to the tier list so they can see the situation.
+      onScrollToTickets();
+      return;
+    }
+    if (!canPurchase) {
+      // Time slots / pickup required — bounce to the tier list so they pick.
+      onScrollToTickets();
+      return;
+    }
+    onCTA();
+  };
+
+  // Single CTA copy — clean and generic. No price, no tier name.
+  let label = "Buy Tickets";
+  if (soldOut) {
+    label = "Sold Out";
+  } else if (loading) {
+    label = "Buying...";
+  } else if (!isTicketed) {
+    label = "I'm In";
+  }
+
   return (
-    <div className="relative z-[5] shrink-0 px-5 pt-3" style={{ paddingBottom: "calc(1rem + 56px + env(safe-area-inset-bottom, 0px))" }}>
-      {/* Gradient fade */}
+    <div
+      className="relative z-[5] shrink-0 px-5 pt-3"
+      style={{ paddingBottom: safeAreaPadding }}
+    >
       <div className="pointer-events-none absolute -top-6 left-0 right-0 h-6 bg-gradient-to-t from-cream to-transparent" />
 
-      {/* Expanded dark card — tier selected and on tickets tab */}
-      {isTicketed && selectedTier && activeSection === "tickets" && !soldOut ? (
-        <div className="rounded-[20px] bg-near-black p-[14px_20px] shadow-[0_4px_24px_rgba(26,23,21,0.25),0_0_0_1px_rgba(155,142,130,0.1)]">
-          <div className="mb-2.5 flex items-center justify-between">
-            <span className="font-sans text-xs text-cream/90">{selectedTier.label}</span>
-            <span className="font-mono text-[15px] font-semibold" style={{ color: accent }}>
-              {selectedTier.price === 0 ? "Free" : `₹${selectedTier.price}`}
-            </span>
-          </div>
-          <button
-            onClick={onCTA}
-            disabled={loading}
-            className="w-full rounded-[14px] border-[1.5px] py-3.5 font-sans text-sm font-semibold tracking-wide text-near-black transition-transform active:scale-[0.97]"
-            style={{
-              background: `linear-gradient(135deg, ${accentDark}, ${accent})`,
-              borderColor: accent + "40",
-              opacity: loading ? 0.6 : 1,
-              cursor: loading ? "default" : "pointer",
-            }}
-          >
-            {loading ? "getting your ticket..." : "save me a spot →"}
-          </button>
-          {quizPending && (
-            <p className="mt-2 text-center font-mono text-[10px] text-cream/40">
-              ✦ you'll need to take the sign quiz before the event
-            </p>
-          )}
-        </div>
-      ) : (
-        /* Simple button */
-        <button
-          onClick={() => {
-            if (soldOut) return;
-            if (isTicketed && activeSection !== "tickets") {
-              onSwitchToTickets();
-            } else {
-              onCTA();
-            }
-          }}
-          disabled={soldOut || loading || (isTicketed && !hasCheckoutWizard && !canPurchase && activeSection === "tickets")}
-          className="w-full rounded-[18px] py-4 font-sans text-sm font-medium transition-transform active:scale-[0.97]"
-          style={{
-            background: soldOut ? "#E8DDD0" : "#1A1715",
-            color: soldOut ? "#9B8E82" : "#fff",
-            cursor: soldOut || loading ? "default" : "pointer",
-            boxShadow: soldOut
-              ? "none"
-              : "0 4px 24px rgba(26,23,21,0.3), 0 0 0 1px rgba(155,142,130,0.1)",
-            opacity: loading ? 0.6 : 1,
-          }}
-        >
-          {soldOut
-            ? "sold out. told you to hurry."
-            : loading
-              ? isTicketed
-                ? "getting your ticket..."
-                : "reserving spot..."
-              : isTicketed
-                ? activeSection === "tickets"
-                  ? !canPurchase
-                    ? "select a tier"
-                    : hasCheckoutWizard
-                      ? "get tickets →"
-                      : `pay ₹${selectedTier?.price ?? cheapestPrice ?? 0} →`
-                  : cheapestPrice != null && cheapestPrice < Infinity
-                    ? `i'm literally coming · ₹${cheapestPrice}+ →`
-                    : "get tickets →"
-                : "i'm in →"}
-        </button>
-      )}
-      {quizPending && !soldOut && !(isTicketed && selectedTier && activeSection === "tickets") && (
-        <p className="mt-2 text-center font-mono text-[10px] text-muted/50">
-          ✦ you'll need to take the sign quiz before the event
-        </p>
-      )}
+      <button
+        onClick={handleTap}
+        disabled={soldOut || loading}
+        className="w-full rounded-[100px] py-[16px] text-center font-sans text-[15px] font-semibold transition-transform active:scale-[0.98]"
+        style={{
+          background: soldOut ? "#E8DDD0" : "#1A1715",
+          color: soldOut ? "#9B8E82" : "#fff",
+          cursor: soldOut || loading ? "default" : "pointer",
+          boxShadow: soldOut
+            ? "none"
+            : "0 6px 24px rgba(26,23,21,0.28), 0 0 0 1px rgba(155,142,130,0.08)",
+          opacity: loading ? 0.7 : 1,
+        }}
+      >
+        {label}
+      </button>
     </div>
   );
 }

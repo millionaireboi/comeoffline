@@ -3,7 +3,7 @@ import { requireAdmin, type AuthRequest } from "../../middleware/auth";
 import { asyncHandler } from "../../middleware/errorHandler";
 import { getUsers } from "../../services/applications.service";
 import { getUserProfile, deleteUser } from "../../services/profile.service";
-import { getDb } from "../../config/firebase-admin";
+import { getDb, getAuthService } from "../../config/firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 
 const router = Router();
@@ -31,6 +31,133 @@ router.get("/", requireAdmin, async (_req: AuthRequest, res) => {
     res.status(500).json({ success: false, error: "Failed to fetch members" });
   }
 });
+
+/**
+ * GET /api/admin/members/lookup-phone?phone=+91...
+ * Diagnostic: surface every place a phone number is referenced — Firestore users,
+ * phone_otps, and Firebase Auth — so we can tell if an admin-deleted member left
+ * orphaned state that's blocking re-onboarding.
+ *
+ * NOTE: declared before /:id so Express doesn't match "lookup-phone" as an id.
+ */
+router.get("/lookup-phone", requireAdmin, asyncHandler(async (req: AuthRequest, res) => {
+  const phone = (req.query.phone as string | undefined)?.trim();
+  if (!phone) {
+    res.status(400).json({ success: false, error: "phone query param required" });
+    return;
+  }
+
+  const db = await getDb();
+  const auth = await getAuthService();
+
+  const usersSnap = await db.collection("users").where("phone_number", "==", phone).get();
+  const users = usersSnap.docs.map((d) => {
+    const data = d.data();
+    return {
+      id: d.id,
+      handle: data.handle ?? null,
+      full_name: data.full_name ?? null,
+      status: data.status ?? null,
+      phone_number: data.phone_number ?? null,
+      phone_verified_at: data.phone_verified_at ?? null,
+      created_at: data.created_at ?? null,
+    };
+  });
+
+  const otpsSnap = await db.collection("phone_otps").where("phone", "==", phone).get();
+  const phone_otps = otpsSnap.docs.map((d) => {
+    const data = d.data();
+    return {
+      user_id: d.id,
+      phone: data.phone ?? null,
+      consumed: data.consumed ?? null,
+      verified_at: data.verified_at ?? null,
+      created_at: data.created_at ?? null,
+      expires_at: data.expires_at ?? null,
+    };
+  });
+
+  let firebase_auth_user: { uid: string; phoneNumber: string | undefined; disabled: boolean } | null = null;
+  let firebase_auth_error: string | null = null;
+  try {
+    const u = await auth.getUserByPhoneNumber(phone);
+    firebase_auth_user = { uid: u.uid, phoneNumber: u.phoneNumber, disabled: u.disabled };
+  } catch (err: unknown) {
+    const code = (err as { code?: string }).code;
+    firebase_auth_error = code === "auth/user-not-found" ? "not-found" : (code ?? "unknown");
+  }
+
+  res.json({
+    success: true,
+    data: {
+      phone,
+      users,
+      phone_otps,
+      firebase_auth_user,
+      firebase_auth_error,
+      verdict:
+        users.length === 0 && !firebase_auth_user && phone_otps.length === 0
+          ? "clean — phone is fully free"
+          : users.length > 1
+          ? "duplicate users with same phone — manual cleanup needed"
+          : users.length === 1
+          ? `users doc ${users[0].id} owns this phone`
+          : firebase_auth_user
+          ? `firebase auth user ${firebase_auth_user.uid} still has phone (no firestore doc)`
+          : "orphaned phone_otps record only",
+    },
+  });
+}));
+
+/**
+ * POST /api/admin/members/lookup-phone/cleanup
+ * Body: { phone: string, confirm: true }
+ * Force-cleans orphaned state for a phone: deletes any matching phone_otps docs,
+ * and deletes the Firebase Auth user if present. Refuses if a users doc still
+ * owns the phone — delete the member first via DELETE /api/admin/members/:id.
+ */
+router.post("/lookup-phone/cleanup", requireAdmin, asyncHandler(async (req: AuthRequest, res) => {
+  const { phone, confirm } = req.body as { phone?: string; confirm?: boolean };
+  if (!phone || confirm !== true) {
+    res.status(400).json({ success: false, error: "phone + confirm:true required" });
+    return;
+  }
+
+  const db = await getDb();
+  const auth = await getAuthService();
+
+  const usersSnap = await db.collection("users").where("phone_number", "==", phone).limit(1).get();
+  if (!usersSnap.empty) {
+    res.status(409).json({
+      success: false,
+      error: `users doc ${usersSnap.docs[0].id} still owns this phone — delete the member first via DELETE /api/admin/members/:id`,
+    });
+    return;
+  }
+
+  const otpsSnap = await db.collection("phone_otps").where("phone", "==", phone).get();
+  const otpDeletes: string[] = [];
+  for (const doc of otpsSnap.docs) {
+    await doc.ref.delete();
+    otpDeletes.push(doc.id);
+  }
+
+  let auth_deleted: string | null = null;
+  let auth_error: string | null = null;
+  try {
+    const u = await auth.getUserByPhoneNumber(phone);
+    await auth.deleteUser(u.uid);
+    auth_deleted = u.uid;
+  } catch (err: unknown) {
+    const code = (err as { code?: string }).code;
+    auth_error = code === "auth/user-not-found" ? null : (code ?? "unknown");
+  }
+
+  res.json({
+    success: true,
+    data: { phone, phone_otps_deleted: otpDeletes, auth_deleted, auth_error },
+  });
+}));
 
 /** GET /api/admin/members/:id — Get full member profile */
 router.get("/:id", requireAdmin, asyncHandler(async (req: AuthRequest, res) => {

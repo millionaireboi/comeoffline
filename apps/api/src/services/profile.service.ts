@@ -194,6 +194,10 @@ export async function deleteUser(userId: string): Promise<void> {
     batch.delete(doc.ref);
   }
 
+  // Delete the OTP record (keyed by uid). Without this, a phone_otps doc with the
+  // old phone survives the user delete and shows up in admin diagnostics.
+  batch.delete(db.collection("phone_otps").doc(userId));
+
   // Commit all Firestore deletes
   await batch.commit();
 

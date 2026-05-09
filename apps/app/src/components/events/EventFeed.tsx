@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { Event, RSVP, Ticket, WaitlistEntry } from "@comeoffline/types";
-import { trackFbEvent } from "@comeoffline/analytics";
+import { trackFbEvent, posthog, FUNNEL_RAZORPAY_REDIRECTED } from "@comeoffline/analytics";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppStore } from "@/store/useAppStore";
 import { apiFetch } from "@/lib/api";
@@ -180,6 +180,14 @@ export function EventFeed() {
         });
         if (data.data) {
           if (data.data.payment_url) {
+            // Funnel: user is now leaving for Razorpay. Last client-side step we can capture.
+            posthog.capture(FUNNEL_RAZORPAY_REDIRECTED, {
+              event_id: event.id,
+              event_title: event.title,
+              ticket_id: data.data.id,
+              tier_id: tierId,
+              user_id: user?.id,
+            });
             // Paid event: redirect to Razorpay Payment Link
             window.location.href = data.data.payment_url;
             return;

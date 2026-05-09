@@ -24,3 +24,19 @@ export const CHECKOUT_EXIT_REASON = "checkout_exit_reason";
 export const EVENT_SHARED = "event_shared";
 export const TICKET_SHARED = "ticket_shared";
 export const VOUCH_CODE_SHARED = "vouch_code_shared";
+
+// ── Funnel observability (paid-traffic conversion funnel) ─────────────
+// Stable event names so PostHog funnel views stay consistent across deploys.
+// Each event carries event_id + utm_source/medium/campaign/content where applicable.
+export const FUNNEL_LANDING_VIEWED = "funnel_landing_viewed";
+export const FUNNEL_IM_IN_CLICKED = "funnel_im_in_clicked";
+export const FUNNEL_VALIDATE_CODE_SUCCESS = "funnel_validate_code_success";
+export const FUNNEL_VALIDATE_CODE_FAILED = "funnel_validate_code_failed";
+export const FUNNEL_APP_HANDOFF_STARTED = "funnel_app_handoff_started";
+export const FUNNEL_APP_HANDOFF_COMPLETED = "funnel_app_handoff_completed";
+export const FUNNEL_APP_HANDOFF_FAILED = "funnel_app_handoff_failed";
+export const FUNNEL_EVENT_DETAIL_OPENED_IN_APP = "funnel_event_detail_opened_in_app";
+export const FUNNEL_TIER_SELECTED_IN_APP = "funnel_tier_selected_in_app";
+export const FUNNEL_CHECKOUT_OPENED = "funnel_checkout_opened";
+export const FUNNEL_RAZORPAY_REDIRECTED = "funnel_razorpay_redirected";
+export const FUNNEL_PURCHASE_CONFIRMED = "funnel_purchase_confirmed"; // server-side

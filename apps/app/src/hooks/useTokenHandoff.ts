@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppStore } from "@/store/useAppStore";
+import { posthog, FUNNEL_APP_HANDOFF_COMPLETED, FUNNEL_APP_HANDOFF_FAILED } from "@comeoffline/analytics";
 
 function resolveUrl(envValue: string | undefined, fallbackPort: number): string {
   if (typeof window === "undefined") return envValue || `http://localhost:${fallbackPort}`;
@@ -87,11 +88,35 @@ export function useTokenHandoff() {
             setUser(data.data.user);
           }
           await loginWithToken(data.data.token);
+          // Stitch identity + fire funnel event so the landing → app journey is one
+          // continuous PostHog person record.
+          if (data.data.user?.id) {
+            posthog.identify(data.data.user.id, {
+              handle: data.data.user.handle,
+              name: data.data.user.name,
+              entry_source: source,
+            });
+          }
+          posthog.capture(FUNNEL_APP_HANDOFF_COMPLETED, {
+            user_id: data.data.user?.id,
+            event_id: deepLinkEventId,
+            tier_id: deepLinkTierId,
+            source,
+          });
           setHandled(true);
+        } else {
+          posthog.capture(FUNNEL_APP_HANDOFF_FAILED, {
+            event_id: deepLinkEventId,
+            error: data.message || "validation_failed",
+          });
         }
       } catch (error) {
         // Token validation failed — fall through to normal Gate
         console.warn("[useTokenHandoff] Token handoff failed or timed out:", error);
+        posthog.capture(FUNNEL_APP_HANDOFF_FAILED, {
+          event_id: deepLinkEventId,
+          error: "network_or_timeout",
+        });
       } finally {
         clearTimeout(timeout);
         setChecking(false);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { useAnalytics, EVENT_DETAIL_OPENED, GATE_OPENED, CODE_VALIDATED, CODE_FAILED, CHATBOT_OPENED, EVENT_SHARED, SIGNIN_STARTED, SIGNIN_SUCCESS, SIGNIN_FAILED, trackFbEvent } from "@comeoffline/analytics";
+import { useAnalytics, EVENT_DETAIL_OPENED, GATE_OPENED, CODE_VALIDATED, CODE_FAILED, CHATBOT_OPENED, EVENT_SHARED, SIGNIN_STARTED, SIGNIN_SUCCESS, SIGNIN_FAILED, trackFbEvent, FUNNEL_LANDING_VIEWED, FUNNEL_IM_IN_CLICKED, FUNNEL_VALIDATE_CODE_SUCCESS, FUNNEL_VALIDATE_CODE_FAILED, FUNNEL_APP_HANDOFF_STARTED } from "@comeoffline/analytics";
 import { P, API_URL, APP_URL } from "@/components/shared/P";
 import { SpotsBar } from "@/components/events/SpotsBar";
 import { useChat } from "@/components/chat/ChatProvider";
@@ -152,7 +152,7 @@ function CoverMedia({ event }: { event: any }) {
 
 export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
   const { openChat } = useChat();
-  const { track } = useAnalytics();
+  const { track, identify } = useAnalytics();
   const [gateStage, setGateStage] = useState<GateStage>("idle");
   const [gateTab, setGateTab] = useState<GateTab>("join");
   const [code, setCode] = useState("");
@@ -218,12 +218,26 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
     setDaysUntilVenue(Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24))));
   }, [event.venue_reveal_date]);
 
-  // Track event detail opened + Meta Pixel ViewContent
+  // Track event detail opened + Meta Pixel ViewContent + funnel landing event
   useEffect(() => {
+    const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+    const utm = {
+      utm_source: params?.get("utm_source") || undefined,
+      utm_medium: params?.get("utm_medium") || undefined,
+      utm_campaign: params?.get("utm_campaign") || undefined,
+      utm_content: params?.get("utm_content") || undefined,
+      has_prefilled_code: !!params?.get("code"),
+    };
     track(EVENT_DETAIL_OPENED, {
       event_id: event.id,
       event_title: event.title,
       spots_remaining: spotsLeft,
+    });
+    track(FUNNEL_LANDING_VIEWED, {
+      event_id: event.id,
+      event_title: event.title,
+      spots_remaining: spotsLeft,
+      ...utm,
     });
     trackFbEvent("ViewContent", {
       content_ids: [event.id],
@@ -278,6 +292,13 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
 
   const handleImIn = useCallback(() => {
     track(GATE_OPENED, { event_id: event.id, event_title: event.title });
+    track(FUNNEL_IM_IN_CLICKED, {
+      event_id: event.id,
+      event_title: event.title,
+      tier_id: selectedTierId,
+      has_prefilled_code: !!prefilledCode,
+      ...prefilledUtmRef.current,
+    });
 
     // If a code was prefilled via URL (ad traffic), skip the gate UI and validate directly.
     if (prefilledCode) {
@@ -296,16 +317,42 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
           const data = await res.json();
           if (data.success && data.data?.handoff_token) {
             track(CODE_VALIDATED, { event_id: event.id, source: "url_param" });
+            track(FUNNEL_VALIDATE_CODE_SUCCESS, {
+              event_id: event.id,
+              user_id: data.data.user?.id,
+              code: prefilledCode,
+              ...prefilledUtmRef.current,
+            });
+            // Stitch identity: PostHog person_profiles is "identified_only" so this
+            // is what creates the persistent profile that the app side then continues.
+            if (data.data.user?.id) {
+              identify(data.data.user.id, {
+                handle: data.data.user.handle,
+                name: data.data.user.name,
+                ...prefilledUtmRef.current,
+              });
+            }
             // Deep-link: pass event id + selected tier so the app drops them straight
             // into the Suprabhatham checkout instead of the home feed.
             const redirect = new URL(APP_URL);
             redirect.searchParams.set("token", data.data.handoff_token);
             redirect.searchParams.set("event", event.id);
             if (selectedTierId) redirect.searchParams.set("tier", selectedTierId);
+            track(FUNNEL_APP_HANDOFF_STARTED, {
+              event_id: event.id,
+              tier_id: selectedTierId,
+              user_id: data.data.user?.id,
+            });
             window.location.href = redirect.toString();
           } else {
             // Prefilled code failed — drop user to manual gate as a fallback
             track(CODE_FAILED, { event_id: event.id, error: "prefilled_invalid", message: data.message });
+            track(FUNNEL_VALIDATE_CODE_FAILED, {
+              event_id: event.id,
+              code: prefilledCode,
+              error: data.message,
+              source: "url_param",
+            });
             setGateTab("join");
             setSignInStep("handle");
             setSignInHandle("");
@@ -315,6 +362,12 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
           }
         } catch {
           track(CODE_FAILED, { event_id: event.id, error: "prefilled_network" });
+          track(FUNNEL_VALIDATE_CODE_FAILED, {
+            event_id: event.id,
+            code: prefilledCode,
+            error: "network",
+            source: "url_param",
+          });
           setGateTab("join");
           setGateStage("gate");
         }
@@ -328,7 +381,7 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
     setSignInPin("");
     setSignInError("");
     setGateStage("gate");
-  }, [event.id, event.title, track, prefilledCode]);
+  }, [event.id, event.title, track, identify, prefilledCode, selectedTierId]);
 
   const handleValidateCode = useCallback(async () => {
     if (!code.trim()) {
@@ -349,25 +402,55 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
 
       if (data.success && data.data?.handoff_token) {
         track(CODE_VALIDATED, { event_id: event.id });
+        track(FUNNEL_VALIDATE_CODE_SUCCESS, {
+          event_id: event.id,
+          user_id: data.data.user?.id,
+          code: code.trim().toUpperCase(),
+          source: "manual_entry",
+        });
+        if (data.data.user?.id) {
+          identify(data.data.user.id, {
+            handle: data.data.user.handle,
+            name: data.data.user.name,
+            entry: "manual_code",
+          });
+        }
         setGateStage("confirmed");
         setTimeout(() => {
+          track(FUNNEL_APP_HANDOFF_STARTED, {
+            event_id: event.id,
+            user_id: data.data.user?.id,
+            source: "manual_entry",
+          });
           window.location.href = `${APP_URL}?token=${data.data.handoff_token}`;
         }, 1200);
       } else {
         track(CODE_FAILED, { event_id: event.id, error: data.message });
+        track(FUNNEL_VALIDATE_CODE_FAILED, {
+          event_id: event.id,
+          code: code.trim().toUpperCase(),
+          error: data.message,
+          source: "manual_entry",
+        });
         setCodeError(data.message || "invalid code");
         setShaking(true);
         setTimeout(() => setShaking(false), 500);
       }
     } catch {
       track(CODE_FAILED, { event_id: event.id, error: "network" });
+      track(FUNNEL_VALIDATE_CODE_FAILED, {
+        event_id: event.id,
+        code: code.trim().toUpperCase(),
+        error: "network",
+        source: "manual_entry",
+      });
       setCodeError("something went wrong. try again.");
       setShaking(true);
       setTimeout(() => setShaking(false), 500);
     } finally {
       setValidating(false);
     }
-  }, [code]);
+  }, [code, event.id, track, identify]);
 
   const handleNoCode = useCallback(() => {
     track(CHATBOT_OPENED, { event_id: event.id, source: "no_code" });

@@ -91,9 +91,25 @@ router.post("/razorpay", async (req: Request, res: Response) => {
 
         if (ticket && posthog) {
           try {
+            // Legacy event — keep for backward compatibility with existing dashboards.
             posthog.capture({
               distinctId: ticket.user_id,
               event: "checkout_completed_server",
+              properties: {
+                event_id: ticket.event_id,
+                ticket_id: ticketId,
+                tier_id: ticket.tier_id,
+                revenue: ticket.price,
+                currency: "INR",
+                source: "razorpay_webhook",
+              },
+            });
+            // Canonical funnel event — last step in the paid-traffic conversion funnel.
+            // Use the SAME distinctId as the landing/app identify() calls so PostHog
+            // funnel views correctly join landing → app → razorpay → purchase.
+            posthog.capture({
+              distinctId: ticket.user_id,
+              event: "funnel_purchase_confirmed",
               properties: {
                 event_id: ticket.event_id,
                 ticket_id: ticketId,

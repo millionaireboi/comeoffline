@@ -3,6 +3,7 @@
 import { useState, useRef, useMemo, useEffect } from "react";
 import type { Event } from "@comeoffline/types";
 import { useAppStore } from "@/store/useAppStore";
+import { posthog, FUNNEL_EVENT_DETAIL_OPENED_IN_APP, FUNNEL_TIER_SELECTED_IN_APP, FUNNEL_CHECKOUT_OPENED } from "@comeoffline/analytics";
 import { CheckoutWizard } from "@/components/events/CheckoutWizard";
 import { ExitSurvey } from "@/components/events/ExitSurvey";
 import { CollapsibleHeader } from "./event-detail/CollapsibleHeader";
@@ -49,6 +50,17 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
     return () => setEventDetailOpen(false);
   }, [setEventDetailOpen]);
 
+  // Funnel: ad clicker reached the in-app event detail (post-handoff).
+  useEffect(() => {
+    posthog.capture(FUNNEL_EVENT_DETAIL_OPENED_IN_APP, {
+      event_id: event.id,
+      event_title: event.title,
+      spots_remaining: spotsLeft,
+      came_via_deeplink: !!initialTierId,
+      preselected_tier_id: initialTierId,
+    });
+  }, [event.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Auto-select the cheapest available tier on open. Deep-link tier wins if
   // still available; otherwise we pick the lowest-priced tier with capacity.
   const initialTierStillAvailable = !!initialTierId && tiers.some((t) => t.id === initialTierId && t.sold < t.capacity);
@@ -87,6 +99,13 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
   }, [isTicketed, tiers]);
 
   const handleCTA = () => {
+    // Funnel: user committed to checkout (CTA tap with valid tier).
+    posthog.capture(FUNNEL_CHECKOUT_OPENED, {
+      event_id: event.id,
+      tier_id: selectedTierId,
+      tier_price: selectedTier?.price,
+      checkout_path: hasCheckoutWizard ? "wizard" : "direct",
+    });
     // Purchase / RSVP is no longer gated on the rest of the profile — buying is the highest-intent
     // moment, so don't block it. The remaining onboarding fields are collected post-purchase.
     if (isTicketed && hasCheckoutWizard && onTicketPurchase) {
@@ -96,6 +115,18 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
     } else if (onRsvp) {
       onRsvp();
     }
+  };
+
+  // Wrap setSelectedTierId so we capture every tier-pick interaction in the funnel.
+  const handleSelectTier = (id: string) => {
+    setSelectedTierId(id);
+    const tier = tiers.find((t) => t.id === id);
+    posthog.capture(FUNNEL_TIER_SELECTED_IN_APP, {
+      event_id: event.id,
+      tier_id: id,
+      tier_label: tier?.label,
+      tier_price: tier?.price,
+    });
   };
 
   const scrollToTickets = () => {
@@ -145,7 +176,7 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
               <TicketsTab
                 tiers={tiers}
                 selectedTierId={selectedTierId}
-                onSelectTier={setSelectedTierId}
+                onSelectTier={handleSelectTier}
                 maxPerUser={event.ticketing?.max_per_user}
                 refundPolicy={event.ticketing?.refund_policy}
                 accent={event.accent || "#D4A574"}

@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useAnalytics, EVENT_DETAIL_OPENED, GATE_OPENED, EVENT_SHARED, trackFbEvent, FUNNEL_LANDING_VIEWED, FUNNEL_IM_IN_CLICKED, FUNNEL_APP_HANDOFF_STARTED } from "@comeoffline/analytics";
 import { P, API_URL } from "@/components/shared/P";
+import { formatEventDateShort } from "@comeoffline/ui";
 import { buildAppHandoffUrl } from "@/lib/handoff";
 import { SpotsBar } from "@/components/events/SpotsBar";
 import { useChat } from "@/components/chat/ChatProvider";
@@ -497,7 +498,7 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                   <span style={{ fontSize: 11 }}>📅</span>
                   <span>
-                    {event.date} · {event.time}
+                    {formatEventDateShort(event.date, event.time)}
                   </span>
                 </span>
                 {(event.venue_name || event.venue_area || (daysUntilVenue !== null && daysUntilVenue > 0)) && (

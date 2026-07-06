@@ -1,14 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { P } from "@/components/shared/P";
 
 const tabs = [
-  { label: "for you", href: "/" },
-  { label: "events", href: "/events" },
+  { label: "events", href: "/" },
   { label: "community", href: "/community" },
   { label: "contact", href: "/contact" },
   { label: "for brands", href: "/brands" },
@@ -16,21 +14,12 @@ const tabs = [
 
 export function TabHeader() {
   const pathname = usePathname();
-  const isHomePage = pathname === "/";
-  const [scrolledPastHero, setScrolledPastHero] = useState(false);
 
-  useEffect(() => {
-    if (!isHomePage) return;
-    const h = () => setScrolledPastHero(window.scrollY > 300);
-    window.addEventListener("scroll", h, { passive: true });
-    return () => window.removeEventListener("scroll", h);
-  }, [isHomePage]);
+  // Logo always visible — the events-first homepage has no full-screen hero
+  const showLogo = true;
 
-  // Show logo always on non-home pages, only after scroll on home
-  const showLogo = isHomePage ? scrolledPastHero : true;
-
-  // Adapt background — events page is light (cream bg), all others start dark
-  const isLightPage = pathname === "/events";
+  // Adapt background — home (events feed) + event details are light (cream bg)
+  const isLightPage = pathname === "/" || pathname.startsWith("/events");
 
   return (
     <div
@@ -58,7 +47,7 @@ export function TabHeader() {
             width={0}
             height={24}
             sizes="100vw"
-            style={{ width: "auto", height: "24px", filter: isLightPage ? "invert(1) hue-rotate(180deg)" : "none" }}
+            style={{ width: "auto", height: "24px" }}
           />
         </Link>
         <div

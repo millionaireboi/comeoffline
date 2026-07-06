@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { P, API_URL, APP_URL } from "@/components/shared/P";
+import { buildAppHandoffUrl } from "@/lib/handoff";
 import { HandNote } from "@/components/shared/HandNote";
 import { RotatingSeal } from "@/components/shared/RotatingSeal";
 import { SocialTicker } from "@/components/shared/SocialTicker";
@@ -64,7 +65,17 @@ export function Hero() {
       if (data.success && data.data?.handoff_token) {
         setCodeState("valid");
         setTimeout(() => {
-          window.location.href = `${APP_URL}/?token=${data.data.handoff_token}&source=landing`;
+          // Forward utm_* from the current URL so ad-attribution survives the handoff
+          const pageParams = new URLSearchParams(window.location.search);
+          window.location.href = buildAppHandoffUrl({
+            token: data.data.handoff_token,
+            utm: {
+              utm_source: pageParams.get("utm_source") || undefined,
+              utm_medium: pageParams.get("utm_medium") || undefined,
+              utm_campaign: pageParams.get("utm_campaign") || undefined,
+              utm_content: pageParams.get("utm_content") || undefined,
+            },
+          });
         }, 1200);
       } else {
         setCodeState("invalid");
@@ -153,8 +164,9 @@ export function Hero() {
           </p>
         </div>
 
-        {phase >= 2 && (
-          <div className="animate-fade-slide-up">
+        {/* CTAs render immediately — the typewriter above is decoration only.
+            Hiding the primary conversion action for ~2.3s taxed every paid click. */}
+        <div className="animate-fade-slide-up">
             <div className="mt-7 flex flex-col gap-3.5">
               {/* Code path */}
               <div className="rounded-[18px] p-5 backdrop-blur-[10px]" style={{ background: P.cream + "08", border: `1px solid ${P.cream}12`, animation: "fadeSlideUp 0.6s ease 0.1s both" }}>
@@ -239,8 +251,7 @@ export function Hero() {
             <div className="mt-4" style={{ animation: "fadeIn 1s ease 0.8s both" }}>
               <SocialTicker />
             </div>
-          </div>
-        )}
+        </div>
       </div>
 
     </section>

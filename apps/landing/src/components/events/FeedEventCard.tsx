@@ -13,7 +13,7 @@ interface FeedEventCardProps {
 
 export function FeedEventCard({ event, index, onOpen }: FeedEventCardProps) {
   const [hovered, setHovered] = useState(false);
-  const cardRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLAnchorElement>(null);
   const { track } = useAnalytics();
   const trackedRef = useRef(false);
 
@@ -52,12 +52,22 @@ export function FeedEventCard({ event, index, onOpen }: FeedEventCardProps) {
   }
 
   return (
-    <div
+    // Real <a> so crawlers (and no-JS visitors) can reach /events/[id] — the
+    // SSR detail pages were orphaned behind div onClick handlers. JS users
+    // still get the in-page sheet via preventDefault.
+    <a
+      href={`/events/${event.id}`}
       ref={cardRef}
-      onClick={() => onOpen(event)}
+      onClick={(e) => {
+        e.preventDefault();
+        onOpen(event);
+      }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
+        display: "block",
+        color: "inherit",
+        textDecoration: "none",
         background: "#FFFFFF",
         borderRadius: 18,
         overflow: "hidden",
@@ -168,24 +178,24 @@ export function FeedEventCard({ event, index, onOpen }: FeedEventCardProps) {
         />
       </div>
 
-      {/* CTA area */}
+      {/* CTA area — visual affordance only; the whole card is the link.
+          (A <button> inside an <a> is invalid HTML and it never had a handler.) */}
       <div style={{ padding: "12px 18px 14px" }}>
-        <button
+        <span
           className="font-sans text-[13px] font-medium"
           style={{
             display: "block",
             width: "100%",
             background: accent,
             color: "#FFFFFF",
-            border: "none",
             borderRadius: 10,
             padding: "10px 0",
-            cursor: "pointer",
+            textAlign: "center",
             letterSpacing: 0.3,
           }}
         >
           i&apos;m in &rarr;
-        </button>
+        </span>
         <p
           className="font-hand text-[11px]"
           style={{
@@ -227,6 +237,6 @@ export function FeedEventCard({ event, index, onOpen }: FeedEventCardProps) {
           }
         }
       `}</style>
-    </div>
+    </a>
   );
 }

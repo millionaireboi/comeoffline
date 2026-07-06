@@ -134,12 +134,16 @@ export default async function EventPage({
     );
   }
 
+  // schema.org requires ISO 8601 — event.date may be a display string
+  const parsedStart = event.date ? new Date(`${event.date}${event.time ? ` ${event.time}` : ""}`) : null;
+  const isoStart = parsedStart && !isNaN(parsedStart.getTime()) ? parsedStart.toISOString() : undefined;
+
   const eventJsonLd = {
     "@context": "https://schema.org",
     "@type": "Event",
     name: event.title,
     description: event.tagline || event.description?.slice(0, 300),
-    startDate: event.date,
+    ...(isoStart ? { startDate: isoStart } : {}),
     eventAttendanceMode: "https://schema.org/OfflineEventAttendanceMode",
     eventStatus: "https://schema.org/EventScheduled",
     organizer: {

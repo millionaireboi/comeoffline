@@ -2,7 +2,8 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useAnalytics, EVENT_DETAIL_OPENED, GATE_OPENED, CODE_VALIDATED, CODE_FAILED, CHATBOT_OPENED, EVENT_SHARED, SIGNIN_STARTED, SIGNIN_SUCCESS, SIGNIN_FAILED, trackFbEvent, FUNNEL_LANDING_VIEWED, FUNNEL_IM_IN_CLICKED, FUNNEL_VALIDATE_CODE_SUCCESS, FUNNEL_VALIDATE_CODE_FAILED, FUNNEL_APP_HANDOFF_STARTED } from "@comeoffline/analytics";
-import { P, API_URL, APP_URL } from "@/components/shared/P";
+import { P, API_URL } from "@/components/shared/P";
+import { buildAppHandoffUrl } from "@/lib/handoff";
 import { SpotsBar } from "@/components/events/SpotsBar";
 import { useChat } from "@/components/chat/ChatProvider";
 
@@ -20,6 +21,28 @@ const notFoundLines = [
   "we don't recognize that one.",
   "no account with that handle.",
   "are you sure that's right?",
+];
+
+// Generic fallback FAQ — only answers true for EVERY event. Per-event
+// specifics come from event.faq (authored in admin). Mirrors the app's
+// FAQSection fallback so both surfaces stay consistent.
+const GENERIC_FAQ: Array<{ q: string; a: string }> = [
+  {
+    q: "coming solo?",
+    a: "you come solo and go back with memories. that's the whole point.",
+  },
+  {
+    q: "what do I bring?",
+    a: "yourself and the energy. we'll handle everything else.",
+  },
+  {
+    q: "how do I find the venue?",
+    a: "exact directions drop on WhatsApp before the event.",
+  },
+  {
+    q: "refunds?",
+    a: "no refunds — everything is reserved and planned around you the moment you book. exception: if we don't approve your entry, you get a full refund.",
+  },
 ];
 
 function CoverMedia({ event }: { event: any }) {
@@ -333,17 +356,18 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
               });
             }
             // Deep-link: pass event id + selected tier so the app drops them straight
-            // into the Suprabhatham checkout instead of the home feed.
-            const redirect = new URL(APP_URL);
-            redirect.searchParams.set("token", data.data.handoff_token);
-            redirect.searchParams.set("event", event.id);
-            if (selectedTierId) redirect.searchParams.set("tier", selectedTierId);
+            // into the checkout instead of the home feed.
             track(FUNNEL_APP_HANDOFF_STARTED, {
               event_id: event.id,
               tier_id: selectedTierId,
               user_id: data.data.user?.id,
             });
-            window.location.href = redirect.toString();
+            window.location.href = buildAppHandoffUrl({
+              token: data.data.handoff_token,
+              eventId: event.id,
+              tierId: selectedTierId,
+              utm: prefilledUtmRef.current,
+            });
           } else {
             // Prefilled code failed — drop user to manual gate as a fallback
             track(CODE_FAILED, { event_id: event.id, error: "prefilled_invalid", message: data.message });
@@ -419,10 +443,18 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
         setTimeout(() => {
           track(FUNNEL_APP_HANDOFF_STARTED, {
             event_id: event.id,
+            tier_id: selectedTierId,
             user_id: data.data.user?.id,
             source: "manual_entry",
           });
-          window.location.href = `${APP_URL}?token=${data.data.handoff_token}`;
+          // Manual code entry must keep the event/tier deep-link too — losing it
+          // dropped ad-clickers on the app home feed instead of this event.
+          window.location.href = buildAppHandoffUrl({
+            token: data.data.handoff_token,
+            eventId: event.id,
+            tierId: selectedTierId,
+            utm: prefilledUtmRef.current,
+          });
         }, 1200);
       } else {
         track(CODE_FAILED, { event_id: event.id, error: data.message });
@@ -450,7 +482,7 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
     } finally {
       setValidating(false);
     }
-  }, [code, event.id, track, identify]);
+  }, [code, event.id, track, identify, selectedTierId]);
 
   const handleNoCode = useCallback(() => {
     track(CHATBOT_OPENED, { event_id: event.id, source: "no_code" });
@@ -488,7 +520,13 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
         track(SIGNIN_SUCCESS, { event_id: event.id });
         setGateStage("confirmed");
         setTimeout(() => {
-          window.location.href = `${APP_URL}?token=${data.data.handoff_token}&source=landing`;
+          // Members signing in from an event detail should land on that event too
+          window.location.href = buildAppHandoffUrl({
+            token: data.data.handoff_token,
+            eventId: event.id,
+            tierId: selectedTierId,
+            utm: prefilledUtmRef.current,
+          });
         }, 1200);
       } else if (data.needs_pin) {
         setSignInStep("pin");
@@ -513,7 +551,7 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
     } finally {
       setSignInLoading(false);
     }
-  }, [signInHandle, signInPin, signInStep, signInLoading, signInErrorIdx, event.id, track]);
+  }, [signInHandle, signInPin, signInStep, signInLoading, signInErrorIdx, event.id, track, selectedTierId]);
 
   const switchToSignIn = useCallback(() => {
     track(SIGNIN_STARTED, { event_id: event.id });
@@ -1428,28 +1466,7 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
                   good to know
                 </span>
                 <div style={{ borderTop: `1px solid ${P.sand}` }}>
-                  {[
-                    {
-                      q: "what time?",
-                      a: "7am to 12pm. five hours of move, groove, and brunch.",
-                    },
-                    {
-                      q: "where is it?",
-                      a: "two spots in Whitefield — workout + dance at Swaasthya Fitness & Physiotherapy, brunch at Kavu nearby. exact directions for both drop on WhatsApp before the event.",
-                    },
-                    {
-                      q: "coming solo?",
-                      a: "you come solo and go back with memories. that's the whole point.",
-                    },
-                    {
-                      q: "what do I bring?",
-                      a: "yourself and the energy. we'll handle everything else.",
-                    },
-                    {
-                      q: "refunds?",
-                      a: "no refunds — your spot, your brunch, your DJ slot are all reserved the moment you book. exception: if we don't approve your entry, you get a full refund.",
-                    },
-                  ].map((item, idx) => {
+                  {(event.faq?.length ? event.faq : GENERIC_FAQ).map((item: { q: string; a: string }, idx: number) => {
                     const isOpen = openFaqIdx === idx;
                     return (
                       <div key={idx} style={{ borderBottom: `1px solid ${P.sand}` }}>

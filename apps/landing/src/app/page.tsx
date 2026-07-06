@@ -70,9 +70,6 @@ export default async function HomePage() {
             className="pointer-events-none absolute -right-[30px] top-[60px] h-[120px] w-[120px] rounded-full animate-float"
             style={{ background: `radial-gradient(circle, ${P.caramel}15, transparent)` }}
           />
-          <p className="mb-4 font-mono text-[11px] uppercase tracking-[3px] text-muted">
-            invite only {"·"} est. 2026
-          </p>
           <h1 className="m-0 mb-3 max-w-[340px] font-serif text-[38px] font-normal leading-[1.15] tracking-[-1px] text-near-black">
             <GlitchText />
           </h1>

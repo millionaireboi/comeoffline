@@ -294,7 +294,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     method: "POST", token: adminToken,
     body: {
       title: "E2E Free Event", tagline: "free", description: "e2e", date: eventDate,
-      time: "8:00 PM", total_spots: 10, tag: "test", emoji: "🧪", status: "listed",
+      // "live" — regression pin: live events rejected free RSVPs while selling paid tickets
+      time: "8:00 PM", total_spots: 10, tag: "test", emoji: "🧪", status: "live",
       venue_reveal_date: eventDate, dress_code: "", includes: [], zones: [], pickup_points: [],
     },
   });

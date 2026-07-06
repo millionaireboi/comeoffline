@@ -32,7 +32,9 @@ export async function createRsvp(
     if (event.status === "announced") {
       return { success: false, error: "Event is collecting interest — join the waitlist" };
     }
-    if (event.status !== "upcoming" && event.status !== "listed") {
+    // Same statuses as ticket purchases — "live" events were wrongly rejecting
+    // free RSVPs while still selling paid tickets
+    if (!["upcoming", "listed", "live"].includes(event.status)) {
       return { success: false, error: "Event is not accepting RSVPs" };
     }
 

@@ -1,7 +1,6 @@
 import { P } from "@/components/shared/P";
 import { GlitchText } from "@/components/events/GlitchText";
 import { EventsFeed } from "@/components/events/EventsFeed";
-import { QuickEntry } from "@/components/consumer/QuickEntry";
 import { WhatIsThis } from "@/components/consumer/WhatIsThis";
 import { HowItWorks } from "@/components/consumer/HowItWorks";
 import { StatsStripe } from "@/components/consumer/StatsStripe";
@@ -77,11 +76,6 @@ export default async function HomePage() {
             a community for people who still believe the best connections happen face to face.{" "}
             <span className="text-caramel">bangalore chapter.</span>
           </p>
-        </section>
-
-        {/* Entry — open signup / sign in, always above the events */}
-        <section className="px-4 pb-8">
-          <QuickEntry />
         </section>
 
         <div className="flex justify-between px-5 pb-4">

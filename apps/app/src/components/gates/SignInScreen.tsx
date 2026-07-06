@@ -16,7 +16,7 @@ const notFoundLines = [
   "are you sure that's right?",
 ];
 
-export function SignInScreen({ onBack }: { onBack: () => void }) {
+export function SignInScreen({ onBack }: { onBack?: () => void } = {}) {
   const [handle, setHandle] = useState("");
   const [pin, setPin] = useState("");
   const [step, setStep] = useState<"handle" | "pin" | "forgot" | "reset" | "phone" | "phone-otp">("phone");
@@ -273,20 +273,25 @@ export function SignInScreen({ onBack }: { onBack: () => void }) {
     if (step === "reset" || step === "forgot") { setStep("pin"); return; }
     if (step === "pin") { setStep("handle"); setPin(""); return; }
     if (step === "phone-otp") { setStep("phone"); setPhoneOtp(""); return; }
-    if (step === "phone") { setStep("handle"); setPhone(""); return; }
-    onBack();
+    if (step === "handle") { setStep("phone"); setHandle(""); return; }
+    onBack?.();
   }
+
+  // On the root phone step with no parent to return to, there is no "back"
+  const showTopBack = !(step === "phone" && !onBack);
 
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-gate-black px-6 py-10" style={{ paddingBottom: "max(2.5rem, env(safe-area-inset-bottom, 2.5rem))" }}>
       <Noise opacity={0.05} />
 
-      <button
-        onClick={goBack}
-        className="absolute left-6 top-6 font-mono text-[11px] uppercase tracking-[3px] text-muted/50 transition-colors hover:text-cream"
-      >
-        &larr; back
-      </button>
+      {showTopBack && (
+        <button
+          onClick={goBack}
+          className="absolute left-6 top-6 font-mono text-[11px] uppercase tracking-[3px] text-muted/50 transition-colors hover:text-cream"
+        >
+          &larr; back
+        </button>
+      )}
 
       <div className="mb-12 text-center">
         <h1 className="font-serif text-4xl tracking-tight text-cream" style={{ letterSpacing: "-1px" }}>
@@ -295,6 +300,9 @@ export function SignInScreen({ onBack }: { onBack: () => void }) {
         <div className="mt-2 font-mono text-[11px] uppercase tracking-[4px] text-muted/50">
           bangalore
         </div>
+        <p className="mt-4 font-sans text-[14px] italic text-muted">
+          the best connections happen face to face
+        </p>
       </div>
 
       {/* Step: Handle */}
@@ -344,10 +352,10 @@ export function SignInScreen({ onBack }: { onBack: () => void }) {
             type="button"
             onClick={() => { setError(""); setSuccess(""); setStep("phone"); }}
             disabled={loading}
-            className="w-full border-none bg-transparent py-2 font-mono text-[11px] uppercase tracking-[3px] text-muted/60 transition-colors hover:text-caramel"
+            className="w-full border-none bg-transparent py-3 font-mono text-[11px] uppercase tracking-[3px] text-caramel transition-opacity hover:opacity-70"
             style={{ cursor: "pointer" }}
           >
-            continue with whatsapp instead
+            continue with whatsapp instead →
           </button>
         </form>
       )}
@@ -395,10 +403,10 @@ export function SignInScreen({ onBack }: { onBack: () => void }) {
             type="button"
             onClick={() => { setError(""); setSuccess(""); setStep("handle"); }}
             disabled={loading}
-            className="w-full border-none bg-transparent py-2 font-mono text-[11px] uppercase tracking-[3px] text-muted/60 transition-colors hover:text-caramel"
+            className="w-full border-none bg-transparent py-3 font-mono text-[11px] uppercase tracking-[3px] text-caramel transition-opacity hover:opacity-70"
             style={{ cursor: "pointer" }}
           >
-            member with a PIN? use handle instead
+            member with a PIN? use handle instead →
           </button>
         </form>
       )}
@@ -606,20 +614,8 @@ export function SignInScreen({ onBack }: { onBack: () => void }) {
         </form>
       )}
 
-      <div className="mt-8 text-center">
-        <p className="font-mono text-[11px] text-muted/50">
-          don&apos;t have an account?
-        </p>
-        <button
-          onClick={onBack}
-          className="mt-2 font-mono text-[11px] uppercase tracking-[3px] text-caramel transition-opacity hover:opacity-70"
-        >
-          get an invite code
-        </button>
-      </div>
-
       <div className="absolute bottom-0 pb-2 font-mono text-[10px] uppercase tracking-[2px] text-muted/20" style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom, 0.5rem))" }}>
-        invite only &middot; est. 2026
+        phone-free events &middot; bangalore
       </div>
     </div>
   );

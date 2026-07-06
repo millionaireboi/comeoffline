@@ -12,7 +12,6 @@ import { useAppStore } from "@/store/useAppStore";
 import { apiFetch } from "@/lib/api";
 import { isFullProfileComplete } from "@/lib/profile-completion";
 import type { Ticket, Event } from "@comeoffline/types";
-import { TheGate } from "@/components/gates/TheGate";
 import { PWAInstallPrompt } from "@/components/shared/PWAInstallPrompt";
 import { AcceptanceScreen } from "@/components/gates/AcceptanceScreen";
 import { EventFeed } from "@/components/events/EventFeed";
@@ -61,7 +60,6 @@ export default function Home() {
   const eventDetailOpen = useAppStore((s) => s.eventDetailOpen);
   const [chatOpen, setChatOpen] = useState(false);
   const [quizActive, setQuizActive] = useState(false);
-  const [showSignIn, setShowSignIn] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
   const [paymentUx, setPaymentUx] = useState<PaymentUx | null>(null);
   const [resumeTicket, setResumeTicket] = useState<(Ticket & { event_title?: string; event_emoji?: string }) | null>(null);
@@ -79,11 +77,6 @@ export default function Home() {
     setCurrentEvent(MOCK_EVENT);
     setStage(devOverride.stage);
   }, [devOverride]);
-
-  // Reset sign-in view when leaving the gate stage (e.g. after successful login)
-  useEffect(() => {
-    if (stage !== "gate") setShowSignIn(false);
-  }, [stage]);
 
   // Scroll-to-top + fade transition on stage change
   useEffect(() => {
@@ -440,9 +433,8 @@ export default function Home() {
   let screen: React.ReactNode;
   switch (stage) {
     case "gate":
-      screen = showSignIn
-        ? <SignInScreen onBack={() => setShowSignIn(false)} />
-        : <TheGate onSignIn={() => setShowSignIn(true)} />;
+      // One less step to booking: the phone entry screen IS the gate.
+      screen = <SignInScreen />;
       break;
     case "accepted":
       screen = <AcceptanceScreen />;
@@ -499,7 +491,7 @@ export default function Home() {
       screen = <BookingsScreen />;
       break;
     default:
-      screen = <TheGate />;
+      screen = <SignInScreen />;
   }
 
   return (

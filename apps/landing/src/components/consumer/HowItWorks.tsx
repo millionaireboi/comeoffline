@@ -9,10 +9,10 @@ import { ScribbleArrow } from "@/components/shared/Scribbles";
 export function HowItWorks() {
   const [ref, vis] = useInView();
   const steps = [
-    { num: "01", title: "get invited", desc: "someone vouches for you, or you charm our chatbot", icon: "\u{1F39F}\uFE0F", note: null },
+    { num: "01", title: "grab a spot", desc: "pick an event, sign up with your phone. that's it", icon: "\u{1F39F}\uFE0F", note: null },
     { num: "02", title: "RSVP + wait", desc: "grab your spot. venue stays secret until we say so.", icon: "\u23F3", note: "the anticipation is part of it" },
     { num: "03", title: "show up, go dark", desc: "we pick you up. phone goes away. real life begins.", icon: "\u{1F319}", note: null },
-    { num: "04", title: "connect after", desc: "next morning: memories, mutual connections, vouch codes.", icon: "\u{1F91D}", note: "the morning after hits different" },
+    { num: "04", title: "connect after", desc: "next morning: memories and mutual connections.", icon: "\u{1F91D}", note: "the morning after hits different" },
   ];
   return (
     <section ref={ref as React.RefObject<HTMLElement>} className="relative overflow-hidden bg-near-black px-5 py-14 sm:px-7 sm:py-18">

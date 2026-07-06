@@ -19,7 +19,7 @@ export function WhatIsThis() {
             we throw events for people<br />who deserve better than<br /><span className="italic text-caramel">random nightlife.</span>
           </h2>
           <p className="relative font-sans text-sm leading-[1.8] text-warm-brown">
-            come offline is an invite-only community in bangalore. we curate the people, the venue, and the experience. you show up, put your phone down, and actually connect with humans.
+            come offline is an IRL community in bangalore. we curate the venue and the experience. you grab a spot, put your phone down, and actually connect with humans.
           </p>
           <div className="mt-1 text-right transition-opacity duration-600" style={{ opacity: vis ? 1 : 0, transitionDelay: "0.5s" }}>
             <HandNote rotation={3} className="text-[13px]" style={{ color: P.caramel + "60" }}>wild concept, we know {"\u2191"}</HandNote>

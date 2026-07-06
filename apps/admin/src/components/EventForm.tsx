@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { Event, Zone, PickupPoint, TicketTier, TicketingConfig, PostBookingContent, PostBookingSection, CheckoutStep, CheckoutAddOn, SeatingMode, SeatingSection, SeatRow, Spot, AddonSeatingConfig } from "@comeoffline/types";
 import { apiClient } from "@/lib/apiClient";
 import { EventPreview } from "@/components/EventPreview";
@@ -1768,42 +1768,116 @@ function SeatingBuilder({
 
 // ── Main EventForm Component ─────────────────────
 
-export function EventForm({ event, onSave, onCancel, serifClassName = "" }: EventFormProps) {
+const DRAFT_PREFIX = "co_event_draft:";
+
+interface StoredDraft {
+  saved_at: string;
+  data: Event;
+}
+
+function readDraft(key: string): StoredDraft | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as StoredDraft;
+    return parsed?.data ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Draft-safety wrapper. The form autosaves every change to localStorage;
+ * this wrapper detects a leftover draft (tab switch, reload, crash — the tab
+ * shell unmounts the form on any navigation) and offers to resume it before
+ * mounting the form. All form state initializers read from `seed`, so
+ * resuming is just seeding the form with the saved draft.
+ */
+export function EventForm(props: EventFormProps) {
+  const draftKey = DRAFT_PREFIX + (props.event?.id || "new");
+  const [pendingDraft, setPendingDraft] = useState<StoredDraft | null>(() =>
+    typeof window === "undefined" ? null : readDraft(draftKey),
+  );
+  const [draftSeed, setDraftSeed] = useState<Event | null>(null);
+
+  if (pendingDraft) {
+    const when = new Date(pendingDraft.saved_at);
+    return (
+      <div className="mx-auto w-full max-w-2xl">
+        <div className="rounded-xl border border-caramel/25 bg-caramel/[0.06] p-6">
+          <p className="mb-1 font-mono text-[10px] uppercase tracking-[2px] text-caramel">
+            unsaved draft found
+          </p>
+          <p className="mb-1 font-sans text-[15px] text-cream">
+            {pendingDraft.data.title?.trim() ? `“${pendingDraft.data.title}”` : "an untitled event"}
+          </p>
+          <p className="mb-4 font-mono text-[11px] text-muted">
+            last edited {when.toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+          </p>
+          <div className="flex gap-2.5">
+            <button
+              onClick={() => {
+                setDraftSeed(pendingDraft.data);
+                setPendingDraft(null);
+              }}
+              className="flex-1 rounded-xl bg-caramel py-3 font-mono text-[11px] uppercase tracking-[2px] text-gate-black transition-colors hover:bg-caramel/90"
+            >
+              resume draft →
+            </button>
+            <button
+              onClick={() => {
+                try { localStorage.removeItem(draftKey); } catch { /* ignore */ }
+                setPendingDraft(null);
+              }}
+              className="flex-1 rounded-xl bg-white/5 py-3 font-mono text-[11px] uppercase tracking-[2px] text-muted transition-colors hover:bg-white/10"
+            >
+              start fresh
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return <EventFormInner {...props} seed={draftSeed ?? props.event} draftKey={draftKey} />;
+}
+
+function EventFormInner({ event, seed, draftKey, onSave, onCancel, serifClassName = "" }: EventFormProps & { seed?: Event; draftKey: string }) {
   // Form state
-  const [title, setTitle] = useState(event?.title || "");
-  const [tagline, setTagline] = useState(event?.tagline || "");
-  const [date, setDate] = useState(event?.date || "");
-  const [time, setTime] = useState(event?.time || "");
-  const [totalSpots, setTotalSpots] = useState(event?.total_spots?.toString() || "");
-  const [tag, setTag] = useState(event?.tag || "");
-  const [emoji, setEmoji] = useState(event?.emoji || "");
-  const [description, setDescription] = useState(event?.description || "");
-  const [dressCode, setDressCode] = useState(event?.dress_code || "");
-  const [accent, setAccent] = useState(event?.accent || "#D4A574");
-  const [accentDark, setAccentDark] = useState(event?.accent_dark || "#B8845A");
-  const [includes, setIncludes] = useState(event?.includes?.join("\n") || "");
+  const [title, setTitle] = useState(seed?.title || "");
+  const [tagline, setTagline] = useState(seed?.tagline || "");
+  const [date, setDate] = useState(seed?.date || "");
+  const [time, setTime] = useState(seed?.time || "");
+  const [totalSpots, setTotalSpots] = useState(seed?.total_spots?.toString() || "");
+  const [tag, setTag] = useState(seed?.tag || "");
+  const [emoji, setEmoji] = useState(seed?.emoji || "");
+  const [description, setDescription] = useState(seed?.description || "");
+  const [dressCode, setDressCode] = useState(seed?.dress_code || "");
+  const [accent, setAccent] = useState(seed?.accent || "#D4A574");
+  const [accentDark, setAccentDark] = useState(seed?.accent_dark || "#B8845A");
+  const [includes, setIncludes] = useState(seed?.includes?.join("\n") || "");
   const [zones, setZones] = useState<FormZone[]>(
-    event?.zones?.map((z) => ({ icon: z.icon, name: z.name, desc: z.desc })) || []
+    seed?.zones?.map((z) => ({ icon: z.icon, name: z.name, desc: z.desc })) || []
   );
   const [faq, setFaq] = useState<FormFaqItem[]>(
-    event?.faq?.map((f) => ({ q: f.q, a: f.a })) || []
+    seed?.faq?.map((f) => ({ q: f.q, a: f.a })) || []
   );
-  const [venueName, setVenueName] = useState(event?.venue_name || "");
-  const [venueArea, setVenueArea] = useState(event?.venue_area || "");
-  const [venueAddress, setVenueAddress] = useState(event?.venue_address || "");
-  const [venueDirectionsUrl, setVenueDirectionsUrl] = useState(event?.venue_directions_url || "");
-  const [venueRevealDate, setVenueRevealDate] = useState(event?.venue_reveal_date || "");
-  const [venuePhotos, setVenuePhotos] = useState<string[]>(event?.venue_photos || []);
+  const [venueName, setVenueName] = useState(seed?.venue_name || "");
+  const [venueArea, setVenueArea] = useState(seed?.venue_area || "");
+  const [venueAddress, setVenueAddress] = useState(seed?.venue_address || "");
+  const [venueDirectionsUrl, setVenueDirectionsUrl] = useState(seed?.venue_directions_url || "");
+  const [venueRevealDate, setVenueRevealDate] = useState(seed?.venue_reveal_date || "");
+  const [venuePhotos, setVenuePhotos] = useState<string[]>(seed?.venue_photos || []);
   const [pickupPoints, setPickupPoints] = useState<FormPickupPoint[]>(
-    event?.pickup_points?.map((p) => ({
+    seed?.pickup_points?.map((p) => ({
       name: p.name,
       time: p.time,
       capacity: p.capacity?.toString() || "",
     })) || []
   );
-  const [ticketingEnabled, setTicketingEnabled] = useState(event?.ticketing?.enabled || false);
+  const [ticketingEnabled, setTicketingEnabled] = useState(seed?.ticketing?.enabled || false);
   const [tiers, setTiers] = useState<FormTier[]>(
-    event?.ticketing?.tiers?.map((t) => ({
+    seed?.ticketing?.tiers?.map((t) => ({
       id: t.id,
       name: t.name,
       label: t.label,
@@ -1815,20 +1889,20 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
       per_person: (t.per_person || 1).toString(),
     })) || []
   );
-  const [maxPerUser, setMaxPerUser] = useState((event?.ticketing?.max_per_user || 1).toString());
-  const [refundPolicy, setRefundPolicy] = useState(event?.ticketing?.refund_policy || "");
-  const [checkoutEnabled, setCheckoutEnabled] = useState(event?.checkout?.enabled || false);
-  const [checkoutSteps, setCheckoutSteps] = useState<CheckoutStep[]>(event?.checkout?.steps || []);
+  const [maxPerUser, setMaxPerUser] = useState((seed?.ticketing?.max_per_user || 1).toString());
+  const [refundPolicy, setRefundPolicy] = useState(seed?.ticketing?.refund_policy || "");
+  const [checkoutEnabled, setCheckoutEnabled] = useState(seed?.checkout?.enabled || false);
+  const [checkoutSteps, setCheckoutSteps] = useState<CheckoutStep[]>(seed?.checkout?.steps || []);
   const [postBookingSections, setPostBookingSections] = useState<PostBookingSection[]>(
-    event?.post_booking?.sections || []
+    seed?.post_booking?.sections || []
   );
-  const [postBookingMessage, setPostBookingMessage] = useState(event?.post_booking?.custom_message || "");
-  const [showCountdown, setShowCountdown] = useState(event?.post_booking?.show_countdown ?? true);
-  const [showVenueProgress, setShowVenueProgress] = useState(event?.post_booking?.show_venue_progress ?? true);
-  const [showDailyQuote, setShowDailyQuote] = useState(event?.post_booking?.show_daily_quote ?? true);
-  const [seatingMode, setSeatingMode] = useState<SeatingMode>(event?.seating?.mode || "none");
+  const [postBookingMessage, setPostBookingMessage] = useState(seed?.post_booking?.custom_message || "");
+  const [showCountdown, setShowCountdown] = useState(seed?.post_booking?.show_countdown ?? true);
+  const [showVenueProgress, setShowVenueProgress] = useState(seed?.post_booking?.show_venue_progress ?? true);
+  const [showDailyQuote, setShowDailyQuote] = useState(seed?.post_booking?.show_daily_quote ?? true);
+  const [seatingMode, setSeatingMode] = useState<SeatingMode>(seed?.seating?.mode || "none");
   const [seatingSections, setSeatingSections] = useState<FormSection[]>(
-    event?.seating?.sections?.map((s) => ({
+    seed?.seating?.sections?.map((s) => ({
       id: s.id,
       name: s.name,
       emoji: s.emoji || "🎯",
@@ -1839,16 +1913,16 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
     })) || []
   );
   const [seatRows, setSeatRows] = useState<FormSeatRow[]>(
-    event?.seating?.rows?.map((r) => ({
+    seed?.seating?.rows?.map((r) => ({
       id: r.id,
       label: r.label,
       seats_count: r.seats_count.toString(),
       section_id: r.section_id || "",
     })) || []
   );
-  const [allowSeatChoice, setAllowSeatChoice] = useState(event?.seating?.allow_choice ?? true);
+  const [allowSeatChoice, setAllowSeatChoice] = useState(seed?.seating?.allow_choice ?? true);
   const [customSpots, setCustomSpots] = useState<FormSpot[]>(
-    event?.seating?.spots?.map((s) => ({
+    seed?.seating?.spots?.map((s) => ({
       id: s.id,
       name: s.name,
       emoji: s.emoji || "🪑",
@@ -1867,15 +1941,42 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
       })) || [],
     })) || []
   );
-  const [floorPlanUrl, setFloorPlanUrl] = useState(event?.seating?.floor_plan_url || "");
+  const [floorPlanUrl, setFloorPlanUrl] = useState(seed?.seating?.floor_plan_url || "");
   const [analyzingFloorPlan, setAnalyzingFloorPlan] = useState(false);
-  const [coverUrl, setCoverUrl] = useState(event?.cover_url || "");
-  const [coverType, setCoverType] = useState<"image" | "video">(event?.cover_type || "image");
-  const [coverFocus, setCoverFocus] = useState<string>(event?.cover_focus || "center");
-  const [galleryUrls, setGalleryUrls] = useState<string[]>(event?.gallery_urls || []);
+  const [coverUrl, setCoverUrl] = useState(seed?.cover_url || "");
+  const [coverType, setCoverType] = useState<"image" | "video">(seed?.cover_type || "image");
+  const [coverFocus, setCoverFocus] = useState<string>(seed?.cover_focus || "center");
+  const [galleryUrls, setGalleryUrls] = useState<string[]>(seed?.gallery_urls || []);
 
   const [saving, setSaving] = useState(false);
+  const [savedFlash, setSavedFlash] = useState(false);
   const [error, setError] = useState("");
+
+  // ── Draft autosave ── every change eventually lands in localStorage, so a
+  // tab switch (which unmounts this form), reload, or crash can't lose work.
+  // Runs on every render; only writes when the serialized form actually
+  // differs from what it looked like at mount.
+  const draftBaselineRef = useRef<string | null>(null);
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const snapshot = JSON.stringify(buildPreviewEvent());
+    if (draftBaselineRef.current === null) {
+      draftBaselineRef.current = snapshot;
+      return;
+    }
+    if (snapshot === draftBaselineRef.current) return;
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    draftTimerRef.current = setTimeout(() => {
+      try {
+        localStorage.setItem(draftKey, JSON.stringify({ saved_at: new Date().toISOString(), data: buildPreviewEvent() }));
+      } catch { /* storage full/unavailable — autosave is best-effort */ }
+    }, 800);
+  });
+
+  const clearDraft = () => {
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    try { localStorage.removeItem(draftKey); } catch { /* ignore */ }
+  };
   const [showPreview, setShowPreview] = useState(false);
 
   async function handleAnalyzeFloorPlan() {
@@ -2034,7 +2135,7 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
     } as Event;
   }
 
-  async function handleSubmit(status: "draft" | "announced" | "upcoming" | "listed") {
+  async function handleSubmit(status: Event["status"], opts?: { stay?: boolean }) {
     if (!title.trim()) {
       setError("Title is required");
       return;
@@ -2170,12 +2271,22 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
           `/api/admin/events/${event.id}`,
           payload,
         );
-        onSave(res.data);
+        clearDraft();
+        if (opts?.stay) {
+          // Checkpoint save — stay in the form so long editing sessions can
+          // save progress without being bounced back to the list.
+          draftBaselineRef.current = JSON.stringify(buildPreviewEvent());
+          setSavedFlash(true);
+          setTimeout(() => setSavedFlash(false), 2500);
+        } else {
+          onSave(res.data);
+        }
       } else {
         const res = await apiClient.post<{ success: boolean; data: Event }>(
           "/api/admin/events",
           payload,
         );
+        clearDraft();
         onSave(res.data);
       }
     } catch (err) {
@@ -2197,7 +2308,7 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
             {event ? `edit: ${event.title}` : "new event"}
           </h2>
           <p className="mt-1 font-mono text-[10px] text-muted">
-            {event ? "modify event details" : "fill in the details below"}
+            {event ? "modify event details" : "fill in the details below"} · autosaves as you type
           </p>
         </div>
         <span className="rounded-full bg-caramel/10 px-2.5 py-1 font-mono text-[9px] text-caramel">
@@ -2671,6 +2782,16 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
           </button>
         </div>
         <div className="flex gap-2.5 pt-1.5">
+          {event && (
+            <button
+              type="button"
+              onClick={() => handleSubmit(event.status, { stay: true })}
+              disabled={saving}
+              className="flex-1 rounded-xl bg-sage/15 py-3 font-mono text-[11px] uppercase tracking-[2px] text-sage transition-colors hover:bg-sage/25 disabled:opacity-50"
+            >
+              {savedFlash ? "saved ✓" : saving ? "saving..." : "save & keep editing"}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => handleSubmit("announced")}

@@ -290,6 +290,17 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const selfReport = await api("/api/reports", { method: "POST", token: memberToken, body: { reported_user_id: memberUid } });
   check("self-report rejected", selfReport.status === 400);
 
+  // Admin review queue
+  const adminReports = await api("/api/reports?status=open", { token: adminToken });
+  const openReport = (adminReports.data?.data || [])[0];
+  check("admin sees open report, enriched with names", !!openReport && openReport.reported_user?.name === "E2E Admin" && !!openReport.reporter?.name, JSON.stringify(adminReports.data).slice(0, 200));
+  const memberReadReports = await api("/api/reports", { token: memberToken });
+  check("non-admin cannot read the report queue", memberReadReports.status === 403);
+  const resolve = await api(`/api/reports/${openReport?.id}/status`, { method: "PUT", token: adminToken, body: { status: "resolved" } });
+  check("admin resolves report", resolve.status === 200 && resolve.data?.success);
+  const afterResolve = await api("/api/reports?status=open", { token: adminToken });
+  check("resolved report leaves the open queue", !(afterResolve.data?.data || []).some((r) => r.id === openReport?.id));
+
   // ═══════════════ POST-PURCHASE JOURNEY ═══════════════
 
   // ── check-in (day-of QR scan) ──

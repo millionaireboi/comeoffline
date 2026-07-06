@@ -17,9 +17,10 @@ async function fetchDashboardStats() {
     liveEventsSnap,
     confirmedTicketsSnap,
     checkedInTicketsSnap,
-    vouchSnap,
     contactUnreadSnap,
     brandNewSnap,
+    applicationsPendingSnap,
+    reportsOpenSnap,
   ] = await Promise.all([
     db.collection("users").where("has_completed_onboarding", "==", true).count().get(),
     db.collection("users").where("has_completed_onboarding", "==", true).where("status", "==", "provisional").count().get(),
@@ -27,18 +28,26 @@ async function fetchDashboardStats() {
     db.collection("events").where("status", "==", "live").count().get(),
     db.collection("tickets").where("status", "==", "confirmed").count().get(),
     db.collection("tickets").where("status", "==", "checked_in").count().get(),
-    db.collection("vouch_codes").where("status", "==", "depleted").count().get(),
     db.collection("contact_submissions").where("status", "==", "unread").count().get(),
     db.collection("brand_inquiries").where("status", "==", "new").count().get(),
+    db.collection("applications").where("status", "==", "pending").count().get(),
+    db.collection("reports").where("status", "==", "open").count().get(),
   ]);
+
+  // Vouch redemptions = sum of per-code `uses` — the old metric counted
+  // "depleted" codes, which under-reported multi-use codes and read as
+  // "codes used" when it wasn't.
+  const vouchUsesSnap = await db.collection("vouch_codes").select("uses").get();
+  const vouch_redemptions = vouchUsesSnap.docs.reduce((sum, doc) => sum + (doc.data().uses || 0), 0);
 
   const total_members = totalMembersSnap.data().count;
   const active_events = upcomingEventsSnap.data().count + liveEventsSnap.data().count;
   const total_tickets = confirmedTicketsSnap.data().count + checkedInTicketsSnap.data().count;
-  const vouch_codes_used = vouchSnap.data().count;
   const provisional_users = provisionalUsersSnap.data().count;
   const contact_unread = contactUnreadSnap.data().count;
   const brand_new = brandNewSnap.data().count;
+  const applications_pending = applicationsPendingSnap.data().count;
+  const reports_open = reportsOpenSnap.data().count;
 
   // For revenue, we still need to read ticket docs (consider maintaining a counter in a separate doc)
   const ticketsWithPrice = await db.collection("tickets")
@@ -51,11 +60,13 @@ async function fetchDashboardStats() {
     total_members,
     active_events,
     total_tickets,
-    vouch_codes_used,
+    vouch_redemptions,
     provisional_users,
     total_revenue,
     contact_unread,
     brand_new,
+    applications_pending,
+    reports_open,
   };
 }
 

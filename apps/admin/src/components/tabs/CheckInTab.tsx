@@ -108,7 +108,11 @@ export function CheckInTab() {
     dedupingInterval: 2 * 60 * 1000,
     cacheTime: 10 * 60 * 1000,
   });
-  const events = (allEvents || []).filter((e) => e.status === "live" || e.status === "upcoming" || e.status === "listed");
+  // Any event that can have ticket-holders is checkable — critically including
+  // sold_out (the best-case door scenario) and completed (late stragglers /
+  // post-event reconciliation). Only drafts and announced (no tickets yet) are excluded.
+  const CHECKABLE = new Set(["live", "upcoming", "listed", "sold_out", "completed"]);
+  const events = (allEvents || []).filter((e) => CHECKABLE.has(e.status));
   const [eventId, setEventId] = useState("");
   const [tickets, setTickets] = useState<TicketData[]>([]);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);

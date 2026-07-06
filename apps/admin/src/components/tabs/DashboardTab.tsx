@@ -2,7 +2,7 @@
 
 import { formatDate } from "@comeoffline/ui";
 import { useApi } from "@/hooks/useApi";
-import { instrumentSerif } from "@/lib/constants";
+import { instrumentSerif, type Tab } from "@/lib/constants";
 import { TabLoadingSkeleton } from "@/components/Skeleton";
 import type { Event } from "@comeoffline/types";
 
@@ -11,7 +11,7 @@ interface DashboardInit {
   events: Event[];
 }
 
-export function DashboardTab() {
+export function DashboardTab({ onNavigate }: { onNavigate?: (tab: Tab) => void }) {
   const { data: initData, loading: statsLoading, error: statsError } = useApi<DashboardInit>(
     "/api/admin/dashboard-init",
     { dedupingInterval: 5 * 60 * 1000, cacheTime: 15 * 60 * 1000 }
@@ -19,15 +19,22 @@ export function DashboardTab() {
   const stats = initData?.stats ?? null;
   const events = initData?.events ?? null;
 
-  const items = [
-    { label: "total members", value: stats?.total_members ?? "—", emoji: "👥" },
-    { label: "active events", value: stats?.active_events ?? "—", emoji: "🎪" },
-    { label: "total tickets", value: stats?.total_tickets ?? "—", emoji: "🎟️" },
-    { label: "vouch codes used", value: stats?.vouch_codes_used ?? "—", emoji: "✉️" },
-    { label: "provisional users", value: stats?.provisional_users ?? "—", emoji: "🌱" },
-    { label: "total revenue", value: stats?.total_revenue != null ? `₹${stats.total_revenue}` : "—", emoji: "💰" },
-    { label: "unread contacts", value: stats?.contact_unread ?? "—", emoji: "📬" },
-    { label: "new brand leads", value: stats?.brand_new ?? "—", emoji: "🤝" },
+  // Morning triage — the queues that need action today, each one tap from its tab.
+  const triage: Array<{ label: string; value: number; emoji: string; tab: Tab }> = [
+    { label: "pending applications", value: Number(stats?.applications_pending ?? 0), emoji: "📝", tab: "applications" },
+    { label: "validation queue", value: Number(stats?.provisional_users ?? 0), emoji: "🌱", tab: "validation" },
+    { label: "open reports", value: Number(stats?.reports_open ?? 0), emoji: "🛡️", tab: "reports" },
+    { label: "unread contacts", value: Number(stats?.contact_unread ?? 0), emoji: "📬", tab: "contact" },
+    { label: "new brand leads", value: Number(stats?.brand_new ?? 0), emoji: "🤝", tab: "brands" },
+  ];
+  const needsAttention = triage.filter((t) => t.value > 0);
+
+  const items: Array<{ label: string; value: number | string; emoji: string; tab?: Tab }> = [
+    { label: "total members", value: stats?.total_members ?? "—", emoji: "👥", tab: "members" },
+    { label: "active events", value: stats?.active_events ?? "—", emoji: "🎪", tab: "events" },
+    { label: "total tickets", value: stats?.total_tickets ?? "—", emoji: "🎟️", tab: "bookings" },
+    { label: "codes redeemed", value: stats?.vouch_redemptions ?? "—", emoji: "✉️", tab: "invite-codes" },
+    { label: "total revenue", value: stats?.total_revenue != null ? `₹${stats.total_revenue}` : "—", emoji: "💰", tab: "bookings" },
   ];
 
   const lastEvent = events?.find((e) => e.status === "completed");
@@ -45,16 +52,49 @@ export function DashboardTab() {
         </div>
       )}
 
-      {/* Stats grid */}
+      {/* Needs attention — today's action queues, one tap from their tab */}
+      <div className="rounded-xl border border-caramel/15 bg-caramel/[0.04]">
+        <div className="border-b border-white/5 px-5 py-3">
+          <span className="font-mono text-[10px] uppercase tracking-[1.5px] text-caramel">
+            needs attention
+          </span>
+        </div>
+        {needsAttention.length === 0 ? (
+          <p className="px-5 py-4 font-mono text-xs text-muted">all clear — nothing waiting on you 🎉</p>
+        ) : (
+          <div className="flex flex-wrap gap-2 p-4">
+            {needsAttention.map((t) => (
+              <button
+                key={t.label}
+                onClick={() => onNavigate?.(t.tab)}
+                className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-left transition-colors hover:border-caramel/40 hover:bg-white/[0.07]"
+              >
+                <span className="text-lg">{t.emoji}</span>
+                <span className={`${instrumentSerif.className} text-2xl text-cream`}>{t.value}</span>
+                <span className="font-mono text-[10px] uppercase tracking-[1px] text-muted">
+                  {t.label} →
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Stats grid — clickable, each jumps to its tab */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
         {items.map((stat) => (
-          <div key={stat.label} className="rounded-xl border border-white/5 bg-white/[0.02] p-5">
+          <button
+            key={stat.label}
+            onClick={() => stat.tab && onNavigate?.(stat.tab)}
+            className="rounded-xl border border-white/5 bg-white/[0.02] p-5 text-left transition-colors hover:border-white/15"
+            style={{ cursor: stat.tab ? "pointer" : "default" }}
+          >
             <span className="mb-2 block text-xl">{stat.emoji}</span>
             <p className={`${instrumentSerif.className} text-3xl text-cream`}>{stat.value}</p>
             <p className="mt-1 font-mono text-[10px] uppercase tracking-[1.5px] text-muted">
-              {stat.label}
+              {stat.label}{stat.tab ? " →" : ""}
             </p>
-          </div>
+          </button>
         ))}
       </div>
 
@@ -74,11 +114,10 @@ export function DashboardTab() {
             </span>
           </div>
           <div className="p-5">
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {[
                 { value: `${lastEvent.spots_taken}/${lastEvent.total_spots}`, label: "attended", color: "#A8B5A0" },
                 { value: lastEvent.total_spots > 0 ? `${Math.round((lastEvent.spots_taken / lastEvent.total_spots) * 100)}%` : "—", label: "show rate", color: "#FAF6F0" },
-                { value: "—", label: "connected", color: "#D4A574" },
               ].map((s, i) => (
                 <div key={i} className="rounded-lg bg-white/[0.04] p-3.5 text-center">
                   <div className="font-mono text-xl font-medium" style={{ color: s.color }}>{s.value}</div>

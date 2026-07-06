@@ -18,12 +18,13 @@ import { BrandsTab } from "@/components/tabs/BrandsTab";
 import { SettingsTab } from "@/components/tabs/SettingsTab";
 import { BookingsTab } from "@/components/tabs/BookingsTab";
 import { WhatsAppTab } from "@/components/tabs/WhatsAppTab";
+import { ReportsTab } from "@/components/tabs/ReportsTab";
 import { LoginScreen } from "@/components/tabs/LoginScreen";
 import { TabErrorBoundary } from "@/components/TabErrorBoundary";
 
 const TABS: Tab[] = [
   "dashboard", "events", "bookings", "check-in", "validation", "content",
-  "applications", "members", "invite-codes", "contact", "brands", "whatsapp", "settings",
+  "applications", "members", "invite-codes", "reports", "contact", "brands", "whatsapp", "settings",
 ];
 
 export default function Home() {
@@ -116,7 +117,7 @@ function AdminDashboard() {
 
       {/* Content */}
       <main className="p-4 sm:p-6">
-        {tab === "dashboard" && <TabErrorBoundary tabName="dashboard" key="dashboard"><DashboardTab /></TabErrorBoundary>}
+        {tab === "dashboard" && <TabErrorBoundary tabName="dashboard" key="dashboard"><DashboardTab onNavigate={setTab} /></TabErrorBoundary>}
         {tab === "events" && <TabErrorBoundary tabName="events" key="events"><EventsTab /></TabErrorBoundary>}
         {tab === "bookings" && <TabErrorBoundary tabName="bookings" key="bookings"><BookingsTab /></TabErrorBoundary>}
         {tab === "check-in" && <TabErrorBoundary tabName="check-in" key="check-in"><CheckInTab /></TabErrorBoundary>}
@@ -125,6 +126,7 @@ function AdminDashboard() {
         {tab === "applications" && <TabErrorBoundary tabName="applications" key="applications"><ApplicationsTab /></TabErrorBoundary>}
         {tab === "members" && <TabErrorBoundary tabName="members" key="members"><MembersTab /></TabErrorBoundary>}
         {tab === "invite-codes" && <TabErrorBoundary tabName="invite-codes" key="invite-codes"><InviteCodesTab /></TabErrorBoundary>}
+        {tab === "reports" && <TabErrorBoundary tabName="reports" key="reports"><ReportsTab /></TabErrorBoundary>}
         {tab === "contact" && <TabErrorBoundary tabName="contact" key="contact"><ContactTab /></TabErrorBoundary>}
         {tab === "brands" && <TabErrorBoundary tabName="brands" key="brands"><BrandsTab /></TabErrorBoundary>}
         {tab === "whatsapp" && <TabErrorBoundary tabName="whatsapp" key="whatsapp"><WhatsAppTab /></TabErrorBoundary>}

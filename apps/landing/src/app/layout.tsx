@@ -36,14 +36,14 @@ const caveat = localFont({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://comeoffline.com"),
-  title: "come offline. — an invite-only community for people who still go outside.",
+  title: "come offline. — for people who still go outside.",
   description:
     "Curated, phone-free events in Bangalore. House parties, secret dinners, and creative sessions — where phones stay in a lockbox and real connections happen face to face.",
   keywords: [
     "come offline",
     "bangalore events",
     "phone-free events",
-    "invite only community",
+    "IRL community",
     "IRL events",
     "social community bangalore",
     "curated events",
@@ -55,7 +55,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: "come offline.",
-    description: "an invite-only community for people who still believe the best connections happen face to face.",
+    description: "a community for people who still believe the best connections happen face to face.",
     url: "https://comeoffline.com",
     siteName: "come offline.",
     locale: "en_IN",
@@ -65,14 +65,14 @@ export const metadata: Metadata = {
         url: "/Comeoffline socials.png",
         width: 1200,
         height: 630,
-        alt: "come offline. — an invite-only community for people who still go outside.",
+        alt: "come offline. — for people who still go outside.",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
     title: "come offline.",
-    description: "an invite-only community for people who still believe the best connections happen face to face.",
+    description: "a community for people who still believe the best connections happen face to face.",
     images: ["/Comeoffline socials.png"],
   },
   robots: {
@@ -110,7 +110,7 @@ export default function RootLayout({
               "@type": "Organization",
               name: "come offline.",
               url: "https://comeoffline.com",
-              description: "An invite-only community for people who still go outside. Curated, phone-free events in Bangalore.",
+              description: "A community for people who still go outside. Curated, phone-free events in Bangalore.",
               address: {
                 "@type": "PostalAddress",
                 addressLocality: "Bangalore",

@@ -211,17 +211,6 @@ export function MemoriesScreen() {
           </span>
         </button>
 
-        <button
-          onClick={() => setStage("vouch")}
-          className="w-full rounded-[20px] border border-sand bg-white p-5 transition-all hover:-translate-y-0.5"
-        >
-          <span className="block font-sans text-[15px] font-medium text-near-black">
-            claim your vouch codes ✉️
-          </span>
-          <span className="mt-1 block font-mono text-[11px] text-muted">
-            invite someone worthy
-          </span>
-        </button>
       </section>
 
     </PullToRefresh>

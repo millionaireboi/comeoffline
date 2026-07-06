@@ -1,7 +1,7 @@
 import { Router } from "express";
 import crypto from "crypto";
 import { isValidPhoneNumber } from "libphonenumber-js";
-import { validateCode, validateHandoffToken, chatbotEntry, signInByHandle, generateHandoffToken, sendSignInOtp, signInByPhoneOtp } from "../services/auth.service";
+import { validateHandoffToken, chatbotEntry, signInByHandle, generateHandoffToken, sendSignInOtp, signInByPhoneOtp, sendContinueOtp, continueByPhoneOtp } from "../services/auth.service";
 import { strictLimiter, signInLimiter } from "../middleware/rateLimit";
 import { isValidPin, verifyPin, hashPin } from "../services/pin.service";
 import { sendPinResetEmail } from "../services/email.service";
@@ -11,59 +11,6 @@ import { sendPhoneOtp, verifyPhoneOtp } from "../services/whatsapp-otp.service";
 import { updateUserProfile } from "../services/profile.service";
 
 const router = Router();
-
-/** POST /api/auth/validate-code — Validate invite/vouch code */
-router.post("/validate-code", async (req, res) => {
-  try {
-    const { code, name, handle, vibe_tag, source, utm_source, utm_medium, utm_campaign, utm_content } = req.body;
-
-    if (!code || typeof code !== "string") {
-      res.status(400).json({ success: false, error: "Code is required" });
-      return;
-    }
-
-    if (name && (typeof name !== "string" || name.length > 100)) {
-      res.status(400).json({ success: false, error: "Invalid name" });
-      return;
-    }
-
-    if (handle && (typeof handle !== "string" || handle.length > 30)) {
-      res.status(400).json({ success: false, error: "Invalid handle" });
-      return;
-    }
-
-    if (vibe_tag && (typeof vibe_tag !== "string" || vibe_tag.length > 50)) {
-      res.status(400).json({ success: false, error: "Invalid vibe tag" });
-      return;
-    }
-
-    const trimmedName = typeof name === "string" ? name.trim() : undefined;
-    const trimmedHandle = typeof handle === "string" ? handle.trim() : undefined;
-
-    const utmParams = (utm_source || utm_medium || utm_campaign || utm_content)
-      ? { utm_source, utm_medium, utm_campaign, utm_content }
-      : undefined;
-
-    const result = await validateCode(code, trimmedName, trimmedHandle, vibe_tag, source, utmParams);
-
-    if (!result.valid) {
-      res.status(401).json({ success: false, error: result.error });
-      return;
-    }
-
-    res.json({
-      success: true,
-      data: {
-        token: result.token,
-        handoff_token: result.handoff_token,
-        user: result.user,
-      },
-    });
-  } catch (err) {
-    console.error("[auth] validate-code error:", err);
-    res.status(500).json({ success: false, error: "Internal server error" });
-  }
-});
 
 /** POST /api/auth/validate-token — Validate a handoff token from landing/chatbot redirect */
 router.post("/validate-token", async (req, res) => {
@@ -427,6 +374,84 @@ router.post("/sign-in/phone/verify", signInLimiter, async (req, res) => {
     });
   } catch (err) {
     console.error("[auth] sign-in/phone/verify error:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+});
+
+/**
+ * POST /api/auth/continue/phone/send — open entry: send a WhatsApp OTP for ANY
+ * number. Existing members get a sign-in code; new numbers get a signup code.
+ */
+router.post("/continue/phone/send", signInLimiter, async (req, res) => {
+  try {
+    const { phone } = req.body as { phone?: string };
+    if (!phone || typeof phone !== "string" || !isValidPhoneNumber(phone)) {
+      res.status(400).json({ success: false, error: "Invalid phone number. Please use international format (e.g. +919876543210)" });
+      return;
+    }
+
+    const result = await sendContinueOtp(phone);
+    if (!result.ok) {
+      const errLower = (result.error || "").toLowerCase();
+      const status = errLower.includes("too many") || errLower.includes("wait a moment") ? 429
+        : errLower.includes("not active") || errLower.includes("no longer active") ? 403
+        : 500;
+      res.status(status).json({ success: false, error: result.error, retry_after_seconds: result.retry_after_seconds });
+      return;
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("[auth] continue/phone/send error:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+});
+
+/**
+ * POST /api/auth/continue/phone/verify — verify the OTP; signs in the matching
+ * member or creates a fresh account (open signup). Returns is_new so clients
+ * can route first-timers into onboarding.
+ */
+router.post("/continue/phone/verify", signInLimiter, async (req, res) => {
+  try {
+    const { phone, code, source } = req.body as { phone?: string; code?: string; source?: string };
+    if (!phone || typeof phone !== "string" || !isValidPhoneNumber(phone)) {
+      res.status(400).json({ success: false, error: "Invalid phone number" });
+      return;
+    }
+    if (!code || typeof code !== "string" || !/^\d{6}$/.test(code)) {
+      res.status(400).json({ success: false, error: "Code must be 6 digits" });
+      return;
+    }
+
+    const result = await continueByPhoneOtp(phone, code);
+    if (!result.valid) {
+      res.status(401).json({ success: false, error: result.error });
+      return;
+    }
+
+    const userData = result.user as Record<string, unknown>;
+    const userId = userData.id as string | undefined;
+    let handoffToken: string | undefined;
+    if (source === "landing" && userId) {
+      const userStatus = (userData.status === "active" || userData.status === "provisional")
+        ? userData.status as "active" | "provisional"
+        : "active";
+      handoffToken = await generateHandoffToken(userId, "landing", userStatus);
+    }
+
+    res.json({
+      success: true,
+      data: {
+        token: result.token,
+        ...(handoffToken && { handoff_token: handoffToken }),
+        user: userData,
+        has_seen_welcome: result.has_seen_welcome,
+        is_new: result.is_new === true,
+      },
+    });
+  } catch (err) {
+    console.error("[auth] continue/phone/verify error:", err);
     res.status(500).json({ success: false, error: "Internal server error" });
   }
 });

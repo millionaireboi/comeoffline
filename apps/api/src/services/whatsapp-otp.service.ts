@@ -99,10 +99,18 @@ export async function sendPhoneOtp(userId: string, phone: string): Promise<SendR
   const nowIso = new Date().toISOString();
   const expiresAt = new Date(now + OTP_TTL_MS).toISOString();
 
-  const result = await sendPhoneOtpTemplate({
-    to: normalizeRecipient(phone),
-    code: otp,
-  });
+  // Local/dev escape hatch — without WhatsApp creds (emulator runs, local dev)
+  // there is nothing to dispatch through, so store the OTP as if sent and log
+  // it. Never active in production or when real credentials are configured.
+  const devMode = !process.env.WHATSAPP_ACCESS_TOKEN && process.env.NODE_ENV !== "production";
+  if (devMode) console.log(`[whatsapp-otp] DEV MODE (no WhatsApp creds) — otp for ${phone}: ${otp}`);
+
+  const result = devMode
+    ? { ok: true as const, messageId: undefined, error: undefined, code: undefined, httpStatus: undefined, details: undefined }
+    : await sendPhoneOtpTemplate({
+        to: normalizeRecipient(phone),
+        code: otp,
+      });
 
   if (!result.ok) {
     console.error(`[whatsapp-otp] dispatch failed for user ${userId}:`, {
@@ -139,6 +147,9 @@ export async function sendPhoneOtp(userId: string, phone: string): Promise<SendR
     user_id: userId,
     phone,
     otp_hash: otpHash,
+    // Dev-only (no WhatsApp creds + non-production): expose the code so local
+    // flows and the e2e suite can complete verification. Never set in prod.
+    ...(devMode ? { dev_plain_otp: otp } : {}),
     created_at: nowIso,
     expires_at: expiresAt,
     attempts: 0,
@@ -149,7 +160,7 @@ export async function sendPhoneOtp(userId: string, phone: string): Promise<SendR
     // Diagnostics — populated by admin/whatsapp-otp/status and updated by the WhatsApp delivery webhook
     last_send_ok: true,
     last_send_attempted_at: nowIso,
-    last_send_wamid: result.messageId,
+    last_send_wamid: result.messageId ?? null,
     last_send_error: null,
     last_send_error_code: null,
     last_send_status: "accepted", // updated to sent/delivered/read/failed by the webhook

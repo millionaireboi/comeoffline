@@ -60,26 +60,11 @@ export async function approveApplication(
   }
 
   try {
-    // Create a unique invite code for this approved user
-    const code = `PROVED-${applicationId.slice(0, 6).toUpperCase()}`;
-    const codeRef = db.collection("vouch_codes").doc();
-    await codeRef.set({
-      code,
-      owner_id: "system",
-      type: "single",
-      status: "active",
-      rules: { max_uses: 1 },
-      uses: 0,
-      used_by: [],
-      earned_from_event: "prove_yourself",
-      created_at: new Date().toISOString(),
-    });
-
-    // Update application
+    // Open entry — approval no longer mints an invite code; the applicant can
+    // just sign up with their phone.
     await db.collection("applications").doc(applicationId).update({
       status: "approved",
       reviewed_by: reviewerId,
-      invite_code: code,
     });
 
     return { success: true };

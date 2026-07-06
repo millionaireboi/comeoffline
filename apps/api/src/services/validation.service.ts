@@ -205,25 +205,6 @@ export async function validateUser(
         validated_by: reviewerId,
       });
 
-      // Generate vouch codes for newly active user
-      const settings = await db.collection("settings").doc("vouch").get();
-      const codesFirst = settings.exists ? settings.data()!.codes_first || 3 : 3;
-
-      for (let i = 0; i < codesFirst; i++) {
-        const code = `CO-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
-        await db.collection("vouch_codes").doc().set({
-          id: crypto.randomUUID(),
-          code,
-          owner_id: userId,
-          type: "single",
-          status: "active",
-          rules: { max_uses: 1 },
-          uses: 0,
-          used_by: [],
-          earned_from_event: eventId || "validation",
-          created_at: new Date().toISOString(),
-        });
-      }
       break;
     }
     case "another_chance": {

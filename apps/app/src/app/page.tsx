@@ -22,7 +22,6 @@ import { DayOfScreen } from "@/components/events/DayOfScreen";
 import { GoDarkScreen } from "@/components/events/GoDarkScreen";
 import { MemoriesScreen } from "@/components/events/MemoriesScreen";
 import { ReconnectScreen } from "@/components/events/ReconnectScreen";
-import { VouchScreen } from "@/components/events/VouchScreen";
 import { CommunityPoll } from "@/components/events/CommunityPoll";
 import { ProfileScreen } from "@/components/profile/ProfileScreen";
 import { BookingsScreen } from "@/components/bookings/BookingsScreen";
@@ -489,9 +488,6 @@ export default function Home() {
       break;
     case "reconnect":
       screen = <ReconnectScreen />;
-      break;
-    case "vouch":
-      screen = <VouchScreen />;
       break;
     case "poll":
       screen = <CommunityPoll />;

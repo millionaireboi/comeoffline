@@ -34,12 +34,6 @@ async function fetchDashboardStats() {
     db.collection("reports").where("status", "==", "open").count().get(),
   ]);
 
-  // Vouch redemptions = sum of per-code `uses` — the old metric counted
-  // "depleted" codes, which under-reported multi-use codes and read as
-  // "codes used" when it wasn't.
-  const vouchUsesSnap = await db.collection("vouch_codes").select("uses").get();
-  const vouch_redemptions = vouchUsesSnap.docs.reduce((sum, doc) => sum + (doc.data().uses || 0), 0);
-
   const total_members = totalMembersSnap.data().count;
   const active_events = upcomingEventsSnap.data().count + liveEventsSnap.data().count;
   const total_tickets = confirmedTicketsSnap.data().count + checkedInTicketsSnap.data().count;
@@ -60,7 +54,6 @@ async function fetchDashboardStats() {
     total_members,
     active_events,
     total_tickets,
-    vouch_redemptions,
     provisional_users,
     total_revenue,
     contact_unread,

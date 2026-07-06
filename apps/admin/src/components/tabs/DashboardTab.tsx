@@ -33,7 +33,6 @@ export function DashboardTab({ onNavigate }: { onNavigate?: (tab: Tab) => void }
     { label: "total members", value: stats?.total_members ?? "—", emoji: "👥", tab: "members" },
     { label: "active events", value: stats?.active_events ?? "—", emoji: "🎪", tab: "events" },
     { label: "total tickets", value: stats?.total_tickets ?? "—", emoji: "🎟️", tab: "bookings" },
-    { label: "codes redeemed", value: stats?.vouch_redemptions ?? "—", emoji: "✉️", tab: "invite-codes" },
     { label: "total revenue", value: stats?.total_revenue != null ? `₹${stats.total_revenue}` : "—", emoji: "💰", tab: "bookings" },
   ];
 

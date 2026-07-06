@@ -16,7 +16,6 @@ export type AppStage =
   | "godark"
   | "memories"
   | "reconnect"
-  | "vouch"
   | "profile"
   | "poll"
   | "bookings";

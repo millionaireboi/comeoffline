@@ -51,8 +51,6 @@ interface ProfileData {
   stats: {
     events_attended: number;
     connections_made: number;
-    vouch_codes_earned: number;
-    vouch_codes_used: number;
   };
   event_history: Array<{
     event_id: string;
@@ -292,7 +290,7 @@ export function ProfileScreen() {
                 background: profile.user.status === "active" ? "#D4A57415" : "#8B7EC815",
               }}
             >
-              {profile.user.status === "active" ? "vouched" : "proving"}
+              {profile.user.status === "active" ? "member" : "proving"}
             </span>
             <span className="font-mono text-[10px] text-muted">
               since {memberSince}
@@ -431,8 +429,6 @@ export function ProfileScreen() {
           {[
             { value: profile.stats.events_attended, label: "events attended", emoji: "\u{1F3AA}", action: undefined },
             { value: profile.stats.connections_made, label: "connections", emoji: "\u{1F91D}", action: () => setShowConnections(true) },
-            { value: profile.stats.vouch_codes_earned, label: "codes earned", emoji: "\u2709\uFE0F", action: undefined },
-            { value: profile.stats.vouch_codes_used, label: "people vouched", emoji: "\u2B50", action: undefined },
           ].map((stat) => (
             <button
               key={stat.label}
@@ -739,7 +735,9 @@ export function ProfileScreen() {
                 ? "invite code"
                 : profile.user.entry_path === "vouch"
                   ? "vouch code"
-                  : "prove yourself"}
+                  : profile.user.entry_path === "open"
+                    ? "phone signup"
+                    : "prove yourself"}
             </span>
           </p>
           <button

@@ -53,7 +53,7 @@ export function useStage() {
 
       // Manual stages that shouldn't be auto-overridden
       // sign_quiz should only stay manual while the quiz is incomplete
-      if (["profile", "vouch", "poll", "bookings"].includes(stage)) return;
+      if (["profile", "poll", "bookings"].includes(stage)) return;
       if (stage === "sign_quiz" && !user.sign) return;
       // When navigating from bookings, keep countdown visible so user sees post-booking content
       if (stage === "countdown" && navigationOrigin === "bookings") return;

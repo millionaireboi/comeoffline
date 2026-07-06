@@ -56,7 +56,7 @@ export default function PrivacyPage() {
           >
             <Section title="who we are">
               <p>
-                come offline is an invite-only IRL community based in Bengaluru, India. This policy describes how we collect, use, and protect personal information when you visit{" "}
+                come offline is an IRL events community based in Bengaluru, India. This policy describes how we collect, use, and protect personal information when you visit{" "}
                 <a href="https://comeoffline.com" className="underline" style={{ color: P.caramel }}>
                   comeoffline.com
                 </a>
@@ -76,7 +76,7 @@ export default function PrivacyPage() {
               <List
                 items={[
                   "Identity: name, phone number, email, profile photo, social handles you choose to share",
-                  "Application data: answers to the join form, vouches, invite codes",
+                  "Application data: answers to the join form",
                   "Event activity: RSVPs, ticket purchases, check-ins, memories you contribute, connections you make",
                   "Device data: IP address, browser type, device type, basic analytics events (page views, taps)",
                   "Payment data: handled by Razorpay — we do not store full card or UPI details",

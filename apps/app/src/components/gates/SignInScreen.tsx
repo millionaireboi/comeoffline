@@ -19,7 +19,7 @@ const notFoundLines = [
 export function SignInScreen({ onBack }: { onBack: () => void }) {
   const [handle, setHandle] = useState("");
   const [pin, setPin] = useState("");
-  const [step, setStep] = useState<"handle" | "pin" | "forgot" | "reset" | "phone" | "phone-otp">("handle");
+  const [step, setStep] = useState<"handle" | "pin" | "forgot" | "reset" | "phone" | "phone-otp">("phone");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -177,7 +177,7 @@ export function SignInScreen({ onBack }: { onBack: () => void }) {
     setError("");
     setLoading(true);
     try {
-      await apiFetch("/api/auth/sign-in/phone/send", {
+      await apiFetch("/api/auth/continue/phone/send", {
         method: "POST",
         body: JSON.stringify({ phone }),
       });
@@ -223,15 +223,20 @@ export function SignInScreen({ onBack }: { onBack: () => void }) {
     try {
       const res = await apiFetch<{
         success: boolean;
-        data: { token: string; user: Record<string, unknown> };
-      }>("/api/auth/sign-in/phone/verify", {
+        data: { token: string; user: Record<string, unknown>; is_new?: boolean };
+      }>("/api/auth/continue/phone/verify", {
         method: "POST",
         body: JSON.stringify({ phone, code }),
       });
 
       if (res.data.user) {
-        const { setUser } = useAppStore.getState();
+        const { setUser, setOnboardingSource } = useAppStore.getState();
         setUser(res.data.user as unknown as User);
+        // Fresh signup — mark the entry source so onboarding shows the full story
+        if (res.data.is_new) {
+          setOnboardingSource("direct_pwa");
+          try { localStorage.setItem("co_onboarding_source", "direct_pwa"); } catch { /* ignore */ }
+        }
       }
       await loginWithToken(res.data.token);
 
@@ -288,7 +293,7 @@ export function SignInScreen({ onBack }: { onBack: () => void }) {
           come offline
         </h1>
         <div className="mt-2 font-mono text-[11px] uppercase tracking-[4px] text-muted/50">
-          welcome back
+          bangalore
         </div>
       </div>
 
@@ -342,7 +347,7 @@ export function SignInScreen({ onBack }: { onBack: () => void }) {
             className="w-full border-none bg-transparent py-2 font-mono text-[11px] uppercase tracking-[3px] text-muted/60 transition-colors hover:text-caramel"
             style={{ cursor: "pointer" }}
           >
-            sign in with whatsapp otp
+            continue with whatsapp instead
           </button>
         </form>
       )}
@@ -366,7 +371,7 @@ export function SignInScreen({ onBack }: { onBack: () => void }) {
               />
             </div>
             <p className="mt-2 font-mono text-[10px] text-muted/50">
-              we&apos;ll send a 6-digit code on whatsapp.
+              we&apos;ll send a 6-digit code on whatsapp. new here? this signs you up too.
             </p>
           </div>
 
@@ -383,7 +388,7 @@ export function SignInScreen({ onBack }: { onBack: () => void }) {
               opacity: loading ? 0.5 : 1,
             }}
           >
-            {loading ? "sending..." : "send code \u2192"}
+            {loading ? "sending..." : "continue with whatsapp \u2192"}
           </button>
 
           <button
@@ -393,7 +398,7 @@ export function SignInScreen({ onBack }: { onBack: () => void }) {
             className="w-full border-none bg-transparent py-2 font-mono text-[11px] uppercase tracking-[3px] text-muted/60 transition-colors hover:text-caramel"
             style={{ cursor: "pointer" }}
           >
-            use handle instead
+            member with a PIN? use handle instead
           </button>
         </form>
       )}

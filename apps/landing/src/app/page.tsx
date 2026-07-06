@@ -79,7 +79,7 @@ export default async function HomePage() {
           </p>
         </section>
 
-        {/* Entry — code / prove yourself / sign in, always above the events */}
+        {/* Entry — open signup / sign in, always above the events */}
         <section className="px-4 pb-8">
           <QuickEntry />
         </section>

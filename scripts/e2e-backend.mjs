@@ -3,7 +3,7 @@
  * Firebase emulators (Auth + Firestore) with a locally-running API instance.
  *
  * Flow covered:
- *   gate (vouch code) → auth token exchange → admin event creation →
+ *   open signup (phone + WhatsApp OTP) → auth token exchange → admin event creation →
  *   browse feed → buy ticket (real Razorpay link, auto-expires) →
  *   webhook signature checks → payment confirm (admin, simulates webhook) →
  *   double-booking guard → cancel + spot release →
@@ -11,7 +11,7 @@
  *   free-event RSVP → attendees → new profile endpoints → reports →
  *   POST-PURCHASE: QR check-in (forgery/wrong-event/double-scan guards) →
  *   mutual connections + reconnect window + "your people are going" →
- *   memories gallery → vouch-code claim + loop closure → community poll.
+ *   memories gallery → community poll.
  *
  * Run everything with:  ./scripts/e2e-backend.sh   (starts emulators + API, runs this, tears down)
  * Or run just this file against an already-running stack:
@@ -117,8 +117,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const health = await api("/api/health");
   check("API is up", health.status === 200);
 
-  // ── seed: admin user + vouch code ──
-  section("1. seed (admin user + vouch code)");
+  // ── seed: admin user ──
+  section("1. seed (admin user)");
   const adminUser = await auth.createUser({ email: "e2e-admin@test.local", displayName: "E2E Admin" });
   await auth.setCustomUserClaims(adminUser.uid, { admin: true });
   await db.collection("users").doc(adminUser.uid).set({
@@ -128,23 +128,47 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const adminToken = await exchangeCustomToken(await auth.createCustomToken(adminUser.uid, { admin: true }));
   check("admin token minted", !!adminToken);
 
-  await db.collection("vouch_codes").add({
-    code: "E2ETEST1", owner_id: "admin", type: "single", status: "active",
-    rules: { max_uses: 1 }, uses: 0, used_by: [], created_at: new Date().toISOString(),
-    label: "e2e", description: "e2e test code",
-  });
+  // ── open entry: phone + WhatsApp OTP signs you up ──
+  section("2. open signup (phone + whatsapp otp)");
 
-  // ── gate: validate code, become a member ──
-  section("2. gate → member auth");
-  const gate = await api("/api/auth/validate-code", { method: "POST", body: { code: "e2etest1", name: "E2E Member" } });
-  check("validate-code succeeds (case-insensitive)", gate.status === 200 && gate.data?.success, JSON.stringify(gate.data));
-  check("returns custom token + user", !!gate.data?.data?.token && !!gate.data?.data?.user?.id);
-  const memberUid = gate.data.data.user.id;
-  const memberToken = await exchangeCustomToken(gate.data.data.token);
+  // Reads the dev-mode plaintext OTP the API stores when WhatsApp creds are
+  // absent (this test env) — production always dispatches real codes.
+  async function readOtp(docId) {
+    for (let i = 0; i < 10; i++) {
+      const doc = await db.collection("phone_otps").doc(docId).get();
+      const otp = doc.exists ? doc.data().dev_plain_otp : null;
+      if (otp) return otp;
+      await sleep(300);
+    }
+    throw new Error(`no dev otp for ${docId}`);
+  }
+
+  async function signupByPhone(phone) {
+    const send = await api("/api/auth/continue/phone/send", { method: "POST", body: { phone } });
+    if (send.status !== 200) throw new Error(`otp send failed: ${JSON.stringify(send.data)}`);
+    // Signup OTPs are keyed signup:{phone} until an account exists; sign-ins by uid
+    let otp;
+    try {
+      otp = await readOtp(`signup:${phone}`);
+    } catch {
+      const userSnap = await db.collection("users").where("phone_number", "==", phone).limit(1).get();
+      otp = await readOtp(userSnap.docs[0].id);
+    }
+    const verify = await api("/api/auth/continue/phone/verify", { method: "POST", body: { phone, code: otp } });
+    if (verify.status !== 200) throw new Error(`otp verify failed: ${JSON.stringify(verify.data)}`);
+    return verify.data.data;
+  }
+
+  const MEMBER_PHONE = "+919999000001";
+  const entry = await signupByPhone(MEMBER_PHONE);
+  check("new phone creates an account (is_new)", entry.is_new === true && !!entry.user?.id, JSON.stringify(entry).slice(0, 200));
+  check("account is active with phone pre-verified", entry.user?.status === "active" && !!entry.user?.phone_verified_at);
+  const memberUid = entry.user.id;
+  const memberToken = await exchangeCustomToken(entry.token);
   check("member token exchanges", !!memberToken);
 
-  const gateReuse = await api("/api/auth/validate-code", { method: "POST", body: { code: "E2ETEST1" } });
-  check("re-entering same single-use code signs the same user back in", gateReuse.data?.data?.user?.id === memberUid);
+  const reentry = await signupByPhone(MEMBER_PHONE);
+  check("same phone signs back in (not duplicated)", reentry.is_new === false && reentry.user?.id === memberUid);
 
   // ── admin: create paid event ──
   section("3. admin creates paid event");
@@ -293,7 +317,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // Admin review queue
   const adminReports = await api("/api/reports?status=open", { token: adminToken });
   const openReport = (adminReports.data?.data || [])[0];
-  check("admin sees open report, enriched with names", !!openReport && openReport.reported_user?.name === "E2E Admin" && !!openReport.reporter?.name, JSON.stringify(adminReports.data).slice(0, 200));
+  // Reporter name can be "" pre-profile (open signup) — assert on handle
+  check("admin sees open report, enriched with names", !!openReport && openReport.reported_user?.name === "E2E Admin" && !!openReport.reporter?.handle, JSON.stringify(adminReports.data).slice(0, 200));
   const memberReadReports = await api("/api/reports", { token: memberToken });
   check("non-admin cannot read the report queue", memberReadReports.status === 403);
   const resolve = await api(`/api/reports/${openReport?.id}/status`, { method: "PUT", token: adminToken, body: { status: "resolved" } });
@@ -362,14 +387,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   // ── second member + connections (reconnect) ──
   section("15. connections (reconnect after the event)");
-  await db.collection("vouch_codes").add({
-    code: "E2ETEST2", owner_id: "admin", type: "single", status: "active",
-    rules: { max_uses: 1 }, uses: 0, used_by: [], created_at: new Date().toISOString(),
-  });
-  const gate2 = await api("/api/auth/validate-code", { method: "POST", body: { code: "E2ETEST2", name: "Buddy Two" } });
-  const member2Uid = gate2.data?.data?.user?.id;
-  const member2Token = await exchangeCustomToken(gate2.data.data.token);
-  check("second member joins via vouch code", !!member2Token);
+  const entry2 = await signupByPhone("+919999000002");
+  const member2Uid = entry2.user?.id;
+  const member2Token = await exchangeCustomToken(entry2.token);
+  check("second member joins via open signup", !!member2Token && entry2.is_new === true);
+  // Give the buddy a name so "connections-going" has something to show
+  await db.collection("users").doc(member2Uid).update({ name: "Buddy Two" });
 
   // member2 buys + confirms a ticket on the paid event (feeds connections-going)
   const buyM2 = await api("/api/tickets/create", { method: "POST", token: member2Token, body: { event_id: eventId, tier_id: "t1" } });
@@ -425,22 +448,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const memEvent = (myMems.data?.data || []).find((m) => m.event_id === eventId);
   check("permanent my-memories gallery includes the event", !!memEvent && memEvent.polaroids.length === 1, JSON.stringify(myMems.data).slice(0, 200));
 
-  // ── vouch codes earned (the growth loop) ──
-  section("17. vouch codes earned");
-  const claim = await api("/api/vouch-codes/claim", { method: "POST", token: memberToken, body: { eventId } });
-  check("attendee claims 2 vouch codes", claim.data?.data?.length === 2, JSON.stringify(claim.data).slice(0, 200));
-  const claimAgain = await api("/api/vouch-codes/claim", { method: "POST", token: memberToken, body: { eventId } });
-  check("re-claim returns same codes (no farming)", claimAgain.data?.data?.length === 2);
-
-  // close the loop: a NEW person joins with member1's earned code
-  const earnedCode = claim.data.data[0].code;
-  const gate3 = await api("/api/auth/validate-code", { method: "POST", body: { code: earnedCode, name: "Vouched Friend" } });
-  check("earned code admits a new member (vouch loop closes)", gate3.status === 200 && !!gate3.data?.data?.user?.id, JSON.stringify(gate3.data).slice(0, 150));
-  const vouchedDoc = await db.collection("users").doc(gate3.data.data.user.id).get();
-  check("new member is vouched_by the earner", vouchedDoc.data()?.vouched_by === memberUid, `got ${vouchedDoc.data()?.vouched_by}`);
-
   // ── community poll (did these people vibe?) ──
-  section("18. community poll");
+  section("17. community poll");
   const pollCreated = await api(`/api/events/${eventId}/create-poll`, { method: "POST", token: adminToken });
   check("admin creates post-event poll", pollCreated.status === 200 && !!pollCreated.data?.data?.id);
   const pollFetch = await api(`/api/events/${eventId}/poll`, { token: memberToken });

@@ -15,7 +15,6 @@ const BACK_MAP: Partial<Record<AppStage, AppStage>> = {
   godark: "dayof",
   memories: "feed",
   reconnect: "memories",
-  vouch: "memories",
   poll: "feed",
 };
 

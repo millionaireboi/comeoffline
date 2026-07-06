@@ -1,7 +1,8 @@
 import { APP_URL } from "@/components/shared/P";
 
 export interface HandoffOptions {
-  token: string;
+  /** Auth handoff token — omitted for open entry, where the visitor signs in/up in the app */
+  token?: string;
   /** Event the user was looking at — the app opens this event's detail on arrival */
   eventId?: string;
   /** Tier preselected on landing — the app skips re-picking it */
@@ -22,7 +23,7 @@ export interface HandoffOptions {
  */
 export function buildAppHandoffUrl({ token, eventId, tierId, source = "landing", utm }: HandoffOptions): string {
   const url = new URL(APP_URL);
-  url.searchParams.set("token", token);
+  if (token) url.searchParams.set("token", token);
   if (eventId) url.searchParams.set("event", eventId);
   if (tierId) url.searchParams.set("tier", tierId);
   url.searchParams.set("source", source);

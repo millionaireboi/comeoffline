@@ -37,20 +37,24 @@ export function useTokenHandoff() {
     const params = new URLSearchParams(window.location.search);
     const token = params.get("token");
 
-    if (!token) {
-      setChecking(false);
-      return;
-    }
-
-    // Capture deep-link targets BEFORE we strip the URL — landing sends
-    // ?event=<id>&tier=<id> so we can drop the user on the right event detail
-    // with the right tier preselected, instead of the home feed.
+    // Capture deep-link targets FIRST — with open entry the landing page
+    // sends ?event=<id>&tier=<id> WITHOUT a token (the visitor signs in /
+    // signs up in-app), and the intent must survive that flow.
     const deepLinkEventId = params.get("event");
     const deepLinkTierId = params.get("tier");
     if (deepLinkEventId) {
       const { setPendingPurchaseEventId, setPendingDeepLinkTierId } = useAppStore.getState();
       setPendingPurchaseEventId(deepLinkEventId);
       if (deepLinkTierId) setPendingDeepLinkTierId(deepLinkTierId);
+    }
+
+    if (!token) {
+      // Strip the params so a refresh doesn't re-capture stale intent
+      if (deepLinkEventId) {
+        window.history.replaceState({ stage: "gate" }, "", window.location.pathname);
+      }
+      setChecking(false);
+      return;
     }
 
     // Landing forwards utm_* on the handoff URL — capture them so app-side

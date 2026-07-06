@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { useAnalytics, EVENT_DETAIL_OPENED, GATE_OPENED, CODE_VALIDATED, CODE_FAILED, CHATBOT_OPENED, EVENT_SHARED, SIGNIN_STARTED, SIGNIN_SUCCESS, SIGNIN_FAILED, trackFbEvent, FUNNEL_LANDING_VIEWED, FUNNEL_IM_IN_CLICKED, FUNNEL_VALIDATE_CODE_SUCCESS, FUNNEL_VALIDATE_CODE_FAILED, FUNNEL_APP_HANDOFF_STARTED } from "@comeoffline/analytics";
+import { useAnalytics, EVENT_DETAIL_OPENED, GATE_OPENED, EVENT_SHARED, trackFbEvent, FUNNEL_LANDING_VIEWED, FUNNEL_IM_IN_CLICKED, FUNNEL_APP_HANDOFF_STARTED } from "@comeoffline/analytics";
 import { P, API_URL } from "@/components/shared/P";
 import { buildAppHandoffUrl } from "@/lib/handoff";
 import { SpotsBar } from "@/components/events/SpotsBar";
@@ -12,16 +12,7 @@ interface FeedEventDetailProps {
   onClose: () => void;
 }
 
-type GateStage = "idle" | "gate" | "confirmed";
-type GateTab = "join" | "signin";
-type SignInStep = "handle" | "pin";
-
-const notFoundLines = [
-  "hmm, can't find you.",
-  "we don't recognize that one.",
-  "no account with that handle.",
-  "are you sure that's right?",
-];
+type GateStage = "idle" | "confirmed";
 
 // Generic fallback FAQ — only answers true for EVERY event. Per-event
 // specifics come from event.faq (authored in admin). Mirrors the app's
@@ -177,26 +168,9 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
   const { openChat } = useChat();
   const { track, identify } = useAnalytics();
   const [gateStage, setGateStage] = useState<GateStage>("idle");
-  const [gateTab, setGateTab] = useState<GateTab>("join");
-  const [code, setCode] = useState("");
-  const [codeError, setCodeError] = useState("");
-  const [shaking, setShaking] = useState(false);
-  const [validating, setValidating] = useState(false);
-  const codeInputRef = useRef<HTMLInputElement>(null);
 
-  // Prefilled code + UTMs from URL (e.g. ad link with ?code=SUNDAYFUNDAY&utm_source=meta)
-  const [prefilledCode, setPrefilledCode] = useState<string | null>(null);
+  // UTMs from the ad URL — forwarded on the app handoff for attribution
   const prefilledUtmRef = useRef<{ utm_source?: string; utm_medium?: string; utm_campaign?: string; utm_content?: string }>({});
-
-  // Sign-in state
-  const [signInStep, setSignInStep] = useState<SignInStep>("handle");
-  const [signInHandle, setSignInHandle] = useState("");
-  const [signInPin, setSignInPin] = useState("");
-  const [signInError, setSignInError] = useState("");
-  const [signInLoading, setSignInLoading] = useState(false);
-  const [signInErrorIdx, setSignInErrorIdx] = useState(0);
-  const signInInputRef = useRef<HTMLInputElement>(null);
-  const pinInputRef = useRef<HTMLInputElement>(null);
 
   // FAQ accordion — collapsed by default, only one open at a time
   const [openFaqIdx, setOpenFaqIdx] = useState<number | null>(null);
@@ -271,14 +245,10 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Capture invite code + UTMs from URL (e.g. from Meta ads with ?code=SUNDAYFUNDAY).
-  // We don't redirect immediately — the visitor reads the event detail first, then "I'm in"
-  // skips the manual gate and validates the prefilled code in the background.
+  // Capture UTMs from the ad URL — forwarded to the app on handoff for attribution.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
-    const urlCode = params.get("code");
-    if (urlCode) setPrefilledCode(urlCode.trim().toUpperCase());
     prefilledUtmRef.current = {
       ...(params.get("utm_source") && { utm_source: params.get("utm_source") as string }),
       ...(params.get("utm_medium") && { utm_medium: params.get("utm_medium") as string }),
@@ -295,272 +265,32 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
     };
   }, []);
 
-  // Auto-focus code input when gate opens
-  useEffect(() => {
-    if (gateStage === "gate" && gateTab === "join") {
-      setTimeout(() => codeInputRef.current?.focus(), 400);
-    }
-  }, [gateStage, gateTab]);
-
-  // Auto-focus sign-in inputs
-  useEffect(() => {
-    if (gateStage === "gate" && gateTab === "signin") {
-      if (signInStep === "handle") {
-        setTimeout(() => signInInputRef.current?.focus(), 400);
-      } else if (signInStep === "pin") {
-        setTimeout(() => pinInputRef.current?.focus(), 100);
-      }
-    }
-  }, [gateStage, gateTab, signInStep]);
-
   const handleImIn = useCallback(() => {
     track(GATE_OPENED, { event_id: event.id, event_title: event.title });
     track(FUNNEL_IM_IN_CLICKED, {
       event_id: event.id,
       event_title: event.title,
       tier_id: selectedTierId,
-      has_prefilled_code: !!prefilledCode,
       ...prefilledUtmRef.current,
     });
 
-    // If a code was prefilled via URL (ad traffic), skip the gate UI and validate directly.
-    if (prefilledCode) {
-      setGateStage("confirmed");
-      (async () => {
-        try {
-          const res = await fetch(`${API_URL}/api/auth/validate-code`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              code: prefilledCode,
-              source: "landing",
-              ...prefilledUtmRef.current,
-            }),
-          });
-          const data = await res.json();
-          if (data.success && data.data?.handoff_token) {
-            track(CODE_VALIDATED, { event_id: event.id, source: "url_param" });
-            track(FUNNEL_VALIDATE_CODE_SUCCESS, {
-              event_id: event.id,
-              user_id: data.data.user?.id,
-              code: prefilledCode,
-              ...prefilledUtmRef.current,
-            });
-            // Stitch identity: PostHog person_profiles is "identified_only" so this
-            // is what creates the persistent profile that the app side then continues.
-            if (data.data.user?.id) {
-              identify(data.data.user.id, {
-                handle: data.data.user.handle,
-                name: data.data.user.name,
-                ...prefilledUtmRef.current,
-              });
-            }
-            // Deep-link: pass event id + selected tier so the app drops them straight
-            // into the checkout instead of the home feed.
-            track(FUNNEL_APP_HANDOFF_STARTED, {
-              event_id: event.id,
-              tier_id: selectedTierId,
-              user_id: data.data.user?.id,
-            });
-            window.location.href = buildAppHandoffUrl({
-              token: data.data.handoff_token,
-              eventId: event.id,
-              tierId: selectedTierId,
-              utm: prefilledUtmRef.current,
-            });
-          } else {
-            // Prefilled code failed — drop user to manual gate as a fallback
-            track(CODE_FAILED, { event_id: event.id, error: "prefilled_invalid", message: data.message });
-            track(FUNNEL_VALIDATE_CODE_FAILED, {
-              event_id: event.id,
-              code: prefilledCode,
-              error: data.message,
-              source: "url_param",
-            });
-            setGateTab("join");
-            setSignInStep("handle");
-            setSignInHandle("");
-            setSignInPin("");
-            setSignInError("");
-            setGateStage("gate");
-          }
-        } catch {
-          track(CODE_FAILED, { event_id: event.id, error: "prefilled_network" });
-          track(FUNNEL_VALIDATE_CODE_FAILED, {
-            event_id: event.id,
-            code: prefilledCode,
-            error: "network",
-            source: "url_param",
-          });
-          setGateTab("join");
-          setGateStage("gate");
-        }
-      })();
-      return;
-    }
-
-    setGateTab("join");
-    setSignInStep("handle");
-    setSignInHandle("");
-    setSignInPin("");
-    setSignInError("");
-    setGateStage("gate");
-  }, [event.id, event.title, track, identify, prefilledCode, selectedTierId]);
-
-  const handleValidateCode = useCallback(async () => {
-    if (!code.trim()) {
-      setCodeError("enter your code");
-      return;
-    }
-
-    setValidating(true);
-    setCodeError("");
-
-    try {
-      const res = await fetch(`${API_URL}/api/auth/validate-code`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: code.trim().toUpperCase() }),
-      });
-      const data = await res.json();
-
-      if (data.success && data.data?.handoff_token) {
-        track(CODE_VALIDATED, { event_id: event.id });
-        track(FUNNEL_VALIDATE_CODE_SUCCESS, {
-          event_id: event.id,
-          user_id: data.data.user?.id,
-          code: code.trim().toUpperCase(),
-          source: "manual_entry",
-        });
-        if (data.data.user?.id) {
-          identify(data.data.user.id, {
-            handle: data.data.user.handle,
-            name: data.data.user.name,
-            entry: "manual_code",
-          });
-        }
-        setGateStage("confirmed");
-        setTimeout(() => {
-          track(FUNNEL_APP_HANDOFF_STARTED, {
-            event_id: event.id,
-            tier_id: selectedTierId,
-            user_id: data.data.user?.id,
-            source: "manual_entry",
-          });
-          // Manual code entry must keep the event/tier deep-link too — losing it
-          // dropped ad-clickers on the app home feed instead of this event.
-          window.location.href = buildAppHandoffUrl({
-            token: data.data.handoff_token,
-            eventId: event.id,
-            tierId: selectedTierId,
-            utm: prefilledUtmRef.current,
-          });
-        }, 1200);
-      } else {
-        track(CODE_FAILED, { event_id: event.id, error: data.message });
-        track(FUNNEL_VALIDATE_CODE_FAILED, {
-          event_id: event.id,
-          code: code.trim().toUpperCase(),
-          error: data.message,
-          source: "manual_entry",
-        });
-        setCodeError(data.message || "invalid code");
-        setShaking(true);
-        setTimeout(() => setShaking(false), 500);
-      }
-    } catch {
-      track(CODE_FAILED, { event_id: event.id, error: "network" });
-      track(FUNNEL_VALIDATE_CODE_FAILED, {
-        event_id: event.id,
-        code: code.trim().toUpperCase(),
-        error: "network",
-        source: "manual_entry",
-      });
-      setCodeError("something went wrong. try again.");
-      setShaking(true);
-      setTimeout(() => setShaking(false), 500);
-    } finally {
-      setValidating(false);
-    }
-  }, [code, event.id, track, identify, selectedTierId]);
-
-  const handleNoCode = useCallback(() => {
-    track(CHATBOT_OPENED, { event_id: event.id, source: "no_code" });
-    onClose();
+    // Open entry: no codes, no landing-side auth. Hand straight to the app
+    // with the event + tier deep-link — sign-in/sign-up happens there and the
+    // app preserves the intent through it.
+    setGateStage("confirmed");
+    track(FUNNEL_APP_HANDOFF_STARTED, {
+      event_id: event.id,
+      tier_id: selectedTierId,
+      source: "open_entry",
+    });
     setTimeout(() => {
-      openChat();
-    }, 200);
-  }, [event.id, onClose, openChat, track]);
-
-  const handleSignIn = useCallback(async () => {
-    const trimmed = signInHandle.trim().replace(/^@/, "").replace(/\s/g, "").toLowerCase();
-    if (!trimmed || signInLoading) return;
-
-    if (signInStep === "pin" && signInPin.length !== 4) {
-      setSignInError("enter your 4-digit PIN");
-      return;
-    }
-
-    setSignInError("");
-    setSignInLoading(true);
-
-    try {
-      const res = await fetch(`${API_URL}/api/auth/sign-in`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          handle: trimmed,
-          source: "landing",
-          ...(signInStep === "pin" && { pin: signInPin }),
-        }),
+      window.location.href = buildAppHandoffUrl({
+        eventId: event.id,
+        tierId: selectedTierId,
+        utm: prefilledUtmRef.current,
       });
-      const data = await res.json();
-
-      if (data.success && data.data?.handoff_token) {
-        track(SIGNIN_SUCCESS, { event_id: event.id });
-        setGateStage("confirmed");
-        setTimeout(() => {
-          // Members signing in from an event detail should land on that event too
-          window.location.href = buildAppHandoffUrl({
-            token: data.data.handoff_token,
-            eventId: event.id,
-            tierId: selectedTierId,
-            utm: prefilledUtmRef.current,
-          });
-        }, 1200);
-      } else if (data.needs_pin) {
-        setSignInStep("pin");
-        setSignInPin("");
-        setSignInError("");
-      } else if (res.status === 429) {
-        track(SIGNIN_FAILED, { event_id: event.id, error: "rate_limited" });
-        setSignInError("too many attempts. wait a bit and try again.");
-      } else {
-        track(SIGNIN_FAILED, { event_id: event.id, error: signInStep === "pin" ? "wrong_pin" : "not_found" });
-        if (signInStep === "pin") {
-          setSignInError("wrong PIN. try again.");
-          setSignInPin("");
-        } else {
-          setSignInError(notFoundLines[signInErrorIdx % notFoundLines.length]);
-          setSignInErrorIdx((i) => i + 1);
-        }
-      }
-    } catch {
-      track(SIGNIN_FAILED, { event_id: event.id, error: "network" });
-      setSignInError("something went wrong. try again.");
-    } finally {
-      setSignInLoading(false);
-    }
-  }, [signInHandle, signInPin, signInStep, signInLoading, signInErrorIdx, event.id, track, selectedTierId]);
-
-  const switchToSignIn = useCallback(() => {
-    track(SIGNIN_STARTED, { event_id: event.id });
-    setGateTab("signin");
-    setSignInStep("handle");
-    setSignInHandle("");
-    setSignInPin("");
-    setSignInError("");
-  }, [event.id, track]);
+    }, 900);
+  }, [event.id, event.title, track, selectedTierId]);
 
   return (
     <div
@@ -591,7 +321,7 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
       <div
         style={{
           position: "relative",
-          background: gateStage === "gate" ? P.nearBlack : P.cream,
+          background: P.cream,
           borderRadius: "24px 24px 0 0",
           maxHeight: "92vh",
           display: "flex",
@@ -609,432 +339,6 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
             flexShrink: 0,
           }}
         />
-
-        {/* ===== GATE VIEW — replaces entire sheet when active ===== */}
-        {gateStage === "gate" && (
-          <div
-            style={{
-              padding: "32px 24px 40px",
-              display: "flex",
-              flexDirection: "column",
-              animation: "gateFadeIn 0.35s ease",
-            }}
-          >
-            {/* Close button */}
-            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
-              <button
-                onClick={() => setGateStage("idle")}
-                aria-label="Back to event details"
-                style={{
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  fontSize: 18,
-                  color: P.muted,
-                  padding: "4px 8px",
-                  lineHeight: 1,
-                }}
-              >
-                &times;
-              </button>
-            </div>
-
-            {/* Event context */}
-            <div style={{ textAlign: "center", marginBottom: 24 }}>
-              <span style={{ fontSize: 36, display: "block", marginBottom: 10 }}>{event.emoji}</span>
-              <h3
-                className="font-serif font-normal"
-                style={{ fontSize: 22, color: P.cream, margin: "0 0 6px", lineHeight: 1.2 }}
-              >
-                {event.title}
-              </h3>
-              <p className="font-mono text-[10px] uppercase tracking-[2px]" style={{ color: P.muted, margin: 0 }}>
-                {event.date} &middot; {spotsLeft} spots left
-              </p>
-            </div>
-
-            {/* "Already a member?" hint */}
-            {gateTab === "join" && (
-              <button
-                onClick={switchToSignIn}
-                className="font-sans text-[12px]"
-                style={{
-                  display: "block",
-                  width: "100%",
-                  background: "none",
-                  border: "none",
-                  color: P.muted,
-                  textAlign: "center",
-                  cursor: "pointer",
-                  padding: 0,
-                  marginBottom: 16,
-                  transition: "color 0.2s",
-                }}
-              >
-                already a member?{" "}
-                <span style={{ color: P.cream, textDecoration: "underline", textUnderlineOffset: 2 }}>
-                  sign in
-                </span>
-              </button>
-            )}
-
-            {/* Pill toggle */}
-            <div
-              style={{
-                display: "flex",
-                background: P.cream + "08",
-                borderRadius: 10,
-                padding: 3,
-                marginBottom: 24,
-                border: `1px solid ${P.cream}10`,
-              }}
-            >
-              <button
-                onClick={() => setGateTab("join")}
-                className="font-mono text-[11px] uppercase tracking-[1.5px]"
-                style={{
-                  flex: 1,
-                  padding: "10px 0",
-                  borderRadius: 8,
-                  border: "none",
-                  cursor: "pointer",
-                  transition: "all 0.25s ease",
-                  background: gateTab === "join" ? P.cream + "15" : "transparent",
-                  color: gateTab === "join" ? P.cream : P.muted + "60",
-                }}
-              >
-                join
-              </button>
-              <button
-                onClick={switchToSignIn}
-                className="font-mono text-[11px] uppercase tracking-[1.5px]"
-                style={{
-                  flex: 1,
-                  padding: "10px 0",
-                  borderRadius: 8,
-                  border: "none",
-                  cursor: "pointer",
-                  transition: "all 0.25s ease",
-                  background: gateTab === "signin" ? P.cream + "15" : "transparent",
-                  color: gateTab === "signin" ? P.cream : P.muted + "60",
-                }}
-              >
-                sign in
-              </button>
-            </div>
-
-            {/* ===== JOIN TAB ===== */}
-            {gateTab === "join" && (
-              <div style={{ animation: "gateFadeIn 0.25s ease" }}>
-                {/* Code input section */}
-                <p
-                  className="font-sans text-[13px]"
-                  style={{ color: P.muted, margin: "0 0 14px", textAlign: "center" }}
-                >
-                  enter your invite code
-                </p>
-
-                <div
-                  style={{
-                    background: P.gateBlack,
-                    borderRadius: 14,
-                    padding: "16px 18px",
-                    marginBottom: 14,
-                    border: `1.5px solid ${codeError ? P.coral : P.cream + "12"}`,
-                    animation: shaking ? "shake 0.4s ease" : "none",
-                  }}
-                >
-                  <input
-                    ref={codeInputRef}
-                    type="text"
-                    value={code}
-                    onChange={(e) => {
-                      setCode(e.target.value.toUpperCase());
-                      setCodeError("");
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleValidateCode();
-                    }}
-                    placeholder="ENTER CODE"
-                    className="font-mono text-[18px] uppercase tracking-[4px]"
-                    style={{
-                      width: "100%",
-                      background: "transparent",
-                      border: "none",
-                      outline: "none",
-                      color: P.cream,
-                      textAlign: "center",
-                    }}
-                  />
-                </div>
-
-                {/* Error message */}
-                {codeError && (
-                  <p
-                    className="font-sans text-[12px]"
-                    style={{ color: P.coral, textAlign: "center", margin: "0 0 10px" }}
-                  >
-                    {codeError}
-                  </p>
-                )}
-
-                {/* Submit button */}
-                <button
-                  onClick={handleValidateCode}
-                  disabled={validating}
-                  className="font-sans text-[14px] font-semibold"
-                  style={{
-                    display: "block",
-                    width: "100%",
-                    background: accent,
-                    color: "#FFFFFF",
-                    border: "none",
-                    borderRadius: 12,
-                    padding: "14px 0",
-                    cursor: validating ? "wait" : "pointer",
-                    opacity: validating ? 0.7 : 1,
-                    transition: "opacity 0.2s",
-                    marginBottom: 20,
-                  }}
-                >
-                  {validating ? "checking..." : "let me in"}
-                </button>
-
-                {/* Divider with "or" */}
-                <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "0 0 20px" }}>
-                  <div style={{ flex: 1, height: 1, background: P.cream + "10" }} />
-                  <span className="font-mono text-[10px] uppercase tracking-[1.5px]" style={{ color: P.muted + "80" }}>
-                    or
-                  </span>
-                  <div style={{ flex: 1, height: 1, background: P.cream + "10" }} />
-                </div>
-
-                {/* Prove yourself — prominent CTA */}
-                <button
-                  onClick={handleNoCode}
-                  className="font-sans text-[14px] font-medium"
-                  style={{
-                    display: "block",
-                    width: "100%",
-                    background: P.cream + "0A",
-                    color: P.cream,
-                    border: `1.5px solid ${P.cream}20`,
-                    borderRadius: 12,
-                    padding: "14px 0",
-                    cursor: "pointer",
-                    transition: "all 0.2s",
-                  }}
-                >
-                  no code? prove yourself &rarr;
-                </button>
-                <p
-                  className="font-sans text-[11px]"
-                  style={{ color: P.muted + "80", textAlign: "center", margin: "10px 0 0", lineHeight: 1.4 }}
-                >
-                  chat with our bot &mdash; pass the vibe check, get in
-                </p>
-              </div>
-            )}
-
-            {/* ===== SIGN IN TAB ===== */}
-            {gateTab === "signin" && (
-              <div style={{ animation: "gateFadeIn 0.25s ease" }}>
-                {/* Handle step */}
-                {signInStep === "handle" && (
-                  <>
-                    <p
-                      className="font-sans text-[13px]"
-                      style={{ color: P.muted, margin: "0 0 14px", textAlign: "center" }}
-                    >
-                      enter your handle, phone, or instagram
-                    </p>
-
-                    <div
-                      style={{
-                        background: P.gateBlack,
-                        borderRadius: 14,
-                        padding: "16px 18px",
-                        marginBottom: 14,
-                        border: `1.5px solid ${signInError ? P.coral : P.cream + "12"}`,
-                        display: "flex",
-                        alignItems: "center",
-                      }}
-                    >
-                      {!/^\+?\d/.test(signInHandle) && (
-                        <span
-                          className="font-sans text-[16px]"
-                          style={{ color: P.muted + "50", marginRight: 2, flexShrink: 0 }}
-                        >
-                          @
-                        </span>
-                      )}
-                      <input
-                        ref={signInInputRef}
-                        type="text"
-                        value={signInHandle}
-                        onChange={(e) => {
-                          setSignInHandle(e.target.value.replace(/^@/, "").replace(/\s/g, ""));
-                          setSignInError("");
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") handleSignIn();
-                        }}
-                        placeholder="handle or phone number"
-                        autoComplete="username"
-                        autoCapitalize="none"
-                        autoCorrect="off"
-                        className="font-sans text-[16px]"
-                        style={{
-                          width: "100%",
-                          background: "transparent",
-                          border: "none",
-                          outline: "none",
-                          color: P.cream,
-                        }}
-                      />
-                    </div>
-
-                    {signInError && (
-                      <p
-                        className="font-sans text-[12px]"
-                        style={{ color: P.coral, textAlign: "center", margin: "0 0 10px" }}
-                      >
-                        {signInError}
-                      </p>
-                    )}
-
-                    <button
-                      onClick={handleSignIn}
-                      disabled={signInLoading || !signInHandle.trim()}
-                      className="font-sans text-[14px] font-semibold"
-                      style={{
-                        display: "block",
-                        width: "100%",
-                        background: signInHandle.trim() ? P.cream : P.cream + "15",
-                        color: signInHandle.trim() ? P.nearBlack : P.muted + "40",
-                        border: "none",
-                        borderRadius: 12,
-                        padding: "14px 0",
-                        cursor: signInHandle.trim() ? "pointer" : "default",
-                        opacity: signInLoading ? 0.6 : 1,
-                        transition: "all 0.2s",
-                      }}
-                    >
-                      {signInLoading ? "finding you..." : "next \u2192"}
-                    </button>
-                  </>
-                )}
-
-                {/* PIN step */}
-                {signInStep === "pin" && (
-                  <>
-                    <p
-                      className="font-sans text-[13px]"
-                      style={{ color: P.muted, margin: "0 0 4px", textAlign: "center" }}
-                    >
-                      signing in as{" "}
-                      <span style={{ color: P.cream }}>@{signInHandle.trim().replace(/^@/, "").toLowerCase()}</span>
-                    </p>
-                    <p
-                      className="font-sans text-[13px]"
-                      style={{ color: P.muted, margin: "0 0 14px", textAlign: "center" }}
-                    >
-                      enter your 4-digit PIN
-                    </p>
-
-                    <div
-                      style={{
-                        background: P.gateBlack,
-                        borderRadius: 14,
-                        padding: "16px 18px",
-                        marginBottom: 14,
-                        border: `1.5px solid ${signInError ? P.coral : P.cream + "12"}`,
-                      }}
-                    >
-                      <input
-                        ref={pinInputRef}
-                        type="password"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        maxLength={4}
-                        autoComplete="current-password"
-                        value={signInPin}
-                        onChange={(e) => {
-                          setSignInPin(e.target.value.replace(/\D/g, "").slice(0, 4));
-                          setSignInError("");
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") handleSignIn();
-                        }}
-                        placeholder="\u2022\u2022\u2022\u2022"
-                        className="font-mono text-[24px] tracking-[12px]"
-                        style={{
-                          width: "100%",
-                          background: "transparent",
-                          border: "none",
-                          outline: "none",
-                          color: P.cream,
-                          textAlign: "center",
-                        }}
-                      />
-                    </div>
-
-                    {signInError && (
-                      <p
-                        className="font-sans text-[12px]"
-                        style={{ color: P.coral, textAlign: "center", margin: "0 0 10px" }}
-                      >
-                        {signInError}
-                      </p>
-                    )}
-
-                    <button
-                      onClick={handleSignIn}
-                      disabled={signInLoading || signInPin.length !== 4}
-                      className="font-sans text-[14px] font-semibold"
-                      style={{
-                        display: "block",
-                        width: "100%",
-                        background: signInPin.length === 4 ? P.cream : P.cream + "15",
-                        color: signInPin.length === 4 ? P.nearBlack : P.muted + "40",
-                        border: "none",
-                        borderRadius: 12,
-                        padding: "14px 0",
-                        cursor: signInPin.length === 4 ? "pointer" : "default",
-                        opacity: signInLoading ? 0.6 : 1,
-                        transition: "all 0.2s",
-                        marginBottom: 12,
-                      }}
-                    >
-                      {signInLoading ? "checking..." : "sign in \u2192"}
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        setSignInStep("handle");
-                        setSignInPin("");
-                        setSignInError("");
-                      }}
-                      className="font-sans text-[12px]"
-                      style={{
-                        display: "block",
-                        width: "100%",
-                        background: "none",
-                        border: "none",
-                        color: P.muted + "60",
-                        textAlign: "center",
-                        cursor: "pointer",
-                        padding: 0,
-                      }}
-                    >
-                      &larr; use a different handle
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        )}
 
         {/* ===== CONFIRMED VIEW ===== */}
         {gateStage === "confirmed" && (
@@ -1061,10 +365,10 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
                 letterSpacing: 0.3,
               }}
             >
-              you&apos;re in &#10003;
+              see you there {"\u2192"}
             </div>
             <p className="font-sans text-[13px]" style={{ color: P.muted, marginTop: 12 }}>
-              redirecting you...
+              taking you to the app to grab your spot...
             </p>
           </div>
         )}

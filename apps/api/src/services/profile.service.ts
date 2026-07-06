@@ -1,13 +1,11 @@
 import { getDb, getAuthService } from "../config/firebase-admin";
-import type { User, Event, RSVP, Badge, VouchCode } from "@comeoffline/types";
+import type { User, Event, RSVP, Badge } from "@comeoffline/types";
 
 interface ProfileData {
   user: User;
   stats: {
     events_attended: number;
     connections_made: number;
-    vouch_codes_earned: number;
-    vouch_codes_used: number;
   };
   event_history: Array<{
     event_id: string;
@@ -33,7 +31,7 @@ export async function getUserProfile(userId: string): Promise<ProfileData | null
 
   // Fetch stats in parallel — each query is independent and non-critical.
   // If any fails (e.g. missing index), return zeroed stats instead of crashing.
-  const [eventResult, connectionsResult, vouchResult] = await Promise.allSettled([
+  const [eventResult, connectionsResult] = await Promise.allSettled([
     // Event history via collectionGroup RSVPs
     (async () => {
       const eventHistory: ProfileData["event_history"] = [];
@@ -90,11 +88,6 @@ export async function getUserProfile(userId: string): Promise<ProfileData | null
       .where("from_user_id", "==", userId)
       .where("mutual", "==", true)
       .get(),
-
-    // Vouch codes
-    db.collection("vouch_codes")
-      .where("owner_id", "==", userId)
-      .get(),
   ]);
 
   // Extract results with fallbacks
@@ -106,19 +99,11 @@ export async function getUserProfile(userId: string): Promise<ProfileData | null
     ? connectionsResult.value.size
     : (console.warn("[profile] Connections query failed:", (connectionsResult as PromiseRejectedResult).reason), 0);
 
-  const vouchCodes = vouchResult.status === "fulfilled"
-    ? vouchResult.value.docs.map((d) => d.data() as VouchCode)
-    : (console.warn("[profile] Vouch codes query failed:", (vouchResult as PromiseRejectedResult).reason), [] as VouchCode[]);
-
-  const vouchUsed = vouchCodes.filter((c) => c.status === "depleted" || c.uses > 0).length;
-
   return {
     user,
     stats: {
       events_attended: eventsAttended,
       connections_made: connectionCount,
-      vouch_codes_earned: vouchCodes.length,
-      vouch_codes_used: vouchUsed,
     },
     event_history: eventHistory.sort((a, b) => b.date.localeCompare(a.date)),
     badges: user.badges || [],

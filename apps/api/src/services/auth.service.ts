@@ -1,23 +1,14 @@
 import { getDb, getAuthService } from "../config/firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import crypto from "crypto";
-import { isCodeUsable, recordCodeUsage } from "./vouch.service";
 import { evaluateVibeCheck } from "./vibe-check.service";
 import { sendPhoneOtp, verifyPhoneOtp } from "./whatsapp-otp.service";
-import type { VouchCode, VouchCodeUsage, DiscoverySource } from "@comeoffline/types";
+import type { DiscoverySource } from "@comeoffline/types";
 
 /** Strip sensitive fields from user data before sending to client */
 function sanitizeUser(data: Record<string, unknown>): Record<string, unknown> {
   const { pin_hash, pin_set_at, ...safe } = data;
   return safe;
-}
-
-interface ValidateCodeResult {
-  valid: boolean;
-  token?: string;
-  handoff_token?: string;
-  user?: Record<string, unknown>;
-  error?: string;
 }
 
 interface HandoffTokenResult {
@@ -101,160 +92,6 @@ export async function validateHandoffToken(token: string): Promise<HandoffTokenR
     has_seen_welcome: (rawData.has_seen_welcome as boolean) ?? false,
     source: tokenData.source as "landing" | "chatbot",
   };
-}
-
-/** Validates an invite/vouch code and creates or retrieves the user */
-export async function validateCode(
-  code: string,
-  name?: string,
-  handle?: string,
-  vibeTag?: string,
-  source?: DiscoverySource,
-  utmParams?: { utm_source?: string; utm_medium?: string; utm_campaign?: string; utm_content?: string },
-): Promise<ValidateCodeResult> {
-  const db = await getDb();
-  const auth = await getAuthService();
-  const normalizedCode = code.toUpperCase().trim();
-
-  // Step 1: Find the code
-  const codesSnap = await db
-    .collection("vouch_codes")
-    .where("code", "==", normalizedCode)
-    .limit(1)
-    .get();
-
-  if (codesSnap.empty) {
-    return { valid: false, error: "Invalid code" };
-  }
-
-  const codeDoc = codesSnap.docs[0];
-  const codeData = { id: codeDoc.id, ...codeDoc.data() } as VouchCode;
-
-  // Migrate legacy codes missing new fields
-  if (!codeData.type) codeData.type = "single";
-  if (!codeData.rules) codeData.rules = { max_uses: 1 };
-  if (codeData.uses === undefined) codeData.uses = 0;
-  if (!codeData.used_by) codeData.used_by = [];
-
-  // Step 1b: Check if a returning user is signing back in with their original code.
-  // Only safe for single-use codes — for multi-use codes, multiple users share the same
-  // code so we can't know which user is returning. They should use /sign-in instead.
-  if (codeData.rules?.max_uses === 1 || codeData.type === "single") {
-    const existingUserSnap = await db
-      .collection("users")
-      .where("invite_code_used", "==", normalizedCode)
-      .limit(1)
-      .get();
-
-    if (!existingUserSnap.empty) {
-      // Returning user — issue a new custom token to sign them back in
-      const existingUserDoc = existingUserSnap.docs[0];
-      const rawData = existingUserDoc.data();
-      const existingUserData = { id: existingUserDoc.id, ...rawData };
-      const token = await auth.createCustomToken(existingUserDoc.id);
-      const handoffToken = await generateHandoffToken(
-        existingUserDoc.id,
-        "landing",
-        rawData.status === "active" ? "active" : "provisional",
-      );
-      return { valid: true, token, handoff_token: handoffToken, user: sanitizeUser(existingUserData) };
-    }
-  }
-
-  // New user — check if code is still usable
-  const check = isCodeUsable(codeData, source);
-  if (!check.usable) {
-    return { valid: false, error: check.reason || "Code is not valid" };
-  }
-
-  // Step 2: Create Firebase Auth user
-  const displayName = name || `user_${Date.now()}`;
-  let userHandle = handle || `@${displayName.toLowerCase().replace(/\s+/g, "_")}`;
-
-  // Ensure handle uniqueness — append random suffix if taken
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const handleSnap = await db
-      .collection("users")
-      .where("handle", "==", userHandle)
-      .limit(1)
-      .get();
-    if (handleSnap.empty) break;
-    const suffix = crypto.randomBytes(2).toString("hex");
-    userHandle = handle
-      ? `${handle}_${suffix}`
-      : `@${displayName.toLowerCase().replace(/\s+/g, "_")}_${suffix}`;
-  }
-
-  let firebaseUser;
-  try {
-    firebaseUser = await auth.createUser({
-      displayName,
-    });
-  } catch {
-    return { valid: false, error: "Failed to create user" };
-  }
-
-  // Step 3: Create user document in Firestore
-  const userData = {
-    id: firebaseUser.uid,
-    name: displayName,
-    handle: userHandle,
-    vibe_tag: vibeTag || "",
-    invite_code_used: normalizedCode,
-    vouched_by: codeData.owner_id || null,
-    entry_path: codeData.owner_id === "admin" ? "invite" : "vouch",
-    vibe_check_answers: [],
-    badges: [],
-    status: "active",
-    has_seen_welcome: false,
-    ...(source && { referral_source: source }),
-    created_at: FieldValue.serverTimestamp(),
-  };
-
-  await db.collection("users").doc(firebaseUser.uid).set(userData);
-
-  // Step 4: Record usage on the vouch code
-  const usage: VouchCodeUsage = {
-    user_id: firebaseUser.uid,
-    user_name: displayName,
-    used_at: new Date().toISOString(),
-    ...(source && { source }),
-    ...(utmParams?.utm_source && { utm_source: utmParams.utm_source }),
-    ...(utmParams?.utm_medium && { utm_medium: utmParams.utm_medium }),
-    ...(utmParams?.utm_campaign && { utm_campaign: utmParams.utm_campaign }),
-    ...(utmParams?.utm_content && { utm_content: utmParams.utm_content }),
-  };
-
-  try {
-    await recordCodeUsage(codeDoc.id, usage, source);
-  } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : "";
-    if (errorMsg.startsWith("CODE_DEPLETED:")) {
-      // Code was used up between our check and the transaction — roll back user creation
-      console.warn("[auth] Code depleted during redemption, rolling back user:", firebaseUser.uid);
-      try {
-        await Promise.all([
-          auth.deleteUser(firebaseUser.uid),
-          db.collection("users").doc(firebaseUser.uid).delete(),
-        ]);
-      } catch (rollbackErr) {
-        console.error("[auth] Rollback failed for user:", firebaseUser.uid, rollbackErr);
-      }
-      return { valid: false, error: errorMsg.slice("CODE_DEPLETED:".length) };
-    }
-    // Other usage tracking failures shouldn't block user creation
-    console.error("[auth] Failed to record code usage:", err);
-  }
-
-  // Step 5: Generate tokens for client sign-in
-  try {
-    const token = await auth.createCustomToken(firebaseUser.uid);
-    const handoffToken = await generateHandoffToken(firebaseUser.uid, "landing", "active");
-    return { valid: true, token, handoff_token: handoffToken, user: userData };
-  } catch (tokenErr) {
-    console.error("[auth] Failed to generate tokens:", tokenErr);
-    return { valid: false, error: "Failed to create session. Please try again." };
-  }
 }
 
 /** Creates a provisional user from chatbot vibe check pass */
@@ -545,4 +382,114 @@ async function createChatbotUser(
   const handoffToken = await generateHandoffToken(firebaseUser.uid, "chatbot", "provisional");
 
   return { success: true, handoff_token: handoffToken, user_id: firebaseUser.uid };
+}
+
+// ── Open entry (no invite codes) ─────────────────────────────
+// One "continue with whatsapp" flow: existing numbers sign in, new numbers
+// get an account created on OTP verify. Signup OTPs are keyed by a synthetic
+// `signup:{phone}` doc id since no uid exists yet.
+
+const signupOtpKey = (phone: string) => `signup:${phone}`;
+
+/** Send an OTP whether or not an account exists for this phone. */
+export async function sendContinueOtp(phone: string): Promise<PhoneSignInSendResult> {
+  const db = await getDb();
+
+  const phoneSnap = await db
+    .collection("users")
+    .where("phone_number", "==", phone)
+    .limit(2)
+    .get();
+
+  if (phoneSnap.size > 1) {
+    return { ok: false, error: "Multiple accounts share this number. Please sign in with your handle instead." };
+  }
+
+  if (!phoneSnap.empty) {
+    const userDoc = phoneSnap.docs[0];
+    if (userDoc.data().status === "inactive") {
+      return { ok: false, error: "Account is no longer active" };
+    }
+    const result = await sendPhoneOtp(userDoc.id, phone);
+    return result.ok ? { ok: true } : { ok: false, error: result.error, retry_after_seconds: result.retry_after_seconds };
+  }
+
+  // New number — signup-scoped OTP
+  const result = await sendPhoneOtp(signupOtpKey(phone), phone);
+  return result.ok ? { ok: true } : { ok: false, error: result.error, retry_after_seconds: result.retry_after_seconds };
+}
+
+/** Verify the OTP; sign in the matching user or create a fresh account. */
+export async function continueByPhoneOtp(
+  phone: string,
+  code: string,
+): Promise<HandoffTokenResult & { is_new?: boolean }> {
+  const db = await getDb();
+  const auth = await getAuthService();
+
+  const phoneSnap = await db
+    .collection("users")
+    .where("phone_number", "==", phone)
+    .limit(2)
+    .get();
+
+  if (phoneSnap.size > 1) {
+    return { valid: false, error: "Multiple accounts share this number. Please sign in with your handle instead." };
+  }
+
+  // Existing member → normal phone sign-in
+  if (!phoneSnap.empty) {
+    const result = await signInByPhoneOtp(phone, code);
+    return { ...result, is_new: false };
+  }
+
+  // New member — verify the signup-scoped OTP, then create the account
+  const verifyResult = await verifyPhoneOtp(signupOtpKey(phone), phone, code);
+  if (!verifyResult.ok) {
+    return { valid: false, error: verifyResult.error };
+  }
+
+  // Unique placeholder handle — the post-purchase profile flow collects the real name
+  let handle = `@offline_${crypto.randomBytes(3).toString("hex")}`;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const handleSnap = await db.collection("users").where("handle", "==", handle).limit(1).get();
+    if (handleSnap.empty) break;
+    handle = `@offline_${crypto.randomBytes(3).toString("hex")}`;
+  }
+
+  let firebaseUser;
+  try {
+    firebaseUser = await auth.createUser({});
+  } catch {
+    return { valid: false, error: "Failed to create account" };
+  }
+
+  const nowIso = new Date().toISOString();
+  const userData = {
+    id: firebaseUser.uid,
+    name: "",
+    handle,
+    vibe_tag: "",
+    entry_path: "open",
+    phone_number: phone,
+    phone_verified_at: nowIso, // they just proved it — core onboarding skips straight through
+    vibe_check_answers: [],
+    badges: [],
+    status: "active",
+    has_seen_welcome: false,
+    created_at: FieldValue.serverTimestamp(),
+  };
+  await db.collection("users").doc(firebaseUser.uid).set(userData);
+
+  // Retire the signup-scoped OTP doc
+  await db.collection("phone_otps").doc(signupOtpKey(phone)).delete().catch(() => {});
+
+  const firebaseToken = await auth.createCustomToken(firebaseUser.uid);
+  return {
+    valid: true,
+    token: firebaseToken,
+    user: sanitizeUser({ ...userData, created_at: nowIso }),
+    has_seen_welcome: false,
+    is_new: true,
+  };
 }

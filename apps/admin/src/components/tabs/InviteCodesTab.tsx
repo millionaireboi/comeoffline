@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useApi } from "@/hooks/useApi";
 import { apiClient } from "@/lib/apiClient";
+import { toast } from "@/lib/toast";
 import { TableRowSkeleton } from "@/components/Skeleton";
 
 interface VouchCodeUsage {
@@ -102,7 +103,7 @@ export function InviteCodesTab() {
     if (codeType === "single") {
       const countNum = parseInt(count, 10);
       if (!countNum || countNum < 1 || countNum > 100) {
-        alert("Count must be between 1 and 100");
+        toast.error("count must be between 1 and 100");
         return;
       }
     }
@@ -136,7 +137,7 @@ export function InviteCodesTab() {
     } catch (err) {
       console.error("Failed to create codes:", err);
       const error = err as Error & { data?: { error?: string } };
-      alert(error.data?.error || error.message || "Failed to create codes");
+      toast.error(error.data?.error || error.message || "failed to create codes");
     } finally {
       setCreating(false);
     }
@@ -149,6 +150,7 @@ export function InviteCodesTab() {
       await refetch();
     } catch (err) {
       console.error("Failed to update code:", err);
+      toast.error("couldn't update code — try again");
     }
   }
 
@@ -159,6 +161,7 @@ export function InviteCodesTab() {
       await refetch();
     } catch (err) {
       console.error("Failed to delete code:", err);
+      toast.error("couldn't delete code — try again");
     }
   }
 

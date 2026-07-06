@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { formatDate } from "@comeoffline/ui";
 import { useAuth } from "@/hooks/useAuth";
+import { toast } from "@/lib/toast";
 import { useApi } from "@/hooks/useApi";
 import { instrumentSerif, API_URL } from "@/lib/constants";
 import { TableRowSkeleton } from "@/components/Skeleton";
@@ -86,7 +87,11 @@ export function ValidationTab() {
   }
 
   async function addNote(userId: string) {
-    if (!noteText || !eventId) return;
+    if (!noteText) return;
+    if (!eventId) {
+      toast.info("pick an event above first — notes are stored per event");
+      return;
+    }
     try {
       const token = await getIdToken();
       if (!token) return;
@@ -163,7 +168,7 @@ export function ValidationTab() {
                     <p className="font-sans text-sm font-medium text-cream">{item.name}</p>
                     <p className="font-mono text-[10px] text-muted">
                       @{item.handle} &middot; via {item.entry_path}
-                      {item.second_chance && " &middot; 2nd chance"}
+                      {item.second_chance && " \u00B7 2nd chance"}
                     </p>
                   </div>
                 </div>

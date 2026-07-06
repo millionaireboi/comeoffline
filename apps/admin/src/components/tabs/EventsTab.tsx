@@ -4,6 +4,7 @@ import { useState } from "react";
 import { formatDate } from "@comeoffline/ui";
 import { useApi } from "@/hooks/useApi";
 import { apiClient } from "@/lib/apiClient";
+import { toast } from "@/lib/toast";
 import { instrumentSerif, EVENT_STATUS_COLORS } from "@/lib/constants";
 import { EventForm } from "@/components/EventForm";
 import { EventPreview } from "@/components/EventPreview";
@@ -24,9 +25,11 @@ export function EventsTab() {
   async function updateStatus(eventId: string, newStatus: string) {
     try {
       await apiClient.put(`/api/admin/events/${eventId}/status`, { status: newStatus });
+      toast.success(`status → ${newStatus}`);
       refetch();
     } catch (err) {
       console.error("Status update failed:", err);
+      toast.error(`status change failed — ${err instanceof Error ? err.message : "try again"}`);
     }
   }
 
@@ -36,19 +39,22 @@ export function EventsTab() {
         `/api/admin/events/${eventId}/open-sales`,
         {},
       );
-      alert(`Sales opened! Notifications sent: ${res.data.sent}, failed: ${res.data.failed}`);
+      toast.success(`sales opened — ${res.data.sent} notified${res.data.failed ? `, ${res.data.failed} failed` : ""}`);
       refetch();
     } catch (err) {
       console.error("Open sales failed:", err);
+      toast.error(`open sales failed — ${err instanceof Error ? err.message : "try again"}`);
     }
   }
 
   async function duplicateEvent(eventId: string) {
     try {
       await apiClient.post(`/api/admin/events/${eventId}/duplicate`, {});
+      toast.success("event duplicated — new draft created at the top of the list");
       refetch();
     } catch (err) {
       console.error("Duplicate failed:", err);
+      toast.error(`duplicate failed — ${err instanceof Error ? err.message : "try again"}`);
     }
   }
 
@@ -66,17 +72,15 @@ export function EventsTab() {
       const { event, scenario, recipients } = preview.data;
 
       if (!scenario.enabled) {
-        alert("venue_revealed scenario is OFF. Toggle it on in WhatsApp → Scenarios first.");
+        toast.error("venue_revealed scenario is OFF — toggle it on in whatsapp → scenarios first");
         return;
       }
       if (!event.venue_ready) {
-        alert("Venue isn't set on this event yet. Edit the event and add venue details first.");
+        toast.error("venue isn't set on this event yet — add venue details first");
         return;
       }
       if (recipients.eligible === 0) {
-        alert(
-          `No eligible recipients.${recipients.skipped_no_phone > 0 ? `\n${recipients.skipped_no_phone} member(s) skipped — no phone on file.` : ""}`,
-        );
+        toast.info(`no eligible recipients${recipients.skipped_no_phone > 0 ? ` — ${recipients.skipped_no_phone} skipped (no phone on file)` : ""}`);
         return;
       }
 
@@ -97,16 +101,11 @@ export function EventsTab() {
         data: { sent: number; failed: number; total_eligible: number; errors: Array<{ phone: string; error: string }> };
       }>(`/api/admin/events/${eventId}/whatsapp/venue-reveal`, {});
 
-      const { sent, failed, errors } = res.data;
-      const errorPreview = errors.slice(0, 3).map((e) => `  ${e.phone}: ${e.error}`).join("\n");
-      alert(
-        `Sent: ${sent} · Failed: ${failed}` +
-          (errorPreview ? `\n\nFirst failures:\n${errorPreview}` : ""),
-      );
+      summarizeBroadcast("venue reveal —", res.data);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error("Venue reveal failed:", err);
-      alert(`Venue reveal failed: ${message}`);
+      toast.error(`venue reveal failed — ${message}`);
     }
   }
 
@@ -116,11 +115,10 @@ export function EventsTab() {
   };
 
   function summarizeBroadcast(label: string, data: BroadcastResult["data"]) {
-    const errorPreview = data.errors.slice(0, 3).map((e) => `  ${e.phone}: ${e.error}`).join("\n");
-    alert(
-      `${label}\nSent: ${data.sent} · Failed: ${data.failed}` +
-        (errorPreview ? `\n\nFirst failures:\n${errorPreview}` : ""),
-    );
+    if (data.errors.length > 0) console.warn("broadcast failures:", data.errors);
+    const summary = `${label} sent ${data.sent}${data.failed ? ` · ${data.failed} failed (see console)` : ""}`;
+    if (data.failed > 0) toast.info(summary);
+    else toast.success(summary);
   }
 
   async function sendEventChanged(eventId: string, eventTitle: string) {
@@ -134,11 +132,11 @@ export function EventsTab() {
         `/api/admin/events/${eventId}/whatsapp/event-changed`,
         { change_text: change.trim() },
       );
-      summarizeBroadcast("Event change broadcast complete.", res.data);
+      summarizeBroadcast("event change —", res.data);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error("Event change broadcast failed:", err);
-      alert(`Event change broadcast failed: ${message}`);
+      toast.error(`event change broadcast failed — ${message}`);
     }
   }
 
@@ -160,12 +158,12 @@ export function EventsTab() {
         `/api/admin/events/${eventId}/whatsapp/event-cancelled`,
         { reason: reason.trim() },
       );
-      summarizeBroadcast("Cancellation broadcast complete.", res.data);
+      summarizeBroadcast("cancellation —", res.data);
       refetch();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error("Cancellation broadcast failed:", err);
-      alert(`Cancellation broadcast failed: ${message}`);
+      toast.error(`cancellation broadcast failed — ${message}`);
     }
   }
 
@@ -182,11 +180,11 @@ export function EventsTab() {
         `/api/admin/events/${eventId}/whatsapp/memories-ready`,
         {},
       );
-      summarizeBroadcast("Memories broadcast complete.", res.data);
+      summarizeBroadcast("memories —", res.data);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error("Memories broadcast failed:", err);
-      alert(`Memories broadcast failed: ${message}`);
+      toast.error(`memories broadcast failed — ${message}`);
     }
   }
 

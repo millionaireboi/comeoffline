@@ -21,6 +21,7 @@ import { WhatsAppTab } from "@/components/tabs/WhatsAppTab";
 import { ReportsTab } from "@/components/tabs/ReportsTab";
 import { LoginScreen } from "@/components/tabs/LoginScreen";
 import { TabErrorBoundary } from "@/components/TabErrorBoundary";
+import { Toaster } from "@/components/Toaster";
 
 const TABS: Tab[] = [
   "dashboard", "events", "bookings", "check-in", "validation", "content",
@@ -132,6 +133,7 @@ function AdminDashboard() {
         {tab === "whatsapp" && <TabErrorBoundary tabName="whatsapp" key="whatsapp"><WhatsAppTab /></TabErrorBoundary>}
         {tab === "settings" && <TabErrorBoundary tabName="settings" key="settings"><SettingsTab /></TabErrorBoundary>}
       </main>
+      <Toaster />
     </div>
   );
 }

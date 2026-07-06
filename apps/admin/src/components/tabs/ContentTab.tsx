@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { formatDate } from "@comeoffline/ui";
 import { useAuth } from "@/hooks/useAuth";
+import { toast } from "@/lib/toast";
 import { useApi } from "@/hooks/useApi";
 import { API_URL } from "@/lib/constants";
 import { ImageUpload } from "@/components/ImageUpload";
@@ -191,8 +192,6 @@ export function ContentTab() {
   const [statsPhones, setStatsPhones] = useState("");
   const [statsDrinks, setStatsDrinks] = useState("");
   const [statsHours, setStatsHours] = useState("");
-  const [status, setStatus] = useState("");
-
   async function addPolaroid() {
     if (!eventId || !polaroidUrl) return;
     try {
@@ -207,13 +206,17 @@ export function ContentTab() {
         body: JSON.stringify({ url: polaroidUrl, caption: polaroidCaption, who: polaroidWho }),
       });
       if (res.ok) {
-        setStatus("Polaroid added!");
+        toast.success("polaroid added");
         setPolaroidUrl("");
         setPolaroidCaption("");
         setPolaroidWho("");
+      } else {
+        const data = await res.json().catch(() => null);
+        toast.error(data?.error || "couldn't add polaroid — try again");
       }
     } catch (err) {
-      setStatus(`Error: ${err}`);
+      console.error("addPolaroid failed:", err);
+      toast.error("couldn't add polaroid — check connection");
     }
   }
 
@@ -231,12 +234,16 @@ export function ContentTab() {
         body: JSON.stringify({ quote: quoteText, context: quoteContext }),
       });
       if (res.ok) {
-        setStatus("Quote added!");
+        toast.success("quote added");
         setQuoteText("");
         setQuoteContext("");
+      } else {
+        const data = await res.json().catch(() => null);
+        toast.error(data?.error || "couldn't add quote — try again");
       }
     } catch (err) {
-      setStatus(`Error: ${err}`);
+      console.error("addQuote failed:", err);
+      toast.error("couldn't add quote — check connection");
     }
   }
 
@@ -258,9 +265,15 @@ export function ContentTab() {
           hours: statsHours || "0",
         }),
       });
-      if (res.ok) setStatus("Stats updated!");
+      if (res.ok) {
+        toast.success("stats updated");
+      } else {
+        const data = await res.json().catch(() => null);
+        toast.error(data?.error || "couldn't update stats — try again");
+      }
     } catch (err) {
-      setStatus(`Error: ${err}`);
+      console.error("updateStats failed:", err);
+      toast.error("couldn't update stats — check connection");
     }
   }
 
@@ -291,10 +304,6 @@ export function ContentTab() {
           </select>
         )}
       </div>
-
-      {status && (
-        <div className="rounded-xl bg-caramel/10 px-4 py-3 font-mono text-[12px] text-caramel">{status}</div>
-      )}
 
       <section className="rounded-xl border border-white/5 p-5">
         <h3 className="mb-4 font-mono text-[11px] uppercase tracking-[2px] text-cream">add polaroid</h3>

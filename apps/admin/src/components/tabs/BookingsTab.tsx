@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { formatDate as formatEventDate } from "@comeoffline/ui";
 import { useAuth } from "@/hooks/useAuth";
+import { toast } from "@/lib/toast";
 import { useApi } from "@/hooks/useApi";
 import { API_URL, instrumentSerif, TICKET_STATUS_COLORS } from "@/lib/constants";
 import { apiClient } from "@/lib/apiClient";
@@ -189,7 +190,7 @@ export function BookingsTab() {
       refetchStats();
     } catch (err) {
       console.error("Failed to cancel ticket:", err);
-      alert("Failed to cancel ticket");
+      toast.error("failed to cancel ticket — try again");
     } finally {
       setActionLoading(false);
     }
@@ -206,7 +207,7 @@ export function BookingsTab() {
       refetchStats();
     } catch (err) {
       console.error("Failed to confirm ticket:", err);
-      alert("Failed to confirm ticket");
+      toast.error("failed to confirm ticket — try again");
     } finally {
       setActionLoading(false);
     }
@@ -236,6 +237,7 @@ export function BookingsTab() {
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error("Failed to export:", err);
+      toast.error("export failed — try again");
     }
   }, [getIdToken, eventFilter, statusFilter, search, fromDate, toDate]);
 

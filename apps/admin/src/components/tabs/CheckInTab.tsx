@@ -444,6 +444,9 @@ export function CheckInTab() {
 
   const checkedIn = tickets.filter((t) => t.status === "checked_in" || t.status === "partially_checked_in").length;
   const confirmedCount = tickets.filter((t) => t.status === "confirmed").length;
+  // Expected at the door = active tickets only — cancelled/unpaid inflated the
+  // old denominator and made the progress bar lie.
+  const expectedTotal = tickets.filter((t) => ["confirmed", "checked_in", "partially_checked_in"].includes(t.status)).length;
 
   return (
     <div className="w-full space-y-6 sm:max-w-3xl">
@@ -485,22 +488,22 @@ export function CheckInTab() {
           <div className="flex items-center gap-4 rounded-xl border border-white/5 bg-white/[0.02] px-5 py-3">
             <div>
               <p className={`${instrumentSerif.className} text-2xl text-cream`}>{checkedIn}</p>
-              <p className="font-mono text-[9px] text-muted">checked in</p>
+              <p className="font-mono text-[10px] text-muted">checked in</p>
             </div>
             <div className="h-8 w-px bg-white/10" />
             <div>
               <p className={`${instrumentSerif.className} text-2xl text-cream`}>{confirmedCount}</p>
-              <p className="font-mono text-[9px] text-muted">remaining</p>
+              <p className="font-mono text-[10px] text-muted">remaining</p>
             </div>
             <div className="h-8 w-px bg-white/10" />
             <div>
-              <p className={`${instrumentSerif.className} text-2xl text-cream`}>{tickets.length}</p>
-              <p className="font-mono text-[9px] text-muted">total</p>
+              <p className={`${instrumentSerif.className} text-2xl text-cream`}>{expectedTotal}</p>
+              <p className="font-mono text-[10px] text-muted">expected</p>
             </div>
             <div className="ml-auto h-2 w-32 overflow-hidden rounded-full bg-white/10">
               <div
                 className="h-full rounded-full bg-sage transition-all duration-500"
-                style={{ width: tickets.length > 0 ? `${(checkedIn / tickets.length) * 100}%` : "0%" }}
+                style={{ width: expectedTotal > 0 ? `${(checkedIn / expectedTotal) * 100}%` : "0%" }}
               />
             </div>
           </div>
@@ -670,7 +673,7 @@ export function CheckInTab() {
                         </span>
                       )}
                     </p>
-                    <p className="font-mono text-[10px] text-muted">
+                    <p className="font-mono text-[12px] text-muted">
                       {ticket.tier_name} &middot; {ticket.pickup_point}
                     </p>
                   </div>
@@ -681,14 +684,14 @@ export function CheckInTab() {
                   ) : ticket.status === "partially_checked_in" ? (
                     <button
                       onClick={() => handleCheckIn(ticket.id, undefined, 1)}
-                      className="rounded-lg bg-amber-500/20 px-3 py-1.5 font-mono text-[10px] text-amber-400 hover:bg-amber-500/30"
+                      className="min-h-[44px] rounded-xl bg-amber-500/20 px-5 py-2.5 font-mono text-[12px] text-amber-400 hover:bg-amber-500/30"
                     >
                       +1 more
                     </button>
                   ) : ticket.status === "confirmed" ? (
                     <button
                       onClick={() => handleCheckIn(ticket.id)}
-                      className="rounded-lg bg-caramel/20 px-3 py-1.5 font-mono text-[10px] text-caramel hover:bg-caramel/30"
+                      className="min-h-[44px] rounded-xl bg-caramel/20 px-5 py-2.5 font-mono text-[12px] text-caramel hover:bg-caramel/30"
                     >
                       check in
                     </button>

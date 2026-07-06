@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { formatDate } from "@comeoffline/ui";
 import { useAuth } from "@/hooks/useAuth";
+import { toast } from "@/lib/toast";
 import { API_URL, MEMBER_STATUS_COLORS } from "@/lib/constants";
 import { TableRowSkeleton } from "@/components/Skeleton";
 
@@ -109,6 +110,7 @@ export function MembersTab() {
         if (data.data) setMembers(data.data);
       } catch (err) {
         console.error("Failed to fetch members:", err);
+        toast.error("couldn't load members — pull to retry");
       } finally {
         setLoading(false);
       }
@@ -174,6 +176,7 @@ export function MembersTab() {
       }
     } catch (err) {
       console.error("Failed to update status:", err);
+      toast.error("status change failed — try again");
     } finally {
       setStatusUpdating(false);
     }
@@ -197,6 +200,7 @@ export function MembersTab() {
       }
     } catch (err) {
       console.error("Failed to add note:", err);
+      toast.error("couldn't add note — try again");
     } finally {
       setAddingNote(false);
     }
@@ -217,11 +221,11 @@ export function MembersTab() {
         setMembers((prev) => prev.filter((m) => m.id !== drawerMemberId));
         closeDrawer();
       } else {
-        alert(data.error || "Failed to delete member");
+        toast.error(data.error || "failed to delete member");
       }
     } catch (err) {
       console.error("Failed to delete member:", err);
-      alert("Failed to delete member");
+      toast.error("failed to delete member — try again");
     } finally {
       setDeleting(false);
       setDeleteConfirm(false);

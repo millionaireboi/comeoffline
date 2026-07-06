@@ -2144,6 +2144,25 @@ function EventFormInner({ event, seed, draftKey, onSave, onCancel, serifClassNam
       setError("Date is required");
       return;
     }
+    // Ticketing sanity — these mistakes oversell events or break checkout,
+    // and used to surface only as confused members at the door.
+    if (ticketingEnabled) {
+      if (tiers.length === 0) {
+        setError("Ticketing is enabled but there are no tiers — add at least one, or turn ticketing off");
+        return;
+      }
+      const badTier = tiers.find((t) => !t.label.trim() || t.price === "" || !t.capacity || Number(t.capacity) <= 0);
+      if (badTier) {
+        setError(`Tier "${badTier.label || badTier.name || "untitled"}" needs a label, price and a capacity above 0`);
+        return;
+      }
+      const tierCapacity = tiers.reduce((sum, t) => sum + (Number(t.capacity) || 0), 0);
+      const spots = Number(totalSpots) || 50;
+      if (tierCapacity > spots) {
+        setError(`Tier capacities add up to ${tierCapacity}, but the event only has ${spots} total spots — this would oversell the event`);
+        return;
+      }
+    }
 
     setSaving(true);
     setError("");

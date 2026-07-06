@@ -41,3 +41,4 @@ yarn-error.log*
 firebase-debug.log
 .firebase/
 *-firebase-adminsdk-*.json
+firestore-debug.log

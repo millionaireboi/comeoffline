@@ -144,9 +144,8 @@ export function Hero() {
             <Image
               src="/logo.png"
               alt="come offline"
-              width={0}
+              width={160}
               height={160}
-              sizes="100vw"
               priority
               style={{ width: "auto", height: "clamp(90px, 28vw, 160px)" }}
             />

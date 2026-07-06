@@ -90,7 +90,7 @@ export default async function HomePage() {
         <div className="flex justify-between px-5 pb-4">
           <span className="font-mono text-[10px] uppercase tracking-[3px] text-muted">upcoming events</span>
           <span className="font-mono text-[11px] text-caramel">
-            {`${events.length} events`}
+            {`${events.length} ${events.length === 1 ? "event" : "events"}`}
           </span>
         </div>
 

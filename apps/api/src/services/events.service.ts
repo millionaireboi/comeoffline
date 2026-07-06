@@ -15,6 +15,22 @@ function sanitizeUrl(raw?: string): string {
 }
 
 /** Fetch all upcoming/live events for the user feed */
+/**
+ * True once an event's date is more than a day behind us. Status alone can't
+ * gate the feed — a forgotten "listed" event would otherwise sit on the
+ * homepage forever with paid traffic landing on it. 1-day grace keeps the
+ * event visible through its own night + the morning after.
+ */
+function isPastEvent(e: Event): boolean {
+  if (!e.date) return false;
+  const d = new Date(`${e.date}T00:00:00`);
+  if (isNaN(d.getTime())) return false;
+  const cutoff = new Date(d);
+  cutoff.setDate(cutoff.getDate() + 1);
+  cutoff.setHours(23, 59, 59, 999);
+  return new Date() > cutoff;
+}
+
 export async function getEvents(): Promise<Event[]> {
   const db = await getDb();
   // Simple orderBy-only query avoids needing a composite index
@@ -23,7 +39,7 @@ export async function getEvents(): Promise<Event[]> {
 
   return snap.docs
     .map((doc) => ({ id: doc.id, ...doc.data() }) as Event)
-    .filter((e) => validStatuses.has(e.status));
+    .filter((e) => validStatuses.has(e.status) && !isPastEvent(e));
 }
 
 /** Fetch ALL events for admin (includes drafts, completed, etc.) */
@@ -105,7 +121,7 @@ export async function getPublicEvents(): Promise<Partial<Event>[]> {
   const now = new Date();
   return snap.docs
     .map((doc) => ({ id: doc.id, ...doc.data() }) as Event)
-    .filter((e) => validStatuses.has(e.status))
+    .filter((e) => validStatuses.has(e.status) && !isPastEvent(e))
     .map((e) => {
       const venueRevealed = !!e.venue_reveal_date && new Date(e.venue_reveal_date) <= now;
       const ticketing = sanitizeTicketingPublic(e.ticketing);
@@ -116,6 +132,8 @@ export async function getPublicEvents(): Promise<Partial<Event>[]> {
         description: e.description,
         date: e.date,
         time: e.time,
+        // Area is a decision factor, not a secret — only exact venue is gated
+        venue_area: e.venue_area,
         total_spots: e.total_spots,
         spots_taken: e.spots_taken,
         accent: e.accent,
@@ -125,6 +143,7 @@ export async function getPublicEvents(): Promise<Partial<Event>[]> {
         zones: e.zones,
         dress_code: e.dress_code,
         includes: e.includes,
+        faq: e.faq,
         venue_reveal_date: e.venue_reveal_date,
         status: e.status,
         cover_url: e.cover_url,
@@ -157,6 +176,7 @@ export async function getPublicEvent(eventId: string): Promise<Partial<Event> | 
     description: e.description,
     date: e.date,
     time: e.time,
+    venue_area: e.venue_area,
     total_spots: e.total_spots,
     spots_taken: e.spots_taken,
     accent: e.accent,
@@ -166,6 +186,7 @@ export async function getPublicEvent(eventId: string): Promise<Partial<Event> | 
     zones: e.zones,
     dress_code: e.dress_code,
     includes: e.includes,
+    faq: e.faq,
     venue_reveal_date: e.venue_reveal_date,
     status: e.status,
     cover_url: e.cover_url,

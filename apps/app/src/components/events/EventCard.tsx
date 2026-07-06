@@ -1,7 +1,7 @@
 "use client";
 
 import type { Event } from "@comeoffline/types";
-import { formatDate } from "@comeoffline/ui";
+import { formatEventDateShort } from "@comeoffline/ui";
 import { SpotsBar } from "@/components/ui/SpotsBar";
 
 interface EventCardProps {
@@ -140,9 +140,14 @@ export function EventCard({ event, index, onOpen, connectionsGoing }: EventCardP
           </div>
         )}
 
-        {/* Meta */}
-        <div className="mb-4 flex flex-wrap gap-4">
-          <div className="font-sans text-[13px] text-soft-black">{formatDate(event.date)}</div>
+        {/* Meta — when + where-ish on one human line */}
+        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1">
+          <div className="font-sans text-[13px] text-soft-black">
+            {[
+              formatEventDateShort(event.date, event.time),
+              event.venue_area ? event.venue_area.toLowerCase() : null,
+            ].filter(Boolean).join(" · ")}
+          </div>
           {event.venue_reveal_date && daysUntilVenue > 0 && (
             <div className="font-mono text-[11px] text-muted">
               venue drops in {daysUntilVenue}d
@@ -169,9 +174,17 @@ export function EventCard({ event, index, onOpen, connectionsGoing }: EventCardP
               {event.waitlist_count || 0} interested
             </span>
           </div>
-        ) : (
+        ) : spotsLeft <= 0 ? (
+          <p className="text-right font-mono text-[11px] text-muted">sold out</p>
+        ) : event.total_spots > 0 && spotsLeft / event.total_spots <= 0.4 ? (
+          // Scarcity bar only when it's real — a full-capacity bar reads as
+          // "nobody is going" (negative social proof)
           <SpotsBar spotsLeft={spotsLeft} totalSpots={event.total_spots} accent={event.accent_dark} />
-        )}
+        ) : (event.spots_taken || 0) >= 3 ? (
+          <p className="text-right font-mono text-[11px]" style={{ color: event.accent_dark || "#B8845A" }}>
+            {event.spots_taken} going
+          </p>
+        ) : null}
 
         {/* Actions */}
         <div className="mt-5 flex items-center justify-between">

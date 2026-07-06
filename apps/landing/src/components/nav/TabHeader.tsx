@@ -41,12 +41,13 @@ export function TabHeader() {
             maxWidth: showLogo ? "120px" : "0px",
           }}
         >
+          {/* Logo asset is square — real dimensions instead of the width={0}
+              hack, which triggered Next's aspect-ratio warning */}
           <Image
             src="/logo.png"
             alt="come offline logo"
-            width={0}
+            width={24}
             height={24}
-            sizes="100vw"
             style={{ width: "auto", height: "24px" }}
           />
         </Link>

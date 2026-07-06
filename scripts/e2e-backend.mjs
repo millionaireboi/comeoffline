@@ -391,6 +391,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const lateConn = await api(`/api/events/${pastEvent.data?.data?.id}/connect`, { method: "POST", token: memberToken, body: { toUserId: member2Uid } });
   check("reconnect window closed for old events", lateConn.status === 400 && /window/i.test(lateConn.data?.error || ""), JSON.stringify(lateConn.data).slice(0, 150));
 
+  // Past events must not linger in feeds — status alone used to keep forgotten
+  // events on the homepage forever.
+  const feedAfter = await api("/api/events", { token: memberToken });
+  check("past event hidden from member feed", !(feedAfter.data?.data || []).some((e) => e.id === pastEvent.data?.data?.id));
+  const pubAfter = await api("/api/events/public");
+  check("past event hidden from public feed", !(pubAfter.data?.data || []).some((e) => e.id === pastEvent.data?.data?.id));
+  check("public feed exposes venue_area + time for cards", (pubAfter.data?.data || []).every((e) => "time" in e));
+
   // ── memories (the morning after) ──
   section("16. memories");
   const pol = await api(`/api/admin/events/${eventId}/polaroids`, {

@@ -2,8 +2,24 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useAnalytics, EVENT_CARD_VIEWED } from "@comeoffline/analytics";
+import { formatEventDateShort } from "@comeoffline/ui";
 import { P } from "@/components/shared/P";
 import { SpotsBar } from "@/components/events/SpotsBar";
+
+/** Cheapest bookable price from the sanitized public ticketing payload */
+function getPriceLabel(event: any): string {
+  if (event.status === "announced") return "coming soon";
+  const tiers: Array<{ price: number; sold_out?: boolean }> = event.ticketing?.enabled
+    ? event.ticketing.tiers || []
+    : [];
+  const open = tiers.filter((t) => !t.sold_out);
+  const prices = (open.length ? open : tiers)
+    .map((t) => t.price)
+    .filter((p) => typeof p === "number" && p > 0);
+  if (prices.length === 0) return "free";
+  const min = Math.min(...prices);
+  return new Set(prices).size > 1 ? `from ₹${min}` : `₹${min}`;
+}
 
 interface FeedEventCardProps {
   event: any;
@@ -40,16 +56,28 @@ export function FeedEventCard({ event, index, onOpen }: FeedEventCardProps) {
 
   const spotsLeft = event.total_spots - event.spots_taken;
   const accent = event.accent || P.caramel;
+  const priceLabel = getPriceLabel(event);
 
-  // Compute days until venue reveal
+  // when + where-ish, on one human line: "sat, 20 jun · 8:00 pm · indiranagar"
+  const whenWhere = [
+    formatEventDateShort(event.date, event.time),
+    event.venue_area ? event.venue_area.toLowerCase() : null,
+  ].filter(Boolean).join(" · ");
+
+  // Venue-drop hint only while it's still pending — "venue revealed" told a
+  // not-yet-booked visitor nothing.
   let venueText = "";
   if (event.venue_reveal_date) {
-    const now = new Date();
-    const reveal = new Date(event.venue_reveal_date);
-    const diffMs = reveal.getTime() - now.getTime();
-    const diffDays = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
-    venueText = diffDays > 0 ? `venue drops in ${diffDays}d` : "venue revealed";
+    const diffDays = Math.max(0, Math.ceil((new Date(event.venue_reveal_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+    if (diffDays > 0) venueText = `venue drops in ${diffDays}d`;
   }
+
+  // Scarcity only when TRUE — "20 spots left" on a 20-spot event reads as
+  // "nobody is going". Below 40% remaining: urgency bar. 3+ booked: social
+  // proof. Otherwise: nothing.
+  const soldOut = spotsLeft <= 0 && event.status !== "announced";
+  const scarce = !soldOut && event.total_spots > 0 && spotsLeft / event.total_spots <= 0.4;
+  const showGoing = !soldOut && !scarce && (event.spots_taken || 0) >= 3;
 
   return (
     // Real <a> so crawlers (and no-JS visitors) can reach /events/[id] — the
@@ -108,20 +136,34 @@ export function FeedEventCard({ event, index, onOpen }: FeedEventCardProps) {
       )}
 
       <div style={{ padding: "18px 18px 0" }}>
-        {/* Tag pill */}
-        <span
-          className="font-mono text-[9px] uppercase tracking-[1.5px]"
-          style={{
-            display: "inline-block",
-            color: accent,
-            background: accent + "12",
-            borderRadius: 20,
-            padding: "4px 10px",
-            marginBottom: 10,
-          }}
-        >
-          {event.tag}
-        </span>
+        {/* Tag + price pills — cost is a filter, not a deterrent; hiding it
+            just moves the drop-off one screen deeper */}
+        <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+          <span
+            className="font-mono text-[9px] uppercase tracking-[1.5px]"
+            style={{
+              display: "inline-block",
+              color: accent,
+              background: accent + "12",
+              borderRadius: 20,
+              padding: "4px 10px",
+            }}
+          >
+            {event.tag}
+          </span>
+          <span
+            className="font-mono text-[9px] uppercase tracking-[1.5px]"
+            style={{
+              display: "inline-block",
+              color: P.nearBlack,
+              background: P.nearBlack + "0A",
+              borderRadius: 20,
+              padding: "4px 10px",
+            }}
+          >
+            {priceLabel}
+          </span>
+        </div>
 
         {/* Title row */}
         <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 4 }}>
@@ -153,29 +195,37 @@ export function FeedEventCard({ event, index, onOpen }: FeedEventCardProps) {
           {event.tagline}
         </p>
 
-        {/* Date + venue hint */}
+        {/* When + where-ish + venue-drop hint */}
         <div
           className="font-mono text-[10px]"
           style={{
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
+            gap: 8,
             color: P.muted,
             marginBottom: 12,
           }}
         >
-          <span>{event.date}</span>
+          <span style={{ color: P.darkBrown }}>{whenWhere}</span>
           {venueText && (
-            <span style={{ color: accent + "90" }}>{venueText}</span>
+            <span style={{ color: accent + "90", flexShrink: 0 }}>{venueText}</span>
           )}
         </div>
 
-        {/* Spots bar */}
-        <SpotsBar
-          spotsLeft={spotsLeft}
-          totalSpots={event.total_spots}
-          accent={accent}
-        />
+        {/* Scarcity / social proof — only when it's real */}
+        {scarce && (
+          <SpotsBar
+            spotsLeft={spotsLeft}
+            totalSpots={event.total_spots}
+            accent={accent}
+          />
+        )}
+        {showGoing && (
+          <p className="font-mono text-[10px]" style={{ color: accent, margin: 0, textAlign: "right" }}>
+            {event.spots_taken} going
+          </p>
+        )}
       </div>
 
       {/* CTA area — visual affordance only; the whole card is the link.
@@ -186,15 +236,21 @@ export function FeedEventCard({ event, index, onOpen }: FeedEventCardProps) {
           style={{
             display: "block",
             width: "100%",
-            background: accent,
-            color: "#FFFFFF",
+            background: soldOut ? P.sand : accent,
+            color: soldOut ? P.muted : "#FFFFFF",
             borderRadius: 10,
             padding: "10px 0",
             textAlign: "center",
             letterSpacing: 0.3,
           }}
         >
-          i&apos;m in &rarr;
+          {soldOut
+            ? "sold out"
+            : event.status === "announced"
+              ? "i’m interested →"
+              : priceLabel === "free"
+                ? "i’m in →"
+                : `i’m in · ${priceLabel} →`}
         </span>
         <p
           className="font-hand text-[11px]"

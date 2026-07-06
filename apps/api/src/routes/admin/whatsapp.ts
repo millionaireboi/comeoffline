@@ -529,7 +529,7 @@ router.post("/whatsapp/run-crons", async (req, res) => {
 
     if (!hasValidSecret) {
       // Fall back to admin auth
-      const { requireAdmin } = await import("../../middleware/auth");
+      const { requireAdmin } = await import("../../middleware/auth.js");
       await new Promise<void>((resolve, reject) => {
         requireAdmin(req as AuthRequest, res, (err?: unknown) => (err ? reject(err) : resolve()));
       }).catch(() => undefined);
@@ -537,7 +537,7 @@ router.post("/whatsapp/run-crons", async (req, res) => {
     }
 
     const { runDayBeforeReminders, runInstallNudges } = await import(
-      "../../services/whatsapp-cron.service"
+      "../../services/whatsapp-cron.service.js"
     );
     const reminders = await runDayBeforeReminders();
     const nudges = await runInstallNudges();

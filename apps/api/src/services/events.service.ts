@@ -200,6 +200,11 @@ export async function createEvent(
     zones: Array.isArray(data.zones) ? data.zones : [],
     dress_code: data.dress_code?.trim() || "",
     includes: Array.isArray(data.includes) ? data.includes : [],
+    faq: Array.isArray(data.faq)
+      ? data.faq
+          .map((f) => ({ q: String(f.q || "").trim(), a: String(f.a || "").trim() }))
+          .filter((f) => f.q && f.a)
+      : [],
     venue_name: data.venue_name?.trim() || "",
     venue_area: data.venue_area?.trim() || "",
     venue_address: data.venue_address?.trim() || "",

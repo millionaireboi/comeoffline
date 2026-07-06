@@ -2,7 +2,8 @@ import { Router } from "express";
 import { requireAuth, type AuthRequest } from "../middleware/auth";
 import { getUserProfile, updateUserProfile, checkHandleAvailable } from "../services/profile.service";
 import { getDb } from "../config/firebase-admin";
-import { getEnrichedConnections } from "../services/connections.service";
+import { getEnrichedConnections, getConnectionsGoing } from "../services/connections.service";
+import { getUserMemories } from "../services/memories.service";
 import { getStorageService } from "../config/firebase-admin";
 import { CURATED_INTERESTS } from "@comeoffline/types";
 import { isValidPin, hashPin } from "../services/pin.service";
@@ -323,6 +324,28 @@ router.get("/me/connections", requireAuth, async (req: AuthRequest, res) => {
   } catch (err) {
     console.error("[profile] connections error:", err);
     res.status(500).json({ success: false, error: "Failed to fetch connections" });
+  }
+});
+
+/** GET /api/users/me/connections-going — Per-event count of my connections with active tickets */
+router.get("/me/connections-going", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const going = await getConnectionsGoing(req.uid!);
+    res.json({ success: true, data: going });
+  } catch (err) {
+    console.error("[profile] connections-going error:", err);
+    res.status(500).json({ success: false, error: "Failed to fetch connections going" });
+  }
+});
+
+/** GET /api/users/me/memories — All-events polaroid gallery for the user */
+router.get("/me/memories", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const memories = await getUserMemories(req.uid!);
+    res.json({ success: true, data: memories });
+  } catch (err) {
+    console.error("[profile] memories error:", err);
+    res.status(500).json({ success: false, error: "Failed to fetch memories" });
   }
 });
 

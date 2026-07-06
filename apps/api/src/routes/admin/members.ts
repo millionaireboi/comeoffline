@@ -221,7 +221,7 @@ router.delete("/:id", requireAdmin, asyncHandler(async (req: AuthRequest, res) =
   await deleteUser(userId);
 
   // Invalidate users cache so the list refreshes
-  const { invalidateUsersCache } = await import("../../services/applications.service");
+  const { invalidateUsersCache } = await import("../../services/applications.service.js");
   invalidateUsersCache();
 
   res.json({ success: true });

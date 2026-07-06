@@ -23,6 +23,7 @@ export const CHECKOUT_EXIT_REASON = "checkout_exit_reason";
 // App — share
 export const EVENT_SHARED = "event_shared";
 export const TICKET_SHARED = "ticket_shared";
+export const TICKET_CALENDAR_ADDED = "ticket_calendar_added";
 export const VOUCH_CODE_SHARED = "vouch_code_shared";
 
 // ── Funnel observability (paid-traffic conversion funnel) ─────────────

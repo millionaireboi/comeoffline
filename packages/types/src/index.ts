@@ -291,6 +291,12 @@ export interface Event {
   cover_focus?: string; // CSS object-position value for crop focus (e.g. "top", "center", "bottom")
   gallery_urls?: string[]; // additional images for carousel (images only)
   waitlist_count?: number; // number of users on the waitlist (announced events)
+  faq?: EventFAQItem[]; // per-event Q&A authored in admin; falls back to generic items when empty
+}
+
+export interface EventFAQItem {
+  q: string;
+  a: string;
 }
 
 // ── Waitlist ─────────────────────────────────────

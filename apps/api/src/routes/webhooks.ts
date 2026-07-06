@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { verifyWebhookSignature, fetchPaymentLinkStatus } from "../services/razorpay.service";
-import { confirmPayment, notifyTicketConfirmed } from "../services/ticket.service";
+import { confirmPayment, notifyTicketConfirmed, cancelTicket } from "../services/ticket.service";
 import { posthog } from "../config/posthog";
 import { sendFbConversionEvent, hashForFb, isFbConfigured } from "../config/facebook";
 import { getDb } from "../config/firebase-admin";
@@ -175,6 +175,33 @@ router.post("/razorpay", async (req: Request, res: Response) => {
         res.status(500).json({ success: false, error: "Payment confirmation failed" });
         return;
       }
+    }
+
+    // Payment link expired or cancelled — release the pending ticket so its held
+    // spots go back into inventory. Without this, abandoned checkouts hold
+    // capacity (spots_held) forever and events "sell out" with phantom holds.
+    if (event === "payment_link.expired" || event === "payment_link.cancelled") {
+      const paymentLinkEntity = payload.payload?.payment_link?.entity;
+      const ticketId = paymentLinkEntity?.notes?.ticket_id;
+
+      if (ticketId) {
+        const ticketDoc = await db.collection("tickets").doc(ticketId).get();
+        const ticket = ticketDoc.data();
+
+        // Only sweep tickets still stuck in pending_payment — if the paid webhook
+        // already confirmed it (or the user cancelled), leave it alone.
+        if (ticket && ticket.status === "pending_payment") {
+          const result = await cancelTicket(ticketId, ticket.user_id);
+          if (result.success) {
+            console.log(`[webhook] Released pending ticket ${ticketId} (payment link ${event.split(".")[1]})`);
+          } else {
+            console.warn(`[webhook] Could not release pending ticket ${ticketId}:`, result.error);
+          }
+        }
+      }
+
+      res.status(200).json({ success: true });
+      return;
     }
 
     // Acknowledge all other events with 200

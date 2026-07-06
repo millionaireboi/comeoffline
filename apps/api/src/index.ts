@@ -34,6 +34,7 @@ import adminBookingsRouter from "./routes/admin/bookings";
 import adminWhatsappRouter from "./routes/admin/whatsapp";
 import webhooksRouter from "./routes/webhooks";
 import whatsappWebhookRouter from "./routes/webhooks-whatsapp";
+import reportsRouter from "./routes/reports";
 import { shutdownPostHog } from "./config/posthog";
 
 const app = express();
@@ -85,6 +86,7 @@ app.use("/api/events", memoriesRouter);
 app.use("/api/events", connectionsRouter);
 app.use("/api/vouch-codes", vouchRouter);
 app.use("/api/users", profileRouter);
+app.use("/api/reports", reportsRouter);
 app.use("/api/chat", chatRouter);
 app.use("/api/applications", formLimiter, applicationsRouter);
 app.use("/api/tickets", ticketsRouter);
@@ -113,9 +115,9 @@ app.listen(env.port, () => {
 
   setInterval(async () => {
     try {
-      const { getDb } = await import("./config/firebase-admin");
-      const { cancelTicket, confirmPayment } = await import("./services/ticket.service");
-      const { fetchPaymentLinkStatus, cancelPaymentLink } = await import("./services/razorpay.service");
+      const { getDb } = await import("./config/firebase-admin.js");
+      const { cancelTicket, confirmPayment } = await import("./services/ticket.service.js");
+      const { fetchPaymentLinkStatus, cancelPaymentLink } = await import("./services/razorpay.service.js");
       const db = await getDb();
 
       // Distributed lock — only one instance runs cleanup at a time
@@ -225,7 +227,7 @@ app.listen(env.port, () => {
   const fireWaCrons = async () => {
     try {
       const { runDayBeforeReminders, runInstallNudges } = await import(
-        "./services/whatsapp-cron.service"
+        "./services/whatsapp-cron.service.js"
       );
       const reminders = await runDayBeforeReminders();
       if (reminders.triggered && (reminders.sent > 0 || reminders.failed > 0)) {

@@ -342,6 +342,68 @@ export async function getEnrichedConnections(userId: string): Promise<Array<{
     });
 }
 
+/**
+ * "Your people are going" — for each event, how many of the user's mutual
+ * connections hold an active ticket, plus up to 3 first names for the badge.
+ * Keyed by event_id; the client overlays this on feed cards. This is the
+ * highest-leverage conversion surface an IRL community has: nobody books
+ * faster than someone whose people are already in.
+ */
+export async function getConnectionsGoing(
+  userId: string,
+): Promise<Record<string, { count: number; names: string[] }>> {
+  const db = await getDb();
+  const connections = await getUserMutualConnections(userId);
+  if (connections.length === 0) return {};
+
+  const friendIds = [...new Set(connections.map((c) => c.to_user_id))];
+
+  // Chunk by 10 — Firestore "in" limit, and we can't combine two "in" filters
+  // (user_id + status) in one query, so status is filtered in code.
+  const chunks: string[][] = [];
+  for (let i = 0; i < friendIds.length; i += 10) {
+    chunks.push(friendIds.slice(i, i + 10));
+  }
+
+  const ACTIVE = new Set(["confirmed", "checked_in", "partially_checked_in"]);
+  const [ticketSnaps, userDocs] = await Promise.all([
+    Promise.all(
+      chunks.map((chunk) =>
+        db.collection("tickets").where("user_id", "in", chunk).get(),
+      ),
+    ),
+    Promise.all(
+      chunks.map((chunk) =>
+        db.getAll(...chunk.map((uid) => db.collection("users").doc(uid))),
+      ),
+    ).then((results) => results.flat()),
+  ]);
+
+  const firstName = new Map(
+    userDocs
+      .filter((d) => d.exists)
+      .map((d) => [d.id, ((d.data() as User).name || "someone").split(" ")[0]]),
+  );
+
+  const result: Record<string, { count: number; names: string[] }> = {};
+  const seen = new Set<string>(); // dedupe multiple tickets per user per event
+  for (const snap of ticketSnaps) {
+    for (const doc of snap.docs) {
+      const t = doc.data();
+      if (!ACTIVE.has(t.status)) continue;
+      const key = `${t.event_id}:${t.user_id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const entry = (result[t.event_id] ||= { count: 0, names: [] });
+      entry.count++;
+      if (entry.names.length < 3) {
+        entry.names.push(firstName.get(t.user_id) || "someone");
+      }
+    }
+  }
+  return result;
+}
+
 /** Get all mutual connections for a user */
 export async function getUserMutualConnections(userId: string): Promise<Connection[]> {
   const db = await getDb();

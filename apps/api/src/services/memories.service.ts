@@ -54,6 +54,67 @@ export async function getEventStats(eventId: string): Promise<EventStats> {
   };
 }
 
+/**
+ * All-events memories for one user — every event they attended that has
+ * polaroids. Powers the permanent "my memories" gallery on the profile,
+ * so polaroids stop vanishing when the post-event window closes.
+ */
+export async function getUserMemories(userId: string): Promise<Array<{
+  event_id: string;
+  event_title: string;
+  event_emoji: string;
+  event_date: string;
+  polaroids: Polaroid[];
+}>> {
+  const db = await getDb();
+
+  // Events the user was actually at: checked-in tickets + attended RSVPs
+  const ticketSnap = await db
+    .collection("tickets")
+    .where("user_id", "==", userId)
+    .get();
+  const ATTENDED = new Set(["checked_in", "partially_checked_in", "confirmed"]);
+  const eventIds = new Set<string>(
+    ticketSnap.docs
+      .filter((d) => ATTENDED.has(d.data().status))
+      .map((d) => d.data().event_id as string),
+  );
+
+  const rsvpSnap = await db
+    .collectionGroup("rsvps")
+    .where("user_id", "==", userId)
+    .where("status", "in", ["confirmed", "attended"])
+    .get();
+  rsvpSnap.docs.forEach((d) => {
+    const eventId = d.ref.parent.parent?.id;
+    if (eventId) eventIds.add(eventId);
+  });
+
+  if (eventIds.size === 0) return [];
+
+  const results = await Promise.all(
+    [...eventIds].map(async (eventId) => {
+      const [eventDoc, polaroids] = await Promise.all([
+        db.collection("events").doc(eventId).get(),
+        getEventPolaroids(eventId),
+      ]);
+      if (!eventDoc.exists || polaroids.length === 0) return null;
+      const event = eventDoc.data()!;
+      return {
+        event_id: eventId,
+        event_title: (event.title as string) || "Unknown Event",
+        event_emoji: (event.emoji as string) || "",
+        event_date: (event.date as string) || "",
+        polaroids,
+      };
+    }),
+  );
+
+  return results
+    .filter((r): r is NonNullable<typeof r> => r !== null)
+    .sort((a, b) => new Date(b.event_date).getTime() - new Date(a.event_date).getTime());
+}
+
 /** Admin: Add a polaroid */
 export async function addPolaroid(
   eventId: string,

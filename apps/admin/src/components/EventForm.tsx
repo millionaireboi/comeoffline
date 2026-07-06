@@ -28,6 +28,11 @@ interface FormPickupPoint {
   capacity: string;
 }
 
+interface FormFaqItem {
+  q: string;
+  a: string;
+}
+
 interface FormTier {
   id: string;
   name: string;
@@ -188,6 +193,71 @@ function ZonesBuilder({ zones, onChange }: { zones: FormZone[]; onChange: (z: Fo
           <div className="rounded-xl border-[1.5px] border-dashed border-white/10 p-6 text-center">
             <span className="mb-1.5 block text-xl">🎯</span>
             <p className="text-xs text-muted">no zones yet — add activity areas</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FaqBuilder({ items, onChange }: { items: FormFaqItem[]; onChange: (f: FormFaqItem[]) => void }) {
+  const add = () => onChange([...items, { q: "", a: "" }]);
+  const remove = (i: number) => onChange(items.filter((_, idx) => idx !== i));
+  const update = (i: number, field: keyof FormFaqItem, val: string) => {
+    const next = [...items];
+    next[i] = { ...next[i], [field]: val };
+    onChange(next);
+  };
+
+  return (
+    <div>
+      <div className="mb-2.5 flex items-center justify-between">
+        <label className="font-mono text-[10px] uppercase tracking-[2px] text-muted">
+          event faq (&quot;good to know&quot;)
+        </label>
+        <button
+          type="button"
+          onClick={add}
+          className="rounded-lg bg-white/5 px-3 py-1.5 font-mono text-[10px] text-cream transition-colors hover:bg-white/10"
+        >
+          + add question
+        </button>
+      </div>
+      <div className="flex flex-col gap-2.5">
+        {items.map((f, i) => (
+          <div
+            key={i}
+            className="flex gap-2.5 rounded-xl border border-white/5 bg-white/[0.03] p-3.5"
+          >
+            <div className="flex flex-1 flex-col gap-2">
+              <input
+                type="text"
+                placeholder='question — e.g. "what time?"'
+                value={f.q}
+                onChange={(e) => update(i, "q", e.target.value)}
+                className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-sans text-sm font-medium text-cream placeholder:text-muted/30 focus:border-caramel/50 focus:outline-none"
+              />
+              <textarea
+                placeholder="answer"
+                value={f.a}
+                onChange={(e) => update(i, "a", e.target.value)}
+                rows={2}
+                className="w-full resize-none rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-sans text-xs text-cream placeholder:text-muted/30 focus:border-caramel/50 focus:outline-none"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => remove(i)}
+              className="shrink-0 p-1 text-sm text-muted/40 transition-colors hover:text-muted"
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+        {items.length === 0 && (
+          <div className="rounded-xl border-[1.5px] border-dashed border-white/10 p-6 text-center">
+            <span className="mb-1.5 block text-xl">💬</span>
+            <p className="text-xs text-muted">no faq yet — without it, events show a generic fallback. add time/venue/what-to-expect answers for this event</p>
           </div>
         )}
       </div>
@@ -1715,6 +1785,9 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
   const [zones, setZones] = useState<FormZone[]>(
     event?.zones?.map((z) => ({ icon: z.icon, name: z.name, desc: z.desc })) || []
   );
+  const [faq, setFaq] = useState<FormFaqItem[]>(
+    event?.faq?.map((f) => ({ q: f.q, a: f.a })) || []
+  );
   const [venueName, setVenueName] = useState(event?.venue_name || "");
   const [venueArea, setVenueArea] = useState(event?.venue_area || "");
   const [venueAddress, setVenueAddress] = useState(event?.venue_address || "");
@@ -1866,6 +1939,7 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
       dress_code: dressCode.trim(),
       includes: includes.split("\n").map((s) => s.trim()).filter(Boolean),
       zones: zones.map((z) => ({ icon: z.icon, name: z.name.trim(), desc: z.desc.trim() })),
+      faq: faq.map((f) => ({ q: f.q.trim(), a: f.a.trim() })).filter((f) => f.q && f.a),
       venue_name: venueName.trim(),
       venue_area: venueArea.trim(),
       venue_address: venueAddress.trim(),
@@ -1987,6 +2061,7 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
       dress_code: dressCode.trim(),
       includes: includes.split("\n").map((s) => s.trim()).filter(Boolean),
       zones: zones.map((z) => ({ icon: z.icon, name: z.name.trim(), desc: z.desc.trim() })),
+      faq: faq.map((f) => ({ q: f.q.trim(), a: f.a.trim() })).filter((f) => f.q && f.a),
       venue_name: venueName.trim(),
       venue_area: venueArea.trim(),
       venue_address: venueAddress.trim(),
@@ -2467,6 +2542,9 @@ export function EventForm({ event, onSave, onCancel, serifClassName = "" }: Even
 
         {/* Zones Builder */}
         <ZonesBuilder zones={zones} onChange={setZones} />
+
+        {/* FAQ Builder — per-event "good to know" answers shown on landing + app */}
+        <FaqBuilder items={faq} onChange={setFaq} />
 
         {/* Venue Details */}
         <div className="rounded-xl border border-white/5 bg-white/[0.03] p-4">

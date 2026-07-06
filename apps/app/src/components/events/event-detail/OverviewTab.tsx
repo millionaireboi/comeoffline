@@ -84,8 +84,9 @@ export function OverviewTab({ event }: OverviewTabProps) {
         accentDark={event.accent_dark || "#B8845A"}
       />
 
-      {/* FAQ — cold-buyer objection handling, ported from public landing */}
+      {/* FAQ — per-event Q&A from admin, generic fallback when unset */}
       <FAQSection
+        items={event.faq}
         accent={event.accent || "#D4A574"}
         accentDark={event.accent_dark || "#B8845A"}
       />

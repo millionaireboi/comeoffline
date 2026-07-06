@@ -8,6 +8,7 @@ import { apiFetch } from "@/lib/api";
 import { SignQuiz } from "@/components/onboarding/SignQuiz";
 import { EditProfileScreen } from "@/components/profile/EditProfileScreen";
 import { ConnectionsList } from "@/components/profile/ConnectionsList";
+import { MyMemories } from "@/components/profile/MyMemories";
 import { Noise } from "@/components/shared/Noise";
 import { PullToRefresh } from "@/components/shared/PullToRefresh";
 
@@ -130,16 +131,18 @@ const STATUS_STYLES: Record<string, { color: string; bg: string; label: string }
 
 export function ProfileScreen() {
   const { getIdToken, logout, loading: authLoading } = useAuth();
-  const { setStage, activeTicket, setActiveTicket, profileCompleteMode, setProfileCompleteMode } = useAppStore();
+  const { setStage, activeTicket, setActiveTicket, profileCompleteMode, setProfileCompleteMode, showToast } = useAppStore();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [tickets, setTickets] = useState<EnrichedTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [showQuizRetake, setShowQuizRetake] = useState(false);
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [showConnections, setShowConnections] = useState(false);
+  const [showMemories, setShowMemories] = useState(false);
   const autoOpenedEdit = useRef(false);
   const [expandedTicketId, setExpandedTicketId] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -181,7 +184,7 @@ export function ProfileScreen() {
   }, [setProfileCompleteMode]);
 
   const handleCancelTicket = async (ticketId: string) => {
-    if (!confirm("Cancel this ticket? This can\u2019t be undone.")) return;
+    setConfirmCancelId(null);
     setCancellingId(ticketId);
     try {
       const token = await getIdToken();
@@ -196,9 +199,10 @@ export function ProfileScreen() {
         setActiveTicket(null);
         setStage("feed");
       }
+      showToast("ticket cancelled.", "info");
     } catch (err) {
       console.error("Failed to cancel ticket:", err);
-      alert("Failed to cancel ticket. Please try again.");
+      showToast("couldn't cancel ticket. try again.", "error");
     } finally {
       setCancellingId(null);
     }
@@ -447,6 +451,38 @@ export function ProfileScreen() {
         </div>
       </section>
 
+      {/* Your people & memories \u2014 permanent, not locked to the post-event window */}
+      <section className="animate-fadeSlideUp px-5 pt-5" style={{ animationDelay: "0.13s" }}>
+        <div className="flex flex-col gap-2">
+          <button
+            onClick={() => setShowMemories(true)}
+            className="flex w-full items-center justify-between rounded-[14px] bg-white p-4 shadow-[0_1px_3px_rgba(26,23,21,0.04)] transition-transform active:scale-[0.99]"
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-xl">{"\u{1F4F8}"}</span>
+              <div className="text-left">
+                <p className="font-sans text-[14px] font-medium text-near-black">my memories</p>
+                <p className="font-mono text-[10px] text-muted">polaroids from every event you&apos;ve been to</p>
+              </div>
+            </div>
+            <span className="font-mono text-[12px] text-caramel">\u2192</span>
+          </button>
+          <button
+            onClick={() => setShowConnections(true)}
+            className="flex w-full items-center justify-between rounded-[14px] bg-white p-4 shadow-[0_1px_3px_rgba(26,23,21,0.04)] transition-transform active:scale-[0.99]"
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-xl">{"\u{1F91D}"}</span>
+              <div className="text-left">
+                <p className="font-sans text-[14px] font-medium text-near-black">my people</p>
+                <p className="font-mono text-[10px] text-muted">everyone you&apos;ve connected with IRL</p>
+              </div>
+            </div>
+            <span className="font-mono text-[12px] text-caramel">\u2192</span>
+          </button>
+        </div>
+      </section>
+
       {/* Badges */}
       {profile.badges.length > 0 && (
         <section className="animate-fadeSlideUp px-5 pt-5" style={{ animationDelay: "0.15s" }}>
@@ -594,15 +630,39 @@ export function ProfileScreen() {
                         </span>
                       </div>
 
-                      {/* Cancel button */}
-                      {isCancellable && (
+                      {/* Cancel button — inline confirm with explicit refund outcome,
+                          mirroring BookingsScreen (no native browser dialogs) */}
+                      {isCancellable && confirmCancelId !== ticket.id && (
                         <button
-                          onClick={() => handleCancelTicket(ticket.id)}
+                          onClick={() => setConfirmCancelId(ticket.id)}
                           disabled={isCancelling}
                           className="mt-1 w-full rounded-xl border border-terracotta/20 bg-terracotta/5 py-2.5 font-mono text-[11px] text-terracotta transition-colors hover:bg-terracotta/10 disabled:opacity-50"
                         >
                           {isCancelling ? "cancelling..." : "cancel ticket"}
                         </button>
+                      )}
+                      {isCancellable && confirmCancelId === ticket.id && !isCancelling && (
+                        <div className="mt-1 rounded-xl border border-terracotta/20 bg-terracotta/5 p-3">
+                          <p className="mb-2 text-center font-mono text-[11px] text-terracotta">
+                            {ticket.status === "confirmed" && ticket.price > 0
+                              ? `cancel this ticket? your spot is released and the ₹${ticket.price} isn't refunded.`
+                              : "cancel this ticket? this can't be undone."}
+                          </p>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleCancelTicket(ticket.id)}
+                              className="flex-1 rounded-lg bg-terracotta py-2.5 font-mono text-[11px] text-white transition-all active:scale-95"
+                            >
+                              yes, cancel
+                            </button>
+                            <button
+                              onClick={() => setConfirmCancelId(null)}
+                              className="flex-1 rounded-lg border border-sand bg-white py-2.5 font-mono text-[11px] text-near-black transition-all active:scale-95"
+                            >
+                              keep it
+                            </button>
+                          </div>
+                        </div>
                       )}
                     </div>
                   )}
@@ -697,6 +757,10 @@ export function ProfileScreen() {
       {/* Connections list overlay */}
       {showConnections && (
         <ConnectionsList onClose={() => setShowConnections(false)} />
+      )}
+
+      {showMemories && (
+        <MyMemories onClose={() => setShowMemories(false)} />
       )}
 
       {/* Edit profile overlay */}

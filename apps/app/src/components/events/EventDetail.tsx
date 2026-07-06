@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useRef, useMemo, useEffect } from "react";
-import type { Event } from "@comeoffline/types";
+import type { Event, Ticket } from "@comeoffline/types";
 import { useAppStore } from "@/store/useAppStore";
+import { useAuth } from "@/hooks/useAuth";
+import { apiFetch } from "@/lib/api";
 import { posthog, FUNNEL_EVENT_DETAIL_OPENED_IN_APP, FUNNEL_TIER_SELECTED_IN_APP, FUNNEL_CHECKOUT_OPENED } from "@comeoffline/analytics";
 import { CheckoutWizard } from "@/components/events/CheckoutWizard";
-import { ExitSurvey } from "@/components/events/ExitSurvey";
 import { CollapsibleHeader } from "./event-detail/CollapsibleHeader";
 import { OverviewTab } from "./event-detail/OverviewTab";
 import { TicketsTab } from "./event-detail/TicketsTab";
@@ -36,6 +37,7 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
   const user = useAppStore((s) => s.user);
   const activeWaitlistEntry = useAppStore((s) => s.activeWaitlistEntry);
   const setEventDetailOpen = useAppStore((s) => s.setEventDetailOpen);
+  const { getIdToken } = useAuth();
   const isAnnounced = event.status === "announced";
   const spotsLeft = (event.total_spots ?? 0) - (event.spots_taken ?? 0);
   const isTicketed = !!(event.ticketing?.enabled && !event.is_free);
@@ -49,6 +51,39 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
     setEventDetailOpen(true);
     return () => setEventDetailOpen(false);
   }, [setEventDetailOpen]);
+
+  // Double-booking guard: check whether the user already holds an active ticket
+  // for this event so the CTA reads "view your ticket" instead of "Buy Tickets".
+  // Without this, a booked user walks through the entire checkout only to be
+  // rejected by the server at the very end.
+  const [existingTicket, setExistingTicket] = useState<Ticket | null>(null);
+  useEffect(() => {
+    if (isAnnounced) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getIdToken();
+        if (!token || cancelled) return;
+        const res = await apiFetch<{ success: boolean; data: Ticket | null }>(
+          `/api/tickets/event/${event.id}`,
+          { token },
+        );
+        if (!cancelled && res.data) setExistingTicket(res.data);
+      } catch {
+        // Non-fatal — worst case the server still rejects a duplicate purchase
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [event.id, isAnnounced, getIdToken]);
+
+  const handleViewTicket = () => {
+    if (!existingTicket) return;
+    const { setActiveTicket, setCurrentEvent, setStage } = useAppStore.getState();
+    setCurrentEvent(event);
+    setActiveTicket(existingTicket);
+    onClose();
+    setStage("countdown");
+  };
 
   // Funnel: ad clicker reached the in-app event detail (post-handoff).
   useEffect(() => {
@@ -80,7 +115,6 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
     event.pickup_points?.length === 1 ? event.pickup_points[0].name : null,
   );
   const [showWizard, setShowWizard] = useState(false);
-  const [showExitSurvey, setShowExitSurvey] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const ticketsRef = useRef<HTMLDivElement>(null);
 
@@ -99,6 +133,11 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
   }, [isTicketed, tiers]);
 
   const handleCTA = () => {
+    // Already booked — never re-enter checkout, go to the ticket instead.
+    if (existingTicket) {
+      handleViewTicket();
+      return;
+    }
     // Funnel: user committed to checkout (CTA tap with valid tier).
     posthog.capture(FUNNEL_CHECKOUT_OPENED, {
       event_id: event.id,
@@ -209,6 +248,7 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
 
         {/* Floating CTA */}
         <FloatingCTA
+          alreadyBooked={!!existingTicket}
           spotsLeft={spotsLeft}
           isTicketed={isTicketed}
           hasCheckoutWizard={hasCheckoutWizard}
@@ -232,23 +272,18 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
       {showWizard && (
         <CheckoutWizard
           event={event}
+          initialTierId={selectedTierId}
           onClose={() => {
+            // No exit survey on abandon — punishing hesitation with a popup
+            // turns "maybe later" into "never". CHECKOUT_ABANDONED analytics
+            // still fire from inside the wizard.
             setShowWizard(false);
-            setShowExitSurvey(true);
           }}
           onComplete={(tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId) => {
             setShowWizard(false);
             onTicketPurchase?.(tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId);
           }}
           loading={loading}
-        />
-      )}
-
-      {/* Exit survey after checkout abandonment */}
-      {showExitSurvey && (
-        <ExitSurvey
-          eventId={event.id}
-          onDone={() => setShowExitSurvey(false)}
         />
       )}
 

@@ -129,7 +129,7 @@ export function InAppChat({ onClose }: InAppChatProps) {
       <div className="flex items-center justify-between border-b border-white/5 px-5 py-4">
         <div>
           <h3 className="font-serif text-lg text-cream">come offline</h3>
-          <p className="font-mono text-[10px] text-muted/50">community chatbot</p>
+          <p className="font-mono text-[10px] text-muted/50">help bot · not a human</p>
         </div>
         <button
           onClick={onClose}

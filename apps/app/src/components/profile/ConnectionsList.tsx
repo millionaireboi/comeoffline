@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useAppStore } from "@/store/useAppStore";
 import { apiFetch } from "@/lib/api";
+import { formatDate } from "@comeoffline/ui";
 import { Noise } from "@/components/shared/Noise";
 
 const AVATAR_GRADIENTS = [
@@ -33,9 +35,46 @@ interface EnrichedConnection {
 
 export function ConnectionsList({ onClose }: { onClose: () => void }) {
   const { getIdToken, loading: authLoading } = useAuth();
+  const events = useAppStore((s) => s.events);
+  const showToast = useAppStore((s) => s.showToast);
   const [connections, setConnections] = useState<EnrichedConnection[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [menuOpenFor, setMenuOpenFor] = useState<string | null>(null);
+  const [reportedIds, setReportedIds] = useState<Set<string>>(new Set());
+
+  // Next bookable event — powers the "invite to <event>" action. Members doing
+  // your marketing beats any ad: a personal WhatsApp nudge from someone they
+  // already met IRL.
+  const nextEvent = useMemo(() => {
+    const bookable = events.filter((e) => e.status !== "announced");
+    return bookable[0] || events[0] || null;
+  }, [events]);
+
+  const inviteConnection = (conn: EnrichedConnection) => {
+    if (!nextEvent) return;
+    const firstName = conn.user.name.split(" ")[0];
+    const text = `hey ${firstName}! ${nextEvent.title} is happening ${formatDate(nextEvent.date)} — come with me? 🎟️ https://comeoffline.com/events/${nextEvent.id}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener");
+  };
+
+  const reportConnection = async (conn: EnrichedConnection) => {
+    setMenuOpenFor(null);
+    try {
+      const token = await getIdToken();
+      if (!token) return;
+      await apiFetch("/api/reports", {
+        method: "POST",
+        token,
+        body: JSON.stringify({ reported_user_id: conn.user.id, context: "connection" }),
+      });
+      setReportedIds((prev) => new Set(prev).add(conn.user.id));
+      showToast("reported. we'll look into it.", "info");
+    } catch (err) {
+      console.error("Failed to report:", err);
+      showToast("couldn't submit report. try again.", "error");
+    }
+  };
 
   const fetchConnections = useCallback(async () => {
     setError(false);
@@ -106,40 +145,79 @@ export function ConnectionsList({ onClose }: { onClose: () => void }) {
             {connections.map((conn) => (
               <div
                 key={conn.user.id}
-                className="flex items-center justify-between rounded-[14px] bg-white p-4 shadow-[0_1px_3px_rgba(26,23,21,0.04)]"
+                className="rounded-[14px] bg-white p-4 shadow-[0_1px_3px_rgba(26,23,21,0.04)]"
               >
-                <div className="flex items-center gap-3">
-                  <ConnectionAvatar user={conn.user} />
-                  <div>
-                    <p className="font-sans text-[14px] font-medium text-near-black">
-                      {conn.user.name}
-                    </p>
-                    <p className="font-mono text-[10px] text-muted">
-                      @{conn.user.handle}
-                      {conn.user.sign_emoji && (
-                        <span
-                          className="ml-1.5"
-                          style={{ color: conn.user.sign_color || "#9B8E82" }}
-                        >
-                          {conn.user.sign_emoji} {conn.user.sign_label}
-                        </span>
-                      )}
-                    </p>
-                    <p className="mt-0.5 font-mono text-[9px] text-muted/60">
-                      met at {conn.event_title}
-                    </p>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <ConnectionAvatar user={conn.user} />
+                    <div>
+                      <p className="font-sans text-[14px] font-medium text-near-black">
+                        {conn.user.name}
+                      </p>
+                      <p className="font-mono text-[10px] text-muted">
+                        @{conn.user.handle}
+                        {conn.user.sign_emoji && (
+                          <span
+                            className="ml-1.5"
+                            style={{ color: conn.user.sign_color || "#9B8E82" }}
+                          >
+                            {conn.user.sign_emoji} {conn.user.sign_label}
+                          </span>
+                        )}
+                      </p>
+                      <p className="mt-0.5 font-mono text-[9px] text-muted/60">
+                        met at {conn.event_title}
+                      </p>
+                    </div>
                   </div>
+
+                  <button
+                    onClick={() => setMenuOpenFor(menuOpenFor === conn.user.id ? null : conn.user.id)}
+                    aria-label="more options"
+                    className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-sand/30"
+                  >
+                    {"⋯"}
+                  </button>
                 </div>
 
-                {conn.user.instagram_handle && (
-                  <a
-                    href={`https://instagram.com/${conn.user.instagram_handle}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex-shrink-0 rounded-full bg-cream px-3 py-1.5 font-mono text-[10px] text-caramel transition-colors hover:bg-sand/30"
-                  >
-                    @{conn.user.instagram_handle}
-                  </a>
+                {/* Actions — pull your people to the next event */}
+                <div className="mt-3 flex items-center gap-2 border-t border-sand/60 pt-3">
+                  {nextEvent && (
+                    <button
+                      onClick={() => inviteConnection(conn)}
+                      className="rounded-full bg-near-black px-4 py-1.5 font-mono text-[10px] text-cream transition-transform active:scale-95"
+                    >
+                      invite to {nextEvent.title.length > 18 ? "next event" : nextEvent.title} →
+                    </button>
+                  )}
+                  {conn.user.instagram_handle && (
+                    <a
+                      href={`https://instagram.com/${conn.user.instagram_handle}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-full bg-cream px-3 py-1.5 font-mono text-[10px] text-caramel transition-colors hover:bg-sand/30"
+                    >
+                      @{conn.user.instagram_handle}
+                    </a>
+                  )}
+                </div>
+
+                {menuOpenFor === conn.user.id && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <button
+                      onClick={() => reportConnection(conn)}
+                      disabled={reportedIds.has(conn.user.id)}
+                      className="rounded-full border border-terracotta/25 bg-terracotta/5 px-4 py-1.5 font-mono text-[10px] text-terracotta disabled:opacity-50"
+                    >
+                      {reportedIds.has(conn.user.id) ? "reported ✓" : "report this member"}
+                    </button>
+                    <button
+                      onClick={() => setMenuOpenFor(null)}
+                      className="rounded-full px-3 py-1.5 font-mono text-[10px] text-muted"
+                    >
+                      cancel
+                    </button>
+                  </div>
                 )}
               </div>
             ))}

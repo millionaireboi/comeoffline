@@ -36,27 +36,29 @@ export function TheGate({ onSignIn }: { onSignIn?: () => void }) {
   const [rejectMsg, setRejectMsg] = useState("");
   const [rejectCount, setRejectCount] = useState(0);
   const [typed, setTyped] = useState("");
-  const [showInput, setShowInput] = useState(false);
+  // Input is visible from the start — the typewriter is decoration, and hiding
+  // the code field behind ~2.7s of animation is a bounce tax on paid traffic.
+  const [showInput, setShowInput] = useState(true);
   const [confetti, setConfetti] = useState<ConfettiPiece[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const unlockedRef = useRef(false);
   const { loginWithToken } = useAuth();
 
-  // Typewriter effect
+  // Typewriter effect — purely decorative; never gates the input
   useEffect(() => {
+    let iv: ReturnType<typeof setInterval> | null = null;
     const timeout = setTimeout(() => {
       let i = 0;
-      const iv = setInterval(() => {
+      iv = setInterval(() => {
         setTyped(TAGLINE.slice(0, i + 1));
         i++;
-        if (i >= TAGLINE.length) {
-          clearInterval(iv);
-          setTimeout(() => setShowInput(true), 400);
-        }
+        if (i >= TAGLINE.length && iv) clearInterval(iv);
       }, 35);
-      return () => clearInterval(iv);
-    }, 1000);
-    return () => clearTimeout(timeout);
+    }, 400);
+    return () => {
+      clearTimeout(timeout);
+      if (iv) clearInterval(iv);
+    };
   }, []);
 
   const submit = useCallback(async () => {

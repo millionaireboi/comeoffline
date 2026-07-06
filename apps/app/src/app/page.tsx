@@ -35,7 +35,17 @@ import { BottomNav } from "@/components/shared/BottomNav";
 import { Toast } from "@/components/shared/Toast";
 import { SignInScreen } from "@/components/gates/SignInScreen";
 import { CommunitySafetyDialog } from "@/components/gates/CommunitySafetyDialog";
+import { ResumePaymentSheet } from "@/components/bookings/ResumePaymentSheet";
 import { getDevStageOverride, MOCK_EVENT } from "@/lib/dev-stage";
+
+// Payment verification UX after returning from Razorpay:
+// verifying — polling ticket status while the webhook confirms
+// timeout   — polling exhausted; payment may still settle (offer re-check)
+// failed    — payment link expired / ticket cancelled (offer retry)
+type PaymentUx =
+  | { view: "verifying" }
+  | { view: "timeout"; ticketId: string }
+  | { view: "failed"; eventId: string | null };
 
 export default function Home() {
   const { loading, getIdToken, logout } = useAuth();
@@ -54,7 +64,9 @@ export default function Home() {
   const [quizActive, setQuizActive] = useState(false);
   const [showSignIn, setShowSignIn] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
-  const [paymentProcessing, setPaymentProcessing] = useState(false);
+  const [paymentUx, setPaymentUx] = useState<PaymentUx | null>(null);
+  const [resumeTicket, setResumeTicket] = useState<(Ticket & { event_title?: string; event_emoji?: string }) | null>(null);
+  const pollSignalRef = useRef<{ cancelled: boolean } | null>(null);
   const prevStageRef = useRef(stage);
   const ticketRestorationDone = useRef(false);
   const prevStageForPrompt = useRef<string | null>(null);
@@ -95,7 +107,7 @@ export default function Home() {
       if (!token || signal?.cancelled) return;
 
       // /api/tickets/mine returns enriched tickets sorted by purchased_at DESC
-      const ticketsRes = await apiFetch<{ success: boolean; data: Array<Ticket & { event_date?: string }> }>("/api/tickets/mine", { token });
+      const ticketsRes = await apiFetch<{ success: boolean; data: Array<Ticket & { event_date?: string; event_title?: string; event_emoji?: string }> }>("/api/tickets/mine", { token });
       if (!ticketsRes.data?.length || signal?.cancelled) return;
 
       // Find most recent confirmed/checked-in ticket for an upcoming event
@@ -112,7 +124,23 @@ export default function Home() {
         return true; // no date info — assume active
       });
 
-      if (!activeTicket || signal?.cancelled) return;
+      // No active confirmed ticket — check for a recent abandoned payment.
+      // Razorpay links expire after 16 min; inside that window the user can
+      // resume the same link instead of silently losing the booking.
+      if (!activeTicket) {
+        if (signal?.cancelled) return;
+        const PAYMENT_LINK_TTL_MS = 16 * 60 * 1000;
+        const pending = ticketsRes.data.find(
+          (t) =>
+            t.status === "pending_payment" &&
+            t.payment_url &&
+            t.purchased_at &&
+            Date.now() - new Date(t.purchased_at).getTime() < PAYMENT_LINK_TTL_MS,
+        );
+        if (pending) setResumeTicket(pending);
+        return;
+      }
+      if (signal?.cancelled) return;
 
       const eventRes = await apiFetch<{ success: boolean; data: Event }>(
         `/api/events/${activeTicket.event_id}`,
@@ -133,28 +161,17 @@ export default function Home() {
     }
   }, [getIdToken]);
 
-  // Handle return from Razorpay payment
-  useEffect(() => {
-    if (typeof window === "undefined" || loading || tokenChecking) return;
-    if (!user) return;
-
-    const params = new URLSearchParams(window.location.search);
-    const rzpStatus = params.get("razorpay_status");
-    const ticketId = params.get("ticket_id");
-
-    if (!rzpStatus || !ticketId) return;
-
-    // Mark as handled so the startup restoration doesn't also run
-    ticketRestorationDone.current = true;
-
-    // Clean URL only after we've confirmed user is available
-    window.history.replaceState({ stage: useAppStore.getState().stage }, "", "/");
-
-    setPaymentProcessing(true);
+  // Poll ticket status after returning from Razorpay. Extracted so the
+  // "check again" button on the timeout screen can restart it.
+  const pollPaymentStatus = useCallback((ticketId: string) => {
+    // Cancel any in-flight poll before starting a new one
+    if (pollSignalRef.current) pollSignalRef.current.cancelled = true;
     const signal = { cancelled: false };
+    pollSignalRef.current = signal;
+
+    setPaymentUx({ view: "verifying" });
     let attempts = 0;
     const maxAttempts = 20;
-    let pendingTimeout: ReturnType<typeof setTimeout> | null = null;
 
     const poll = async () => {
       if (signal.cancelled) return;
@@ -162,10 +179,7 @@ export default function Home() {
 
       try {
         const token = await getIdToken();
-        if (!token || signal.cancelled) {
-          setPaymentProcessing(false);
-          return;
-        }
+        if (!token || signal.cancelled) return;
 
         const res = await apiFetch<{ success: boolean; data: { id: string; status: string; event_id: string } }>(
           `/api/tickets/${ticketId}/status`,
@@ -196,38 +210,67 @@ export default function Home() {
                 setStage("countdown");
               }
             }
-            setPaymentProcessing(false);
+            setPaymentUx(null);
           }
           return;
         }
 
+        // Ticket was cancelled — payment link expired or payment failed.
+        // Surface an explicit retry path instead of a silent dead end.
+        if (res.data?.status === "cancelled") {
+          setPaymentUx({ view: "failed", eventId: res.data.event_id || null });
+          return;
+        }
+
         if (attempts < maxAttempts) {
-          pendingTimeout = setTimeout(poll, 3000);
+          setTimeout(poll, 3000);
         } else {
-          // Polling exhausted — try restoring via tickets/mine as fallback
-          await restoreActiveTicket(signal);
-          if (!signal.cancelled) setPaymentProcessing(false);
+          // Polling exhausted — the webhook may just be slow. Tell the user
+          // their money is safe and let them re-check, never silently give up.
+          setPaymentUx({ view: "timeout", ticketId });
         }
       } catch (err) {
         console.error("[payment-callback] Poll error:", err);
         if (signal.cancelled) return;
         if (attempts < maxAttempts) {
-          pendingTimeout = setTimeout(poll, 3000);
+          setTimeout(poll, 3000);
         } else {
-          await restoreActiveTicket(signal);
-          if (!signal.cancelled) setPaymentProcessing(false);
+          setPaymentUx({ view: "timeout", ticketId });
         }
       }
     };
 
     poll();
+  }, [getIdToken]);
 
+  // Handle return from Razorpay payment
+  useEffect(() => {
+    if (typeof window === "undefined" || loading || tokenChecking) return;
+    if (!user) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const rzpStatus = params.get("razorpay_status");
+    const ticketId = params.get("ticket_id");
+
+    if (!rzpStatus || !ticketId) return;
+
+    // Mark as handled so the startup restoration doesn't also run
+    ticketRestorationDone.current = true;
+
+    // Clean URL only after we've confirmed user is available
+    window.history.replaceState({ stage: useAppStore.getState().stage }, "", "/");
+
+    pollPaymentStatus(ticketId);
+  }, [loading, tokenChecking, user, pollPaymentStatus]);
+
+  // Cancel any in-flight payment poll on unmount only — dependency re-runs of
+  // the effect above must not kill an active poll (the URL params are already
+  // cleaned, so it couldn't restart).
+  useEffect(() => {
     return () => {
-      signal.cancelled = true;
-      if (pendingTimeout) clearTimeout(pendingTimeout);
-      setPaymentProcessing(false);
+      if (pollSignalRef.current) pollSignalRef.current.cancelled = true;
     };
-  }, [loading, tokenChecking, user, getIdToken, restoreActiveTicket]);
+  }, []);
 
   // Restore active ticket on app startup (when no payment callback is in progress)
   useEffect(() => {
@@ -265,7 +308,7 @@ export default function Home() {
   }, [stage, triggerPrompt]);
 
   // Payment processing screen — show while polling for webhook confirmation
-  if (paymentProcessing) {
+  if (paymentUx?.view === "verifying") {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center bg-cream px-8 text-center">
         <div className="mb-6 h-10 w-10 animate-spin rounded-full border-[3px] border-sand border-t-caramel" />
@@ -278,6 +321,74 @@ export default function Home() {
         <p className="mt-6 font-mono text-[10px] uppercase tracking-[3px] text-muted/40">
           this usually takes a few seconds
         </p>
+      </main>
+    );
+  }
+
+  // Payment verification timed out — the webhook may just be slow. The user's
+  // money may have left their account, so never dump them on the feed silently.
+  if (paymentUx?.view === "timeout") {
+    const timeoutTicketId = paymentUx.ticketId;
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center bg-cream px-8 text-center">
+        <span className="mb-6 text-4xl">{"⏳"}</span>
+        <h2 className="font-serif text-2xl text-near-black" style={{ letterSpacing: "-0.5px" }}>
+          taking longer than usual
+        </h2>
+        <p className="mt-3 max-w-[290px] font-sans text-[14px] leading-relaxed text-warm-brown">
+          if money left your account, your ticket is safe — it confirms automatically once the payment settles. this can take a couple of minutes.
+        </p>
+        <button
+          onClick={() => pollPaymentStatus(timeoutTicketId)}
+          className="mt-8 w-full max-w-[280px] rounded-[14px] border-none bg-near-black py-[15px] font-sans text-[15px] font-medium text-cream transition-transform active:scale-[0.98]"
+        >
+          check again
+        </button>
+        <button
+          onClick={() => {
+            setPaymentUx(null);
+            useAppStore.getState().setStage("bookings");
+          }}
+          className="mt-3 border-none bg-transparent py-3 font-mono text-[11px] uppercase tracking-[2px] text-muted transition-opacity hover:opacity-70"
+        >
+          view my bookings
+        </button>
+      </main>
+    );
+  }
+
+  // Payment failed / link expired — explicit retry path back to the event.
+  if (paymentUx?.view === "failed") {
+    const failedEventId = paymentUx.eventId;
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center bg-cream px-8 text-center">
+        <span className="mb-6 text-4xl">{"\u{1F648}"}</span>
+        <h2 className="font-serif text-2xl text-near-black" style={{ letterSpacing: "-0.5px" }}>
+          payment didn&apos;t go through
+        </h2>
+        <p className="mt-3 max-w-[290px] font-sans text-[14px] leading-relaxed text-warm-brown">
+          no ticket was booked. if anything was deducted, it&apos;ll bounce back to your account within a few days.
+        </p>
+        <button
+          onClick={() => {
+            const { setPendingPurchaseEventId, setStage } = useAppStore.getState();
+            if (failedEventId) setPendingPurchaseEventId(failedEventId);
+            setStage("feed");
+            setPaymentUx(null);
+          }}
+          className="mt-8 w-full max-w-[280px] rounded-[14px] border-none bg-near-black py-[15px] font-sans text-[15px] font-medium text-cream transition-transform active:scale-[0.98]"
+        >
+          try again
+        </button>
+        <button
+          onClick={() => {
+            useAppStore.getState().setStage("feed");
+            setPaymentUx(null);
+          }}
+          className="mt-3 border-none bg-transparent py-3 font-mono text-[11px] uppercase tracking-[2px] text-muted transition-opacity hover:opacity-70"
+        >
+          back to events
+        </button>
       </main>
     );
   }
@@ -408,6 +519,29 @@ export default function Home() {
       {chatOpen && <InAppChat onClose={() => setChatOpen(false)} />}
       <PWAInstallPrompt />
       <Toast />
+      {resumeTicket && !paymentUx && (
+        <ResumePaymentSheet
+          ticket={resumeTicket}
+          onResume={() => {
+            // Re-enter the same Razorpay link; the normal callback flow takes over on return.
+            window.location.href = resumeTicket.payment_url!;
+          }}
+          onCancelTicket={async () => {
+            try {
+              const token = await getIdToken();
+              if (token) {
+                await apiFetch(`/api/tickets/${resumeTicket.id}`, { method: "DELETE", token });
+              }
+              useAppStore.getState().showToast("spot released — no charge", "info");
+            } catch (err) {
+              console.error("[resume-payment] Failed to cancel pending ticket:", err);
+            } finally {
+              setResumeTicket(null);
+            }
+          }}
+          onDismiss={() => setResumeTicket(null)}
+        />
+      )}
       {showCompletionDialog && (
         <CommunitySafetyDialog
           onContinue={() => {

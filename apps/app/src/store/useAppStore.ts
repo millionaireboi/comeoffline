@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import type { User, Event, RSVP, Ticket, WaitlistEntry, OnboardingSource } from "@comeoffline/types";
 
 export type AppStage =
@@ -78,6 +79,10 @@ interface AppState {
   pendingPurchaseEventId: string | null;
   setPendingPurchaseEventId: (id: string | null) => void;
 
+  // When the deep-link intent was captured (ms epoch). Used to expire stale
+  // intent on rehydrate so a week-old ad click doesn't reopen a dead event.
+  pendingIntentAt: number | null;
+
   // Tier preselected from a landing-page deep-link (?tier=<id>). Consumed by EventDetail
   // so the user doesn't have to pick the tier again inside the app.
   pendingDeepLinkTierId: string | null;
@@ -96,7 +101,12 @@ interface AppState {
 
 let toastTimeout: ReturnType<typeof setTimeout> | null = null;
 
-export const useAppStore = create<AppState>((set) => ({
+// Deep-link intent older than this is dropped on rehydrate
+const INTENT_TTL_MS = 24 * 60 * 60 * 1000;
+
+export const useAppStore = create<AppState>()(
+  persist(
+    (set) => ({
   user: null,
   setUser: (user) => set({ user }),
 
@@ -135,7 +145,9 @@ export const useAppStore = create<AppState>((set) => ({
   setFullProfileMode: (mode) => set({ fullProfileMode: mode }),
 
   pendingPurchaseEventId: null,
-  setPendingPurchaseEventId: (id) => set({ pendingPurchaseEventId: id }),
+  setPendingPurchaseEventId: (id) => set({ pendingPurchaseEventId: id, pendingIntentAt: id ? Date.now() : null }),
+
+  pendingIntentAt: null,
 
   pendingDeepLinkTierId: null,
   setPendingDeepLinkTierId: (id) => set({ pendingDeepLinkTierId: id }),
@@ -153,4 +165,25 @@ export const useAppStore = create<AppState>((set) => ({
     if (toastTimeout) { clearTimeout(toastTimeout); toastTimeout = null; }
     set({ toast: null });
   },
-}));
+    }),
+    {
+      name: "co-app-intent",
+      // Persist ONLY the deep-link purchase intent. Everything else is either
+      // re-derived from auth (user, stage) or re-fetched (events, tickets).
+      // This is what lets the intended event survive the hard redirect to
+      // Razorpay and refreshes mid-onboarding.
+      partialize: (state) => ({
+        pendingPurchaseEventId: state.pendingPurchaseEventId,
+        pendingDeepLinkTierId: state.pendingDeepLinkTierId,
+        pendingIntentAt: state.pendingIntentAt,
+      }),
+      onRehydrateStorage: () => (state) => {
+        // Drop stale intent — a day-old ad click shouldn't force-open an event
+        if (state?.pendingPurchaseEventId && (!state.pendingIntentAt || Date.now() - state.pendingIntentAt > INTENT_TTL_MS)) {
+          state.setPendingPurchaseEventId(null);
+          state.setPendingDeepLinkTierId(null);
+        }
+      },
+    },
+  ),
+);

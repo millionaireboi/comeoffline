@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useAnalytics, TICKET_SHARED } from "@comeoffline/analytics";
+import { useAnalytics, TICKET_SHARED, TICKET_CALENDAR_ADDED } from "@comeoffline/analytics";
 import { formatDate } from "@comeoffline/ui";
 import { useAppStore } from "@/store/useAppStore";
+import { addToCalendar } from "@/lib/calendar";
 import { SignQuiz } from "@/components/onboarding/SignQuiz";
 import { Noise } from "@/components/shared/Noise";
 import { IncludesSection } from "@/components/events/event-detail/IncludesSection";
@@ -150,14 +151,44 @@ export function CountdownScreen() {
               </span>
             </div>
           )}
+
+          {/* QR — the ticket itself, right where the user lands after paying.
+              Previously buried inside the bookings list only. */}
+          {activeTicket.qr_code && ["confirmed", "checked_in", "partially_checked_in"].includes(activeTicket.status) && (
+            <div className="mt-4 border-t border-sand pt-4 text-center">
+              <img
+                src={activeTicket.qr_code}
+                alt="Ticket QR"
+                className="mx-auto h-[150px] w-[150px] rounded-xl"
+              />
+              <p className="mt-2 font-mono text-[10px] uppercase tracking-[2px] text-muted">
+                show this at the door
+              </p>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Share "I'm going" */}
+      {/* Share "I'm going" + add to calendar */}
       <div
-        className="animate-fadeSlideUp mb-5 px-0"
+        className="animate-fadeSlideUp mb-5 flex gap-2.5 px-0"
         style={{ animationDelay: "0.17s" }}
       >
+        <button
+          onClick={() => {
+            const added = addToCalendar(currentEvent);
+            if (added) {
+              track(TICKET_CALENDAR_ADDED, { event_id: currentEvent.id });
+            } else {
+              showToast("couldn't build the calendar entry.", "error");
+            }
+          }}
+          className="flex-1 rounded-[16px] border border-sand bg-white px-4 py-3.5 text-center transition-all hover:-translate-y-0.5"
+        >
+          <span className="font-sans text-[13px] font-medium text-near-black">
+            add to calendar {"\u{1F4C5}"}
+          </span>
+        </button>
         <button
           onClick={async () => {
             const shareData = {
@@ -185,10 +216,10 @@ export function CountdownScreen() {
               }
             }
           }}
-          className="w-full rounded-[16px] border border-sand bg-white px-5 py-3.5 text-center transition-all hover:-translate-y-0.5"
+          className="flex-1 rounded-[16px] border border-sand bg-white px-4 py-3.5 text-center transition-all hover:-translate-y-0.5"
         >
           <span className="font-sans text-[13px] font-medium text-near-black">
-            share that you&apos;re going ↗
+            share it ↗
           </span>
         </button>
       </div>

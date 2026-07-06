@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useAppStore } from "@/store/useAppStore";
 import { apiFetch } from "@/lib/api";
 
 const AVATAR_GRADIENTS = [
@@ -25,9 +26,31 @@ interface AttendeePreview {
 
 export function AttendeeList({ eventId }: { eventId: string }) {
   const { getIdToken, loading: authLoading } = useAuth();
+  const showToast = useAppStore((s) => s.showToast);
   const [attendees, setAttendees] = useState<AttendeePreview[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  // Safety: report-a-member flow (footer link → pick a card → confirm)
+  const [reportMode, setReportMode] = useState(false);
+  const [reportTarget, setReportTarget] = useState<AttendeePreview | null>(null);
+
+  const submitReport = async (target: AttendeePreview) => {
+    setReportTarget(null);
+    setReportMode(false);
+    try {
+      const token = await getIdToken();
+      if (!token) return;
+      await apiFetch("/api/reports", {
+        method: "POST",
+        token,
+        body: JSON.stringify({ reported_user_id: target.id, context: "attendee", event_id: eventId }),
+      });
+      showToast("reported. we'll look into it.", "info");
+    } catch (err) {
+      console.error("Failed to report:", err);
+      showToast("couldn't submit report. try again.", "error");
+    }
+  };
 
   const fetchAttendees = useCallback(async () => {
     setError(false);
@@ -93,7 +116,9 @@ export function AttendeeList({ eventId }: { eventId: string }) {
         {attendees.map((a) => (
           <div
             key={a.id}
+            onClick={reportMode ? () => setReportTarget(a) : undefined}
             className="rounded-[14px] bg-white p-3.5 shadow-[0_1px_3px_rgba(26,23,21,0.04)]"
+            style={reportMode ? { cursor: "pointer", outline: "1.5px dashed rgba(196,112,77,0.4)" } : undefined}
           >
             <div className="mb-2.5 flex items-center gap-2.5">
               <AttendeeAvatar attendee={a} />
@@ -130,6 +155,46 @@ export function AttendeeList({ eventId }: { eventId: string }) {
             )}
           </div>
         ))}
+      </div>
+
+      {/* Safety footer — report flow for a vouched community */}
+      <div className="mt-3 text-center">
+        {!reportMode ? (
+          <button
+            onClick={() => setReportMode(true)}
+            className="font-mono text-[9px] text-muted/50 underline-offset-2 hover:underline"
+          >
+            see something off? report a member
+          </button>
+        ) : reportTarget ? (
+          <div className="flex items-center justify-center gap-2">
+            <span className="font-mono text-[10px] text-terracotta">
+              report {reportTarget.name.split(" ")[0]}?
+            </span>
+            <button
+              onClick={() => submitReport(reportTarget)}
+              className="rounded-full border border-terracotta/25 bg-terracotta/5 px-3 py-1 font-mono text-[10px] text-terracotta"
+            >
+              report
+            </button>
+            <button
+              onClick={() => { setReportTarget(null); setReportMode(false); }}
+              className="rounded-full px-3 py-1 font-mono text-[10px] text-muted"
+            >
+              cancel
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center gap-2">
+            <span className="font-mono text-[10px] text-terracotta">tap the person you want to report</span>
+            <button
+              onClick={() => setReportMode(false)}
+              className="rounded-full px-3 py-1 font-mono text-[10px] text-muted"
+            >
+              cancel
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

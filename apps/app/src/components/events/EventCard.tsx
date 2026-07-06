@@ -8,6 +8,8 @@ interface EventCardProps {
   event: Event;
   index: number;
   onOpen: (event: Event) => void;
+  /** "Your people are going" — my connections with active tickets for this event */
+  connectionsGoing?: { count: number; names: string[] };
 }
 
 function getPriceLabel(event: Event): string {
@@ -20,7 +22,7 @@ function getPriceLabel(event: Event): string {
   return `from \u20B9${min}`;
 }
 
-export function EventCard({ event, index, onOpen }: EventCardProps) {
+export function EventCard({ event, index, onOpen, connectionsGoing }: EventCardProps) {
   const spotsLeft = (event.total_spots ?? 0) - (event.spots_taken ?? 0);
   const daysUntilVenue = event.venue_reveal_date
     ? Math.max(
@@ -119,6 +121,24 @@ export function EventCard({ event, index, onOpen }: EventCardProps) {
         <p className="mb-5 font-sans text-[15px] italic text-warm-brown">
           {event.tagline}
         </p>
+
+        {/* Your people are going — the strongest booking signal an IRL
+            community can show. Only renders when connections hold tickets. */}
+        {connectionsGoing && connectionsGoing.count > 0 && (
+          <div
+            className="mb-4 flex items-center gap-2 rounded-xl px-3 py-2"
+            style={{ background: (event.accent || "#D4A574") + "14" }}
+          >
+            <span className="text-[14px]">{"\u{1FAF6}"}</span>
+            <span className="font-sans text-[12.5px] font-medium" style={{ color: event.accent_dark || "#B8845A" }}>
+              {connectionsGoing.count === 1
+                ? `${connectionsGoing.names[0]} is going`
+                : connectionsGoing.count === 2
+                  ? `${connectionsGoing.names[0]} & ${connectionsGoing.names[1]} are going`
+                  : `${connectionsGoing.names.slice(0, 2).join(", ")} +${connectionsGoing.count - 2} are going`}
+            </span>
+          </div>
+        )}
 
         {/* Meta */}
         <div className="mb-4 flex flex-wrap gap-4">

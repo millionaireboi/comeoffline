@@ -130,16 +130,16 @@ function MicroLabel() {
    ═══════════════════════════════════════════════ */
 
 // Card 0: Intro
-function IntroCard({ isChatbot }: { isChatbot: boolean }) {
+function IntroCard({ isChatbot: _isChatbot }: { isChatbot: boolean }) {
   return (
     <CardShell animKey="intro">
       <div className="text-center">
         <div className="mb-6 text-5xl" style={{ animation: "float 3s ease infinite" }}>{"\u270C\uFE0F"}</div>
         <h2 className="mb-3 font-serif text-[28px] font-normal leading-[1.2] text-cream">
-          {isChatbot ? "we caught some of this from our chat." : "one more thing before the fun starts."}
+          one more thing before the fun starts.
         </h2>
         <p className="font-sans text-sm leading-relaxed text-muted">
-          {isChatbot ? "fix anything that\u2019s off. takes about a minute." : "tell us who you are. takes about a minute."}
+          verify your number on whatsapp \u2014 takes 30 seconds. that&apos;s it.
         </p>
       </div>
     </CardShell>
@@ -484,8 +484,9 @@ function PhoneNumberCard({
     }
   };
 
-  const verifyCode = async () => {
-    if (otp.length !== 6 || phase === "verifying") return;
+  const verifyCode = async (codeArg?: string) => {
+    const code = codeArg ?? otp;
+    if (code.length !== 6 || phase === "verifying") return;
     setError("");
     setPhase("verifying");
     try {
@@ -502,7 +503,7 @@ function PhoneNumberCard({
       }>("/api/auth/whatsapp-otp/verify", {
         method: "POST",
         token,
-        body: JSON.stringify({ phone: value, code: otp }),
+        body: JSON.stringify({ phone: value, code }),
       });
 
       if (res.data?.phone_verified_at) {
@@ -518,10 +519,13 @@ function PhoneNumberCard({
       const msg = err instanceof Error ? err.message : "";
       if (msg.toLowerCase().includes("wrong code")) {
         setError("wrong code — try again.");
+        setOtp(""); // clear so retyping is instant (also prevents auto-submit loops)
       } else if (msg.toLowerCase().includes("expired")) {
         setError("that code expired. tap resend.");
+        setOtp("");
       } else if (msg.toLowerCase().includes("too many")) {
         setError("too many wrong attempts. tap resend.");
+        setOtp("");
       } else {
         setError(msg || "couldn't verify. try once more.");
         console.error("[PhoneNumberCard] verifyCode failed:", err);
@@ -604,7 +608,13 @@ function PhoneNumberCard({
             autoComplete="one-time-code"
             maxLength={6}
             value={otp}
-            onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            onChange={(e) => {
+              const v = e.target.value.replace(/\D/g, "").slice(0, 6);
+              setOtp(v);
+              // Auto-submit at 6 digits — the user just app-switched to WhatsApp
+              // and typed the code from memory; don't make them find another button.
+              if (v.length === 6 && phase === "sent") verifyCode(v);
+            }}
             onKeyDown={(e) => e.key === "Enter" && verifyCode()}
             disabled={phase === "verifying"}
             placeholder="••••••"
@@ -612,7 +622,7 @@ function PhoneNumberCard({
             style={{ border: "1.5px solid rgba(155,142,130,0.13)" }}
           />
           <button
-            onClick={verifyCode}
+            onClick={() => verifyCode()}
             disabled={otp.length !== 6 || phase === "verifying"}
             className="mt-3 w-full rounded-xl border-none py-[13px] font-sans text-[14px] font-medium transition-all"
             style={{
@@ -623,13 +633,28 @@ function PhoneNumberCard({
           >
             {phase === "verifying" ? "verifying..." : "verify"}
           </button>
-          <button
-            onClick={() => { setPhase("idle"); setOtp(""); setError(""); }}
-            className="mt-2 w-full border-none bg-transparent py-2 font-mono text-[11px] uppercase tracking-[2px] text-muted/60"
-            style={{ cursor: "pointer" }}
-          >
-            change number
-          </button>
+          {/* Explicit resend — previously hidden behind "change number", which
+              stranded anyone whose WhatsApp message didn't arrive */}
+          <div className="mt-2 flex gap-2">
+            <button
+              onClick={sendCode}
+              disabled={cooldown > 0 || phase === "verifying"}
+              className="flex-1 border-none bg-transparent py-2 font-mono text-[11px] uppercase tracking-[2px] transition-opacity disabled:opacity-40"
+              style={{ cursor: cooldown > 0 ? "default" : "pointer", color: cooldown > 0 ? "rgba(155,142,130,0.5)" : "#D4A574" }}
+            >
+              {cooldown > 0 ? `resend in ${cooldown}s` : "resend code"}
+            </button>
+            <button
+              onClick={() => { setPhase("idle"); setOtp(""); setError(""); }}
+              className="flex-1 border-none bg-transparent py-2 font-mono text-[11px] uppercase tracking-[2px] text-muted/60"
+              style={{ cursor: "pointer" }}
+            >
+              change number
+            </button>
+          </div>
+          <p className="mt-2 text-center font-sans text-[11px] leading-relaxed text-muted/50">
+            no code? make sure <span className="text-muted/80">{value}</span> has whatsapp — codes only arrive there.
+          </p>
         </div>
       ) : null}
 
@@ -1577,8 +1602,14 @@ function InteractiveConfirmCard({ profile, onEditField }: { profile: ProfileDraf
    ═══════════════════════════════════════════════ */
 // Core mode runs at first onboarding — phone+OTP is here to verify every account is a real human.
 // Full mode runs from the community-safety dialog before ticket purchase.
-const CORE_STEPS: readonly number[] = [0, 1, 2, 3, 6, 8];
-const FULL_STEPS: readonly number[] = [4, 5, 7, 9, 10, 11];
+// Core = the bare minimum before browsing/booking: intro + phone verification.
+// Everything else (name, avatar, DOB, interests, …) moved post-purchase — a paid
+// ad clicker should reach checkout with phone+OTP only. The velvet rope is the
+// invite gate, not the paperwork.
+const CORE_STEPS: readonly number[] = [0, 6];
+// Full = post-purchase (dialog-gated, skippable). Leads with name+handle since
+// slim core no longer collects it and gate-code users have a placeholder name.
+const FULL_STEPS: readonly number[] = [2, 1, 3, 8, 4, 5, 7, 9, 10, 11];
 
 /* ═══════════════════════════════════════════════
    MAIN PROFILE SETUP COMPONENT
@@ -1915,7 +1946,7 @@ export function ProfileSetup({ mode = "core" }: { mode?: ProfileSetupMode } = {}
   const getButtonLabel = () => {
     if (editReturnStep !== null) return "save \u2192";
     if (isLastDisplayStep) {
-      if (step === 8 && mode === "core") return "show me what\u2019s coming up \u2192";
+      if (step === 6 && mode === "core") return "show me what\u2019s coming up \u2192";
       if (step === 11) return "that\u2019s me \u2192";
       return "done \u2192";
     }

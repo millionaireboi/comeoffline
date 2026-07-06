@@ -344,7 +344,10 @@ export function BookingsScreen() {
                         {confirmCancelId === ticket.id && !isCancelling && (
                           <div className="rounded-xl border border-terracotta/20 bg-terracotta/5 p-3">
                             <p className="mb-2 text-center font-mono text-[11px] text-terracotta">
-                              cancel this ticket? this can&apos;t be undone.
+                              {/* Be explicit about the money — a paid cancel is non-refundable */}
+                              {ticket.status === "confirmed" && ticket.price > 0
+                                ? `cancel this ticket? your spot is released and the ₹${ticket.price} isn't refunded.`
+                                : "cancel this ticket? this can't be undone."}
                             </p>
                             <div className="flex gap-2">
                               <button

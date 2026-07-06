@@ -53,6 +53,14 @@ export function useTokenHandoff() {
       if (deepLinkTierId) setPendingDeepLinkTierId(deepLinkTierId);
     }
 
+    // Landing forwards utm_* on the handoff URL — capture them so app-side
+    // attribution doesn't depend on PostHog identity stitching alone.
+    const utm: Record<string, string> = {};
+    for (const key of ["utm_source", "utm_medium", "utm_campaign", "utm_content"]) {
+      const value = params.get(key);
+      if (value) utm[key] = value;
+    }
+
     // Clean URL immediately (security: don't leave token visible)
     const cleanUrl = window.location.pathname;
     window.history.replaceState({ stage: "gate" }, "", cleanUrl);
@@ -95,6 +103,7 @@ export function useTokenHandoff() {
               handle: data.data.user.handle,
               name: data.data.user.name,
               entry_source: source,
+              ...utm,
             });
           }
           posthog.capture(FUNNEL_APP_HANDOFF_COMPLETED, {
@@ -102,6 +111,7 @@ export function useTokenHandoff() {
             event_id: deepLinkEventId,
             tier_id: deepLinkTierId,
             source,
+            ...utm,
           });
           setHandled(true);
         } else {

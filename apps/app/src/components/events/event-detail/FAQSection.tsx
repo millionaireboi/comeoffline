@@ -11,18 +11,10 @@ interface FAQSectionProps {
   accentDark: string;
 }
 
-// Default cold-buyer objection-handling FAQ — mirrors the public landing event
-// page so visitors who deep-link straight into the app get the same answers.
-// TODO: wire this to event metadata so per-event FAQ can be authored in admin.
+// Generic fallback FAQ — only answers that are true for EVERY event.
+// Per-event specifics (time, venue, what's included) are authored in admin
+// via event.faq and passed in as `items`. Never hardcode event details here.
 const DEFAULT_FAQ: FAQItem[] = [
-  {
-    q: "what time?",
-    a: "7am to 12pm. five hours of move, groove, and brunch.",
-  },
-  {
-    q: "where is it?",
-    a: "two spots in Whitefield — workout + dance at Swaasthya Fitness & Physiotherapy, brunch at Kavu nearby. exact directions for both drop on WhatsApp before the event.",
-  },
   {
     q: "coming solo?",
     a: "you come solo and go back with memories. that's the whole point.",
@@ -32,8 +24,12 @@ const DEFAULT_FAQ: FAQItem[] = [
     a: "yourself and the energy. we'll handle everything else.",
   },
   {
+    q: "how do I find the venue?",
+    a: "exact directions drop on WhatsApp before the event.",
+  },
+  {
     q: "refunds?",
-    a: "no refunds — your spot, your brunch, your DJ slot are all reserved the moment you book. exception: if we don't approve your entry, you get a full refund.",
+    a: "no refunds — everything is reserved and planned around you the moment you book. exception: if we don't approve your entry, you get a full refund.",
   },
 ];
 

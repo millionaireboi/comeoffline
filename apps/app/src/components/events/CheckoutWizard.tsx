@@ -30,6 +30,8 @@ interface CheckoutWizardProps {
   ) => void;
   onClose: () => void;
   loading?: boolean;
+  /** Tier already picked on the event detail — preselected so the user doesn't re-choose */
+  initialTierId?: string | null;
 }
 
 /* ── Tier selection step ─────────────────────────── */
@@ -947,7 +949,7 @@ function SummaryStep({
 
 /* ── Main Wizard ─────────────────────────────────── */
 
-export function CheckoutWizard({ event, onComplete, onClose, loading }: CheckoutWizardProps) {
+export function CheckoutWizard({ event, onComplete, onClose, loading, initialTierId }: CheckoutWizardProps) {
   const { track } = useAnalytics();
   const tiers = event.ticketing?.tiers || [];
   const checkoutSteps = event.checkout?.steps || [];
@@ -958,8 +960,12 @@ export function CheckoutWizard({ event, onComplete, onClose, loading }: Checkout
   // Build step sequence
   const steps = useMemo(() => {
     const s: Array<{ type: "tier" | "timeslot" | "checkout" | "summary"; stepData?: CheckoutStep }> = [];
-    // Tier selection is always first
-    s.push({ type: "tier" });
+    // Tier selection first — but skip it entirely when there's exactly one
+    // available tier. It's auto-selected, and the user already saw the price
+    // on the event detail; making them "choose" the only option twice is
+    // pure friction. (The summary step still shows the tier + price.)
+    const singleAvailableTier = tiers.length === 1 && tiers[0].sold < tiers[0].capacity;
+    if (!singleAvailableTier) s.push({ type: "tier" });
     // Time slots after tier
     if (timeSlotsEnabled) s.push({ type: "timeslot" });
     // Admin-configured steps
@@ -974,12 +980,18 @@ export function CheckoutWizard({ event, onComplete, onClose, loading }: Checkout
     // Summary is always last
     s.push({ type: "summary" });
     return s;
-  }, [checkoutSteps, timeSlotsEnabled, event.pickup_points.length, hasPickupStep]);
+  }, [checkoutSteps, timeSlotsEnabled, event.pickup_points.length, hasPickupStep, tiers]);
 
   const [currentStep, setCurrentStep] = useState(0);
-  const [selectedTierId, setSelectedTierId] = useState<string | null>(
-    tiers.length === 1 && tiers[0].sold < tiers[0].capacity ? tiers[0].id : null,
-  );
+  // In-sheet leave confirmation (replaces the old native window.confirm)
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [selectedTierId, setSelectedTierId] = useState<string | null>(() => {
+    // Prefer the tier picked on the event detail (if still available)
+    if (initialTierId && tiers.some((t) => t.id === initialTierId && t.sold < t.capacity)) {
+      return initialTierId;
+    }
+    return tiers.length === 1 && tiers[0].sold < tiers[0].capacity ? tiers[0].id : null;
+  });
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<string | null>(null);
   const [selectedPickup, setSelectedPickup] = useState<string | null>(
     event.pickup_points?.length === 1 ? event.pickup_points[0].name : null,
@@ -1297,10 +1309,7 @@ export function CheckoutWizard({ event, onComplete, onClose, loading }: Checkout
     }
   };
 
-  const hasMadeSelections = currentStep > 0 || selectedTierId !== null;
-
-  const confirmClose = () => {
-    if (hasMadeSelections && !window.confirm("leave checkout? your selections won\u2019t be saved.")) return;
+  const closeNow = () => {
     track(CHECKOUT_ABANDONED, {
       event_id: event.id,
       last_step_type: step?.type === "checkout" ? step.stepData?.type : step?.type,
@@ -1308,6 +1317,17 @@ export function CheckoutWizard({ event, onComplete, onClose, loading }: Checkout
       selected_tier_id: selectedTierId,
     });
     onClose();
+  };
+
+  const confirmClose = () => {
+    // Only guard when the user actually progressed \u2014 the auto-selected tier on
+    // step 0 isn't a selection they'd lose. And never a native window.confirm:
+    // an OS dialog inside a bespoke sheet is jarring and punishes hesitation.
+    if (currentStep > 0) {
+      setShowLeaveConfirm(true);
+      return;
+    }
+    closeNow();
   };
 
   const handleBack = () => {
@@ -1505,6 +1525,37 @@ export function CheckoutWizard({ event, onComplete, onClose, loading }: Checkout
           </button>
         </div>
       </div>
+
+      {/* In-sheet leave confirmation — replaces the native window.confirm */}
+      {showLeaveConfirm && (
+        <div className="absolute inset-0 z-[30] flex items-center justify-center bg-[rgba(10,9,7,0.45)] backdrop-blur-sm" style={{ animation: "fadeIn 0.15s ease both" }}>
+          <div className="mx-6 w-full max-w-[320px] rounded-[20px] bg-cream p-5 text-center shadow-[0_12px_40px_rgba(26,23,21,0.3)]">
+            <p className="mb-1 font-serif text-[18px] text-near-black" style={{ letterSpacing: "-0.3px" }}>
+              leave checkout?
+            </p>
+            <p className="mb-4 font-sans text-[13px] leading-relaxed text-warm-brown">
+              your selections won&apos;t be saved.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowLeaveConfirm(false)}
+                className="flex-1 rounded-xl bg-near-black py-3 font-sans text-[14px] font-medium text-cream transition-transform active:scale-[0.98]"
+              >
+                keep going
+              </button>
+              <button
+                onClick={() => {
+                  setShowLeaveConfirm(false);
+                  closeNow();
+                }}
+                className="flex-1 rounded-xl border border-sand bg-white py-3 font-sans text-[14px] text-warm-brown transition-transform active:scale-[0.98]"
+              >
+                leave
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

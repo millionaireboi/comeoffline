@@ -207,8 +207,12 @@ export function SignInScreen({ onBack }: { onBack: () => void }) {
 
   async function handleVerifyPhoneOtp(e: React.FormEvent) {
     e.preventDefault();
+    await verifyPhoneOtp(phoneOtp);
+  }
+
+  async function verifyPhoneOtp(code: string) {
     if (loading) return;
-    if (phoneOtp.length !== 6) {
+    if (code.length !== 6) {
       setError("enter the 6-digit code");
       return;
     }
@@ -222,7 +226,7 @@ export function SignInScreen({ onBack }: { onBack: () => void }) {
         data: { token: string; user: Record<string, unknown> };
       }>("/api/auth/sign-in/phone/verify", {
         method: "POST",
-        body: JSON.stringify({ phone, code: phoneOtp }),
+        body: JSON.stringify({ phone, code }),
       });
 
       if (res.data.user) {
@@ -411,7 +415,12 @@ export function SignInScreen({ onBack }: { onBack: () => void }) {
               pattern="[0-9]*"
               maxLength={6}
               value={phoneOtp}
-              onChange={(e) => setPhoneOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              onChange={(e) => {
+                const v = e.target.value.replace(/\D/g, "").slice(0, 6);
+                setPhoneOtp(v);
+                // Auto-submit at 6 digits — no extra tap on the most drop-prone step
+                if (v.length === 6 && !loading) void verifyPhoneOtp(v);
+              }}
               autoComplete="one-time-code"
               className="w-full rounded-[14px] border border-white/10 bg-white/5 px-5 py-4 text-center font-mono text-xl tracking-[8px] text-cream placeholder:text-muted/20 focus:border-caramel/50 focus:outline-none"
               placeholder="000000"
@@ -444,6 +453,10 @@ export function SignInScreen({ onBack }: { onBack: () => void }) {
           >
             {phoneCooldown > 0 ? `resend in ${phoneCooldown}s` : "resend code"}
           </button>
+
+          <p className="text-center font-sans text-[11px] leading-relaxed text-muted/40">
+            no code? make sure this number has whatsapp — codes only arrive there.
+          </p>
         </form>
       )}
 

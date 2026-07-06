@@ -8,15 +8,25 @@ import { apiFetch } from "@/lib/api";
 /**
  * Registers service worker, requests notification permission,
  * gets FCM token, and stores it on the user profile.
+ *
+ * Permission timing: the OS prompt is one-shot — a "Block" kills web push
+ * forever. So we never ask at app entry. If permission is already granted we
+ * silently refresh the FCM token; otherwise we only prompt once the user has
+ * a booking (countdown journey), when "get pinged about your event" is an
+ * obvious yes.
  */
 export function usePushNotifications() {
   const { getIdToken } = useAuth();
   const user = useAppStore((s) => s.user);
+  const stage = useAppStore((s) => s.stage);
+  const activeTicket = useAppStore((s) => s.activeTicket);
+  const activeRsvp = useAppStore((s) => s.activeRsvp);
   const registered = useRef(false);
 
   useEffect(() => {
     if (!user || registered.current) return;
     if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
+    if (typeof Notification === "undefined") return;
 
     // Skip push registration on local dev hosts — the FCM HTTP API + VAPID setup
     // isn't worth wiring locally, and the 401 noise drowns out real errors.
@@ -25,6 +35,19 @@ export function usePushNotifications() {
       registered.current = true;
       return;
     }
+
+    // Already blocked — nothing we can do, don't retry every render.
+    if (Notification.permission === "denied") {
+      registered.current = true;
+      return;
+    }
+
+    // Not yet asked → defer the prompt to the post-booking moment.
+    // (Do NOT mark registered — this effect re-runs when booking context arrives.)
+    const hasBookingContext =
+      !!(activeTicket || activeRsvp) ||
+      ["countdown", "reveal", "dayof", "godark"].includes(stage);
+    if (Notification.permission !== "granted" && !hasBookingContext) return;
 
     async function setup() {
       try {

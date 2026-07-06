@@ -51,13 +51,14 @@ export function BottomNav({ onChatOpen }: BottomNavProps) {
           <span className="font-mono text-[9px] tracking-[0.5px]">bookings</span>
         </button>
 
-        {/* Chat */}
+        {/* Help — the AI support bot. Labeled "help", not "chat": calling it
+            chat promised member messaging that doesn't exist (yet). */}
         <button
           onClick={onChatOpen}
           className="flex flex-col items-center gap-0.5 px-4 py-1.5 text-muted transition-colors"
         >
           <span className="text-[18px]">💬</span>
-          <span className="font-mono text-[9px] tracking-[0.5px]">chat</span>
+          <span className="font-mono text-[9px] tracking-[0.5px]">help</span>
         </button>
 
         {/* Profile */}

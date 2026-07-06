@@ -43,6 +43,27 @@ export function EventFeed() {
   );
   const needsPhoneNumber = user && !user.phone_number;
 
+  // "Your people are going" — per-event counts of my connections with tickets
+  const [connectionsGoing, setConnectionsGoing] = useState<Record<string, { count: number; names: string[] }>>({});
+  useEffect(() => {
+    if (authLoading) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getIdToken();
+        if (!token || cancelled) return;
+        const res = await apiFetch<{ success: boolean; data: Record<string, { count: number; names: string[] }> }>(
+          "/api/users/me/connections-going",
+          { token },
+        );
+        if (!cancelled && res.data) setConnectionsGoing(res.data);
+      } catch {
+        // Non-fatal — cards simply render without the social badge
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [authLoading, getIdToken]);
+
   const tokenRetryCount = useRef(0);
 
   const fetchEvents = useCallback(async () => {
@@ -457,7 +478,7 @@ export function EventFeed() {
       {/* Event cards */}
       <section className="flex flex-col gap-4 px-4">
         {events.map((event, i) => (
-          <EventCard key={event.id} event={event} index={i} onOpen={openEventDetail} />
+          <EventCard key={event.id} event={event} index={i} onOpen={openEventDetail} connectionsGoing={connectionsGoing[event.id]} />
         ))}
 
         {/* Coming soon placeholder */}

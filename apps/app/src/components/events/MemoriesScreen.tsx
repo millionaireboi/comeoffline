@@ -5,6 +5,7 @@ import type { Memories, Polaroid, OverheardQuote } from "@comeoffline/types";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppStore } from "@/store/useAppStore";
 import { apiFetch } from "@/lib/api";
+import { savePolaroid } from "@/lib/save-photo";
 import { getDevStageOverride, MOCK_MEMORIES } from "@/lib/dev-stage";
 import { Noise } from "@/components/shared/Noise";
 import { PullToRefresh } from "@/components/shared/PullToRefresh";
@@ -305,53 +306,6 @@ function PolaroidImage({ url, alt }: { url: string; alt?: string }) {
       />
     </div>
   );
-}
-
-async function savePolaroid(photo: Polaroid) {
-  const slug = (photo.caption || photo.id || "memory")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 40) || "memory";
-  const filename = `comeoffline-${slug}.jpg`;
-
-  let blob: Blob | null = null;
-  try {
-    const res = await fetch(photo.url, { mode: "cors" });
-    if (res.ok) blob = await res.blob();
-  } catch {
-    // CORS or network failure — handled below
-  }
-
-  // Web Share API (preferred on mobile — drops into photos / IG / messages)
-  if (blob && typeof navigator !== "undefined" && "share" in navigator) {
-    try {
-      const file = new File([blob], filename, { type: blob.type || "image/jpeg" });
-      const canShare = (navigator as Navigator & { canShare?: (data: { files: File[] }) => boolean }).canShare;
-      if (!canShare || canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: photo.caption || "come offline memory" });
-        return;
-      }
-    } catch {
-      // user cancelled or share unsupported — fall through to download
-    }
-  }
-
-  // Anchor download (desktop / Android Chrome)
-  if (blob) {
-    const objectUrl = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = objectUrl;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-    return;
-  }
-
-  // Last resort — open the image so the user can long-press / right-click to save
-  window.open(photo.url, "_blank", "noopener,noreferrer");
 }
 
 function QuoteCard({ quote, index }: { quote: OverheardQuote; index: number }) {

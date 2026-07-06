@@ -2,6 +2,8 @@ import { useState } from "react";
 import type { TicketTier, WaitlistEntry } from "@comeoffline/types";
 
 interface FloatingCTAProps {
+  /** User already holds an active ticket — CTA becomes "view your ticket" */
+  alreadyBooked?: boolean;
   spotsLeft: number;
   isTicketed: boolean;
   hasCheckoutWizard: boolean;
@@ -21,6 +23,7 @@ interface FloatingCTAProps {
 }
 
 export function FloatingCTA({
+  alreadyBooked,
   spotsLeft,
   isTicketed,
   hasCheckoutWizard,
@@ -111,6 +114,25 @@ export function FloatingCTA({
             )}
           </div>
         )}
+      </div>
+    );
+  }
+
+  // Already booked — a single "view your ticket" action, never re-entering checkout.
+  if (alreadyBooked) {
+    return (
+      <div className="relative z-[5] shrink-0 px-5 pt-3" style={{ paddingBottom: safeAreaPadding }}>
+        <div className="pointer-events-none absolute -top-6 left-0 right-0 h-6 bg-gradient-to-t from-cream to-transparent" />
+        <button
+          onClick={onCTA}
+          className="w-full rounded-[100px] py-[16px] text-center font-sans text-[15px] font-semibold text-near-black transition-transform active:scale-[0.98]"
+          style={{
+            background: `linear-gradient(135deg, ${accentDark}, ${accent})`,
+            boxShadow: "0 6px 24px rgba(26,23,21,0.18), 0 0 0 1px rgba(155,142,130,0.08)",
+          }}
+        >
+          you&apos;re in {"✓"} — view your ticket
+        </button>
       </div>
     );
   }

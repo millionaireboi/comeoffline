@@ -37,6 +37,14 @@ export const FUNNEL_APP_HANDOFF_STARTED = "funnel_app_handoff_started";
 export const FUNNEL_APP_HANDOFF_COMPLETED = "funnel_app_handoff_completed";
 export const FUNNEL_APP_HANDOFF_FAILED = "funnel_app_handoff_failed";
 export const FUNNEL_EVENT_DETAIL_OPENED_IN_APP = "funnel_event_detail_opened_in_app";
+
+// ── Poster campaign (guerrilla QR → /hi conversational landing) ───────
+// Carries poster_location (?p=) + utm_content (poster line variant) so each
+// printed poster is its own A/B cell in PostHog.
+export const POSTER_SCANNED = "poster_scanned"; // /hi viewed
+export const POSTER_CHOICE_MADE = "poster_choice_made"; // dialogue answer tapped
+export const POSTER_LIGHTS_ON = "poster_lights_on"; // finished dialogue, saw the event
+export const POSTER_CTA_CLICKED = "poster_cta_clicked"; // booking handoff started
 export const FUNNEL_TIER_SELECTED_IN_APP = "funnel_tier_selected_in_app";
 export const FUNNEL_CHECKOUT_OPENED = "funnel_checkout_opened";
 export const FUNNEL_RAZORPAY_REDIRECTED = "funnel_razorpay_redirected";

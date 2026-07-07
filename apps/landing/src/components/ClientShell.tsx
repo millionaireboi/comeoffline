@@ -1,14 +1,21 @@
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
+import { usePathname } from "next/navigation";
 import { PostHogProvider, FacebookPixel } from "@comeoffline/analytics";
 import { ChatProvider } from "@/components/chat/ChatProvider";
 import { ChatBot } from "@/components/chat/ChatBot";
 import { FloatingChatButton } from "@/components/chat/FloatingChatButton";
 import { TabHeader } from "@/components/nav/TabHeader";
 
+// Full-takeover funnel pages: no tab nav, no chatbot — every extra link is an
+// exit ramp before the booking CTA. They render their own branding.
+const TAKEOVER_ROUTES = ["/hi"];
+
 export function ClientShell({ children }: { children: React.ReactNode }) {
   const [scrolled, setScrolled] = useState(false);
+  const pathname = usePathname();
+  const isTakeover = TAKEOVER_ROUTES.includes(pathname);
 
   useEffect(() => {
     const h = () => setScrolled(window.scrollY > 400);
@@ -21,12 +28,12 @@ export function ClientShell({ children }: { children: React.ReactNode }) {
       <PostHogProvider appName="landing">
         <FacebookPixel />
         <ChatProvider>
-          <TabHeader />
+          {!isTakeover && <TabHeader />}
           <div className="overflow-x-hidden">
             {children}
           </div>
-          <FloatingChatButton visible={scrolled} />
-          <ChatBot />
+          {!isTakeover && <FloatingChatButton visible={scrolled} />}
+          {!isTakeover && <ChatBot />}
         </ChatProvider>
       </PostHogProvider>
     </Suspense>

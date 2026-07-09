@@ -12,15 +12,16 @@ import {
   notifyTicketConfirmed,
 } from "../services/ticket.service";
 import { createPaymentLink, cancelPaymentLink } from "../services/razorpay.service";
+import { validateDiscountCode } from "../services/discount.service";
 import { getDb } from "../config/firebase-admin";
-import { strictLimiter } from "../middleware/rateLimit";
+import { strictLimiter, discountCheckLimiter } from "../middleware/rateLimit";
 
 const router = Router();
 
 /** POST /api/tickets/create — Purchase a ticket */
 router.post("/create", requireAuth, strictLimiter, async (req: AuthRequest, res) => {
   try {
-    const { event_id, tier_id, pickup_point, time_slot_id, add_ons, seat_id, section_id, spot_seat_id } = req.body;
+    const { event_id, tier_id, pickup_point, time_slot_id, add_ons, seat_id, section_id, spot_seat_id, discount_code } = req.body;
 
     // Input validation
     if (!event_id || typeof event_id !== "string") {
@@ -29,6 +30,10 @@ router.post("/create", requireAuth, strictLimiter, async (req: AuthRequest, res)
     }
     if (tier_id !== undefined && typeof tier_id !== "string") {
       res.status(400).json({ success: false, error: "Invalid tier_id" });
+      return;
+    }
+    if (discount_code !== undefined && typeof discount_code !== "string") {
+      res.status(400).json({ success: false, error: "Invalid discount_code" });
       return;
     }
     if (add_ons !== undefined) {
@@ -44,7 +49,7 @@ router.post("/create", requireAuth, strictLimiter, async (req: AuthRequest, res)
       }
     }
 
-    const result = await createTicket(req.uid!, event_id, tier_id, pickup_point, time_slot_id, add_ons, seat_id, section_id, spot_seat_id);
+    const result = await createTicket(req.uid!, event_id, tier_id, pickup_point, time_slot_id, add_ons, seat_id, section_id, spot_seat_id, discount_code);
 
     if (!result.success) {
       res.status(400).json({ success: false, error: result.error });
@@ -113,6 +118,34 @@ router.post("/create", requireAuth, strictLimiter, async (req: AuthRequest, res)
     res.status(201).json({ success: true, data: result.ticket });
   } catch (err) {
     console.error("[tickets] create error:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+});
+
+/** POST /api/tickets/validate-discount — Preview a discount code before purchase */
+router.post("/validate-discount", requireAuth, discountCheckLimiter, async (req: AuthRequest, res) => {
+  try {
+    const { code, event_id, subtotal } = req.body;
+
+    if (!code || typeof code !== "string") {
+      res.status(400).json({ success: false, error: "code is required" });
+      return;
+    }
+    if (!event_id || typeof event_id !== "string") {
+      res.status(400).json({ success: false, error: "event_id is required" });
+      return;
+    }
+    if (typeof subtotal !== "number" || subtotal < 0) {
+      res.status(400).json({ success: false, error: "subtotal must be a non-negative number" });
+      return;
+    }
+
+    // The subtotal here is client-supplied and only shapes the preview amount —
+    // the authoritative price is recomputed server-side in createTicket.
+    const result = await validateDiscountCode(code, event_id, subtotal);
+    res.json({ success: true, data: result });
+  } catch (err) {
+    console.error("[tickets] validate-discount error:", err);
     res.status(500).json({ success: false, error: "Internal server error" });
   }
 });

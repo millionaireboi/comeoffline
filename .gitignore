@@ -42,3 +42,6 @@ firebase-debug.log
 .firebase/
 *-firebase-adminsdk-*.json
 firestore-debug.log
+
+# Playwright MCP session artifacts (page snapshots, console logs)
+.playwright-mcp/

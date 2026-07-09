@@ -29,6 +29,7 @@ import brandsRouter from "./routes/brands";
 import adminUploadRouter from "./routes/admin/upload";
 import adminFloorplanRouter from "./routes/admin/floorplan";
 import adminBookingsRouter from "./routes/admin/bookings";
+import adminDiscountsRouter from "./routes/admin/discounts";
 import adminWhatsappRouter from "./routes/admin/whatsapp";
 import webhooksRouter from "./routes/webhooks";
 import whatsappWebhookRouter from "./routes/webhooks-whatsapp";
@@ -68,6 +69,7 @@ app.use("/api/admin/brands", adminLimiter, brandsRouter);
 app.use("/api/admin", adminLimiter, adminUploadRouter);
 app.use("/api/admin", adminLimiter, adminFloorplanRouter);
 app.use("/api/admin/bookings", adminLimiter, adminBookingsRouter);
+app.use("/api/admin/discounts", adminLimiter, adminDiscountsRouter);
 app.use("/api/admin", adminLimiter, adminWhatsappRouter);
 
 // Apply general rate limiting to all non-admin routes

@@ -1,6 +1,10 @@
 import { getDb } from "../config/firebase-admin";
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, type DocumentSnapshot } from "firebase-admin/firestore";
 import QRCode from "qrcode";
+import {
+  normalizeDiscountCode,
+  evaluateDiscountSnapshot,
+} from "./discount.service";
 import crypto from "crypto";
 import { env } from "../config/env";
 import { sendTemplate, uploadMedia } from "./whatsapp.service";
@@ -43,6 +47,7 @@ export async function createTicket(
   seatId?: string,
   sectionId?: string,
   spotSeatId?: string,
+  discountCode?: string,
 ): Promise<CreateTicketResult> {
   const db = await getDb();
   return db.runTransaction(async (tx) => {
@@ -80,15 +85,16 @@ export async function createTicket(
     // Track stale holds to release from seating data
     const staleHolds: Array<{ spot_id?: string; spot_seat_id?: string; seat_id?: string }> = [];
     const staleAddonHolds: Array<{ addon_id: string; spot_id: string; spot_seat_id?: string }> = [];
+    // Classify first (pure) — all tx reads (incl. discount docs below) must
+    // happen before the first tx write, so the expiry writes are deferred.
+    const staleDocs: typeof existingSnap.docs = [];
     for (const doc of existingSnap.docs) {
       const t = doc.data();
       // Auto-expire stale pending_payment tickets
       if (t.status === "pending_payment") {
         const purchasedAt = new Date(t.purchased_at).getTime();
         if (Date.now() - purchasedAt > PAYMENT_TIMEOUT_MS) {
-          tx.update(doc.ref, { status: "cancelled", cancelled_reason: "payment_timeout" });
-          // Release reserved capacity
-          tx.update(eventRef, { spots_held: FieldValue.increment(-(t.quantity || 1)) });
+          staleDocs.push(doc);
           // Collect seat holds to release
           if (t.spot_id || t.seat_id) {
             staleHolds.push({ spot_id: t.spot_id, spot_seat_id: t.spot_seat_id, seat_id: t.seat_id });
@@ -106,6 +112,21 @@ export async function createTicket(
       }
       existingCount += t.quantity || 1;
     }
+    // Read discount docs: the code being applied now, plus codes whose uses were
+    // reserved by stale tickets and need refunding when those tickets expire
+    const staleDiscountRefunds = new Map<string, number>();
+    for (const doc of staleDocs) {
+      const code = doc.data().discount_code;
+      if (code) staleDiscountRefunds.set(code, (staleDiscountRefunds.get(code) || 0) + 1);
+    }
+    const appliedCode = discountCode ? normalizeDiscountCode(discountCode) : null;
+    const discountCodesToRead = new Set<string>(staleDiscountRefunds.keys());
+    if (appliedCode) discountCodesToRead.add(appliedCode);
+    const discountSnaps = new Map<string, DocumentSnapshot>();
+    for (const code of discountCodesToRead) {
+      discountSnaps.set(code, await tx.get(db.collection("discount_codes").doc(code)));
+    }
+
     if (existingCount >= (ticketing.max_per_user || 1)) {
       return { success: false, error: "You already have the maximum tickets for this event" };
     }
@@ -333,7 +354,49 @@ export async function createTicket(
 
     // Determine price and status
     const tierPrice = selectedTier?.price || 0;
-    const price = tierPrice + addOnTotal;
+    const subtotal = tierPrice + addOnTotal;
+
+    // Apply discount code — validated against the transactional snapshot so a
+    // code can never exceed max_uses under concurrent purchases. The use is
+    // reserved here and refunded if the payment expires or is cancelled unpaid.
+    let price = subtotal;
+    let discountAmount = 0;
+    let discountApplied = false;
+    if (appliedCode && subtotal > 0) {
+      const discountSnap = discountSnaps.get(appliedCode)!;
+      // Uses freed by this user's own expiring pending ticket count as available again
+      const pendingRefund = staleDiscountRefunds.get(appliedCode) || 0;
+      const validation = evaluateDiscountSnapshot(discountSnap, eventId, subtotal, -pendingRefund);
+      if (!validation.valid) {
+        return { success: false, error: validation.error || "Invalid discount code" };
+      }
+      discountAmount = validation.discount_amount || 0;
+      price = subtotal - discountAmount;
+      discountApplied = true;
+    }
+
+    // Expire stale pending tickets and settle discount uses — deferred to after
+    // the last validation early-return, because returning from the transaction
+    // callback still COMMITS earlier writes: expiring a ticket without its
+    // discount refund (or vice versa) would leak uses.
+    for (const doc of staleDocs) {
+      const t = doc.data();
+      tx.update(doc.ref, { status: "cancelled", cancelled_reason: "payment_timeout" });
+      tx.update(eventRef, { spots_held: FieldValue.increment(-(t.quantity || 1)) });
+    }
+    const discountUseDeltas = new Map<string, number>();
+    for (const [code, count] of staleDiscountRefunds) {
+      if (discountSnaps.get(code)?.exists) discountUseDeltas.set(code, -count);
+    }
+    if (discountApplied && appliedCode) {
+      discountUseDeltas.set(appliedCode, (discountUseDeltas.get(appliedCode) || 0) + 1);
+    }
+    for (const [code, delta] of discountUseDeltas) {
+      if (delta !== 0) {
+        tx.update(db.collection("discount_codes").doc(code), { uses: FieldValue.increment(delta) });
+      }
+    }
+
     const quantity = selectedTier?.per_person || 1;
     const isFree = price === 0 || event.is_free || !ticketing.enabled;
     const status = isFree ? "confirmed" : "pending_payment";
@@ -356,6 +419,9 @@ export async function createTicket(
       tier_id: tierId || "free",
       tier_name: selectedTier?.label || selectedTier?.name || "Free",
       price,
+      discount_code: discountApplied ? appliedCode : null,
+      discount_amount: discountAmount,
+      original_price: subtotal,
       quantity,
       status,
       qr_code: qrCode,
@@ -715,8 +781,19 @@ export async function cancelTicket(
       eventDoc = await tx.get(eventRef);
     }
 
+    // Unpaid ticket dying — refund the discount use it reserved at creation.
+    // Confirmed cancellations keep the use burned (the code did convert).
+    let discountSnap: DocumentSnapshot | null = null;
+    if (wasPending && ticket.discount_code) {
+      discountSnap = await tx.get(db.collection("discount_codes").doc(ticket.discount_code));
+    }
+
     // Now perform all writes
     tx.update(ticketRef, { status: "cancelled", cancelled_at: new Date().toISOString() });
+
+    if (discountSnap?.exists) {
+      tx.update(discountSnap.ref, { uses: FieldValue.increment(-1) });
+    }
 
     // Decrement spots_held for pending tickets (reserved capacity)
     if (wasPending) {

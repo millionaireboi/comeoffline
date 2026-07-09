@@ -369,11 +369,42 @@ export interface Ticket {
   spot_seat_label?: string; // denormalized — e.g. "Seat 3"
   payment_link_id?: string; // Razorpay payment link ID
   payment_url?: string; // Razorpay payment URL for redirect
+  discount_code?: string | null; // discount code applied at purchase
+  discount_amount?: number; // rupees knocked off by the code
+  original_price?: number; // price before discount (price = original_price - discount_amount)
   purchased_at: string;
   checked_in_at?: string;
   checked_in_by?: string;
   checked_in_headcount?: number;
   check_in_log?: Array<{ at: string; by: string; headcount: number }>;
+}
+
+// ── Discount Code ─────────────────────────────────
+
+export type DiscountType = "percent" | "flat";
+
+export interface DiscountCode {
+  code: string; // uppercase, doc ID in Firestore
+  type: DiscountType;
+  value: number; // percent (1-100) or flat rupees
+  event_id?: string | null; // null = valid for all events
+  event_title?: string | null; // denormalized for admin display
+  max_uses?: number | null; // null = unlimited
+  uses: number;
+  active: boolean;
+  expires_at?: string | null; // ISO date, null = never
+  created_at: string;
+  created_by?: string;
+}
+
+/** Result of validating a code against an event + order subtotal */
+export interface DiscountValidation {
+  valid: boolean;
+  error?: string;
+  code?: string;
+  type?: DiscountType;
+  value?: number;
+  discount_amount?: number; // rupees off the given subtotal
 }
 
 // ── Handoff Token ────────────────────────────────

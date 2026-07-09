@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from "react";
-import type { Event, TicketTier, CheckoutStep, CheckoutAddOn, TimeSlot, SeatingSection, Seat, SeatingConfig, AddonSeatingConfig, Spot } from "@comeoffline/types";
+import type { Event, TicketTier, CheckoutStep, CheckoutAddOn, TimeSlot, SeatingSection, Seat, SeatingConfig, AddonSeatingConfig, Spot, DiscountValidation, DiscountType } from "@comeoffline/types";
 import { useAnalytics, trackFbEvent, CHECKOUT_STARTED, CHECKOUT_STEP_VIEWED, CHECKOUT_STEP_COMPLETED, TIER_SELECTED, CHECKOUT_COMPLETED, CHECKOUT_ABANDONED } from "@comeoffline/analytics";
 import { useAuth } from "@/hooks/useAuth";
 import { apiFetch } from "@/lib/api";
@@ -17,6 +17,19 @@ interface SelectedAddon {
   spot_seat_label?: string;
 }
 
+interface AppliedDiscount {
+  code: string;
+  type: DiscountType;
+  value: number;
+}
+
+/** Mirrors the server's discount math so the preview never drifts from the charge */
+function discountAmountFor(discount: AppliedDiscount, subtotal: number): number {
+  if (subtotal <= 0) return 0;
+  const raw = discount.type === "percent" ? (subtotal * discount.value) / 100 : discount.value;
+  return Math.min(subtotal, Math.max(0, Math.round(raw)));
+}
+
 interface CheckoutWizardProps {
   event: Event;
   onComplete: (
@@ -27,6 +40,7 @@ interface CheckoutWizardProps {
     seatId?: string,
     sectionId?: string,
     spotSeatId?: string,
+    discountCode?: string,
   ) => void;
   onClose: () => void;
   loading?: boolean;
@@ -832,6 +846,9 @@ function SummaryStep({
   seatId,
   sectionId,
   spotSeatId,
+  appliedDiscount,
+  onApplyPromo,
+  onRemovePromo,
 }: {
   event: Event;
   selectedTier: TicketTier | undefined;
@@ -844,7 +861,28 @@ function SummaryStep({
   seatId: string | null;
   sectionId: string | null;
   spotSeatId: string | null;
+  appliedDiscount: AppliedDiscount | null;
+  onApplyPromo: (code: string) => Promise<string | null>;
+  onRemovePromo: () => void;
 }) {
+  const [promoInput, setPromoInput] = useState("");
+  const [promoError, setPromoError] = useState<string | null>(null);
+  const [applying, setApplying] = useState(false);
+
+  const handleApply = async () => {
+    const code = promoInput.trim();
+    if (!code || applying) return;
+    setApplying(true);
+    setPromoError(null);
+    const error = await onApplyPromo(code);
+    if (error) {
+      setPromoError(error);
+    } else {
+      setPromoInput("");
+    }
+    setApplying(false);
+  };
+
   const tierPrice = selectedTier?.price || 0;
 
   // Compute add-on totals
@@ -865,7 +903,9 @@ function SummaryStep({
   }
 
   const addonTotal = addonItems.reduce((s, a) => s + a.price * a.qty, 0);
-  const total = tierPrice + addonTotal;
+  const subtotal = tierPrice + addonTotal;
+  const discountAmount = appliedDiscount ? discountAmountFor(appliedDiscount, subtotal) : 0;
+  const total = subtotal - discountAmount;
 
   const timeSlot = event.ticketing?.time_slots?.find((s) => s.id === timeSlotId);
 
@@ -932,6 +972,59 @@ function SummaryStep({
           )}
           {timeSlot && (
             <p className="font-mono text-[10px] text-muted">time: {timeSlot.label}</p>
+          )}
+        </div>
+      )}
+
+      {/* Promo code \u2014 only makes sense on paid orders */}
+      {subtotal > 0 && (
+        <div className="mt-3 border-t border-sand/50 pt-3">
+          {appliedDiscount ? (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="rounded-md bg-near-black/[0.06] px-2 py-1 font-mono text-[11px] uppercase tracking-[1px] text-near-black">
+                  {appliedDiscount.code}
+                </span>
+                <button
+                  onClick={onRemovePromo}
+                  className="font-mono text-[10px] uppercase tracking-[1px] text-muted underline underline-offset-2"
+                >
+                  remove
+                </button>
+              </div>
+              <span className="font-sans text-[13px] font-medium text-near-black">
+                -{`\u20B9${discountAmount}`}
+              </span>
+            </div>
+          ) : (
+            <>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={promoInput}
+                  onChange={(e) => {
+                    setPromoInput(e.target.value.toUpperCase());
+                    setPromoError(null);
+                  }}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleApply(); }}
+                  placeholder="promo code"
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  className="min-w-0 flex-1 rounded-xl border border-sand bg-cream/50 px-3 py-2.5 font-mono text-[12px] uppercase tracking-[1px] text-near-black placeholder:normal-case placeholder:text-muted focus:border-near-black/30 focus:outline-none"
+                />
+                <button
+                  onClick={handleApply}
+                  disabled={!promoInput.trim() || applying}
+                  className="rounded-xl bg-near-black px-4 py-2.5 font-mono text-[11px] uppercase tracking-[1px] text-cream transition-opacity disabled:opacity-30"
+                >
+                  {applying ? "..." : "apply"}
+                </button>
+              </div>
+              {promoError && (
+                <p className="mt-1.5 font-mono text-[10px] text-[#B85C4A]">{promoError.toLowerCase()}</p>
+              )}
+            </>
           )}
         </div>
       )}
@@ -1005,6 +1098,10 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
   const [addonSeatSelections, setAddonSeatSelections] = useState<
     Record<string, { spotId: string | null; spotSeatId: string | null }>
   >({});
+  // Discount code applied on the summary step. Type + value are kept (not just
+  // the amount) so the deduction recomputes correctly if the user goes back
+  // and changes add-ons. Server re-validates at purchase either way.
+  const [appliedDiscount, setAppliedDiscount] = useState<AppliedDiscount | null>(null);
 
   // Live seating polling
   const { getIdToken } = useAuth();
@@ -1017,6 +1114,40 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
   const selectedTier = tiers.find((t) => t.id === selectedTierId);
   const step = steps[currentStep];
   const isLastStep = currentStep === steps.length - 1;
+
+  // Order subtotal (tier + add-ons) — what discount codes apply against
+  const subtotal = useMemo(() => {
+    const tierPrice = selectedTier?.price || 0;
+    const addonTotal = Object.entries(addonSelections).reduce((total, [stepId, sels]) => {
+      const cs = checkoutSteps.find((s) => s.id === stepId);
+      if (!cs?.add_ons) return total;
+      return total + cs.add_ons.reduce((s, a) => s + (sels[a.id] || 0) * a.price, 0);
+    }, 0);
+    return tierPrice + addonTotal;
+  }, [selectedTier, addonSelections, checkoutSteps]);
+
+  // Validate a promo code against the server. Returns an error message, or null on success.
+  const applyPromo = async (code: string): Promise<string | null> => {
+    try {
+      const token = await getIdToken();
+      if (!token) return "please sign in again";
+      const res = await apiFetch<{ success: boolean; data: DiscountValidation }>(
+        "/api/tickets/validate-discount",
+        {
+          method: "POST",
+          token,
+          body: JSON.stringify({ code, event_id: event.id, subtotal }),
+        },
+      );
+      if (res.data?.valid && res.data.code && res.data.type && res.data.value != null) {
+        setAppliedDiscount({ code: res.data.code, type: res.data.type, value: res.data.value });
+        return null;
+      }
+      return res.data?.error || "invalid code";
+    } catch {
+      return "couldn't check that code. try again.";
+    }
+  };
 
   // Track checkout started on mount
   useEffect(() => {
@@ -1303,6 +1434,7 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
         selectedSeatId || undefined,
         selectedSectionId || undefined,
         selectedSpotSeatId || undefined,
+        appliedDiscount?.code,
       );
     } else {
       setCurrentStep((prev) => Math.min(prev + 1, steps.length - 1));
@@ -1353,13 +1485,8 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
   const ctaLabel = () => {
     if (loading) return "processing...";
     if (isLastStep) {
-      const tierPrice = selectedTier?.price || 0;
-      const addonTotal = Object.entries(addonSelections).reduce((total, [stepId, sels]) => {
-        const cs = checkoutSteps.find((s) => s.id === stepId);
-        if (!cs?.add_ons) return total;
-        return total + cs.add_ons.reduce((s, a) => s + (sels[a.id] || 0) * a.price, 0);
-      }, 0);
-      const total = tierPrice + addonTotal;
+      const discountAmount = appliedDiscount ? discountAmountFor(appliedDiscount, subtotal) : 0;
+      const total = subtotal - discountAmount;
       return total === 0 ? "confirm \u2192" : `pay \u20B9${total} \u2192`;
     }
     return "continue \u2192";
@@ -1494,6 +1621,9 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
               seatId={selectedSeatId}
               sectionId={selectedSectionId}
               spotSeatId={selectedSpotSeatId}
+              appliedDiscount={appliedDiscount}
+              onApplyPromo={applyPromo}
+              onRemovePromo={() => setAppliedDiscount(null)}
             />
           )}
         </div>

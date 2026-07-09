@@ -27,6 +27,7 @@ interface EventDetailProps {
     seatId?: string,
     sectionId?: string,
     spotSeatId?: string,
+    discountCode?: string,
   ) => void;
   onJoinWaitlist?: (spotsWanted: number) => void;
   onLeaveWaitlist?: (entryId: string) => void;
@@ -143,14 +144,15 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
       event_id: event.id,
       tier_id: selectedTierId,
       tier_price: selectedTier?.price,
-      checkout_path: hasCheckoutWizard ? "wizard" : "direct",
+      checkout_path: hasCheckoutWizard ? "wizard" : "wizard_summary_only",
     });
     // Purchase / RSVP is no longer gated on the rest of the profile — buying is the highest-intent
     // moment, so don't block it. The remaining onboarding fields are collected post-purchase.
-    if (isTicketed && hasCheckoutWizard && onTicketPurchase) {
+    if (isTicketed && onTicketPurchase) {
+      // Every paid purchase goes through the wizard: with no configured checkout
+      // steps it collapses to a single order-summary screen, which is where the
+      // promo code field lives and the only order review before Razorpay.
       setShowWizard(true);
-    } else if (isTicketed && onTicketPurchase && selectedTierId) {
-      onTicketPurchase(selectedTierId, selectedPickup || undefined, selectedTimeSlot || undefined);
     } else if (onRsvp) {
       onRsvp();
     }
@@ -279,9 +281,9 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
             // still fire from inside the wizard.
             setShowWizard(false);
           }}
-          onComplete={(tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId) => {
+          onComplete={(tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId, discountCode) => {
             setShowWizard(false);
-            onTicketPurchase?.(tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId);
+            onTicketPurchase?.(tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId, discountCode);
           }}
           loading={loading}
         />

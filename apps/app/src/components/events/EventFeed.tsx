@@ -178,6 +178,7 @@ export function EventFeed() {
       seatId?: string,
       sectionId?: string,
       spotSeatId?: string,
+      discountCode?: string,
     ) => {
       if (actionLockRef.current) return;
       actionLockRef.current = true;
@@ -197,6 +198,7 @@ export function EventFeed() {
             seat_id: seatId || undefined,
             section_id: sectionId || undefined,
             spot_seat_id: spotSeatId || undefined,
+            discount_code: discountCode || undefined,
           }),
         });
         if (data.data) {
@@ -251,8 +253,9 @@ export function EventFeed() {
       seatId?: string,
       sectionId?: string,
       spotSeatId?: string,
+      discountCode?: string,
     ) => {
-      await executePurchase(event, tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId);
+      await executePurchase(event, tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId, discountCode);
     },
     [executePurchase],
   );
@@ -503,8 +506,8 @@ export function EventFeed() {
           initialTierId={detailInitialTierId}
           onClose={() => { setDetailEvent(null); setDetailInitialTierId(null); }}
           onRsvp={() => handleRsvp(detailEvent)}
-          onTicketPurchase={(tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId) =>
-            handleTicketPurchase(detailEvent, tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId)
+          onTicketPurchase={(tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId, discountCode) =>
+            handleTicketPurchase(detailEvent, tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId, discountCode)
           }
           onJoinWaitlist={(spotsWanted) => handleJoinWaitlist(detailEvent, spotsWanted)}
           onLeaveWaitlist={(entryId) => handleLeaveWaitlist(detailEvent, entryId)}

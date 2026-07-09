@@ -54,6 +54,25 @@ export const strictLimiter = rateLimit({
 });
 
 /**
+ * Discount-code check limiter — its own bucket so trying a few codes at
+ * checkout never eats into the strictLimiter budget shared with /create,
+ * while still blocking brute-force code guessing
+ * - 30 checks per 15 minutes per user/IP
+ */
+export const discountCheckLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  keyGenerator: keyByUser,
+  skip: skipInDev,
+  message: {
+    success: false,
+    error: "Too many code attempts. Please try again in 15 minutes.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+/**
  * Sign-in rate limiter — prevent brute-force but allow real users to retry
  * - 15 sign-in attempts per 15 minutes per IP
  */

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useAnalytics, EVENT_DETAIL_OPENED, GATE_OPENED, EVENT_SHARED, trackFbEvent, FUNNEL_LANDING_VIEWED, FUNNEL_IM_IN_CLICKED, FUNNEL_APP_HANDOFF_STARTED } from "@comeoffline/analytics";
 import { P, API_URL } from "@/components/shared/P";
 import { formatEventDateShort } from "@comeoffline/ui";
@@ -258,11 +259,22 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
     };
   }, []);
 
-  // Lock body scroll when detail is open
+  // Lock page scroll while the sheet is open. body overflow alone doesn't
+  // stop touch scrolling on iOS Safari — the page behind kept scrolling and
+  // dragged the "fixed" overlay around with it. Locking documentElement too
+  // (plus overscroll-behavior) is what iOS actually respects. Don't reach
+  // for the body position:fixed trick: a fixed body breaks the paint of
+  // fixed overlays inside it.
   useEffect(() => {
-    document.body.style.overflow = "hidden";
+    const html = document.documentElement;
+    const body = document.body;
+    html.style.overflow = "hidden";
+    html.style.overscrollBehavior = "none";
+    body.style.overflow = "hidden";
     return () => {
-      document.body.style.overflow = "";
+      html.style.overflow = "";
+      html.style.overscrollBehavior = "";
+      body.style.overflow = "";
     };
   }, []);
 
@@ -293,20 +305,28 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
     }, 900);
   }, [event.id, event.title, track, selectedTierId]);
 
-  return (
+  // Portaled to <body>: on the homepage this dialog renders inside a
+  // `relative z-[1]` wrapper, so its z-index: 600 only counted WITHIN that
+  // stacking context — the sibling z-[1] brand-story sections painted over
+  // the sheet (and ate the Buy Tickets button) whenever the page was
+  // scrolled. At body level the overlay genuinely sits above everything.
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
+      className="co-sheet-overlay"
       style={{
         position: "fixed",
-        inset: 0,
         zIndex: 600,
         display: "flex",
         flexDirection: "column",
         justifyContent: "flex-end",
       }}
     >
-      {/* Backdrop */}
+      {/* Backdrop — touchAction none so swipes on it can't scroll the page
+          behind on iOS */}
       <div
         onClick={onClose}
         style={{
@@ -315,16 +335,18 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
           background: "rgba(14, 13, 11, 0.6)",
           backdropFilter: "blur(8px)",
           WebkitBackdropFilter: "blur(8px)",
+          touchAction: "none",
         }}
       />
 
       {/* Bottom sheet */}
       <div
+        className="co-sheet"
         style={{
           position: "relative",
           background: P.cream,
           borderRadius: "24px 24px 0 0",
-          maxHeight: "92vh",
+          overflow: "hidden",
           display: "flex",
           flexDirection: "column",
           animation: "sheetSlideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1)",
@@ -519,12 +541,16 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
               </div>
             </div>
 
-            {/* Scrollable body */}
+            {/* Scrollable body — minHeight: 0 lets it shrink inside the
+                max-height flex column (otherwise it grows to content height
+                and pushes the CTA out of the sheet) */}
             <div
               style={{
                 flex: 1,
+                minHeight: 0,
                 overflowY: "auto",
-                padding: "0 20px 120px",
+                overscrollBehavior: "contain",
+                padding: "0 20px 56px",
                 WebkitOverflowScrolling: "touch",
               }}
             >
@@ -843,13 +869,20 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
               </div>
             </div>
 
-            {/* Sticky bottom CTA — clean "Buy Tickets" pill, no price, no sub-line */}
+            {/* Sticky bottom CTA — in-flow flex footer, not position: absolute.
+                Pinning it to the container bottom put it under Safari's bottom
+                bar on iOS (vh > visible viewport) and it vanished; as a flex
+                child it always renders inside the sheet. The negative margin
+                keeps the fade-out overlap over the scrolling text, and
+                pointer-events pass through the gradient so that strip still
+                scrolls. */}
             <div
               style={{
-                position: "absolute",
-                bottom: 0,
-                left: 0,
-                right: 0,
+                position: "relative",
+                zIndex: 2,
+                flexShrink: 0,
+                marginTop: -44,
+                pointerEvents: "none",
                 background: `linear-gradient(to top, ${P.cream} 70%, ${P.cream}00)`,
                 padding: "20px 20px calc(24px + env(safe-area-inset-bottom, 0px))",
               }}
@@ -861,6 +894,7 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
                 style={{
                   display: "block",
                   width: "100%",
+                  pointerEvents: "auto",
                   background: spotsLeft === 0 ? "#E8DDD0" : "#1A1715",
                   color: spotsLeft === 0 ? P.muted : "#FFFFFF",
                   border: "none",
@@ -882,8 +916,23 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
         )}
       </div>
 
-      {/* Keyframes */}
+      {/* Keyframes + viewport sizing. dvh tracks the VISIBLE viewport on
+          iOS Safari (vh is the toolbar-hidden height, ~70px taller) — with
+          plain vh the sheet overflowed the screen and the Buy CTA hid under
+          Safari's bottom bar. Classes, not inline styles, so the vh fallback
+          cascades to the dvh override where supported. */}
       <style>{`
+        .co-sheet-overlay {
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 100vh;
+          height: 100dvh;
+        }
+        .co-sheet {
+          max-height: 92vh;
+          max-height: 92dvh;
+        }
         @keyframes sheetSlideUp {
           from {
             transform: translateY(100%);
@@ -910,6 +959,7 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
           80% { transform: translateX(4px); }
         }
       `}</style>
-    </div>
+    </div>,
+    document.body,
   );
 }

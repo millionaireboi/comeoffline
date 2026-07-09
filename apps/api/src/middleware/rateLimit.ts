@@ -73,6 +73,25 @@ export const discountCheckLimiter = rateLimit({
 });
 
 /**
+ * Campaign send limiter — its own bucket because the resumable send loop
+ * re-invokes POST /campaigns/:id/send every ~45s until the blast completes,
+ * which would exhaust the shared strictLimiter budget on larger campaigns.
+ * - 60 calls per 15 minutes per user (≈ 9k sends per window at current batch throughput)
+ */
+export const campaignSendLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 60,
+  keyGenerator: keyByUser,
+  skip: skipInDev,
+  message: {
+    success: false,
+    error: "Too many send requests. Please try again in 15 minutes.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+/**
  * Sign-in rate limiter — prevent brute-force but allow real users to retry
  * - 15 sign-in attempts per 15 minutes per IP
  */

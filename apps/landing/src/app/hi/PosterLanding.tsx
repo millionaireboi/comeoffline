@@ -11,25 +11,9 @@ import {
   POSTER_CTA_CLICKED,
 } from "@comeoffline/analytics";
 import { buildAppHandoffUrl } from "@/lib/handoff";
-import {
-  POSTER_EVENT_ID,
-  POSTER_LOCATIONS,
-  timeLine,
-  buildScript,
-  REVEAL_BUTTON,
-  HOUSE,
-  type PosterBeat,
-  type PosterChoice,
-} from "@/lib/posterCampaign";
+import { getCampaign, DEFAULT_CAMPAIGN, type PosterBeat, type PosterChoice } from "@/lib/posterCampaigns";
+import type { PosterEventInfo } from "@/lib/posterCampaigns/server";
 import s from "./poster.module.css";
-
-export interface PosterEventInfo {
-  id: string;
-  spotsLeft: number;
-  totalSpots: number;
-  /** The single live tier, when there's exactly one — preselected in the handoff */
-  tier: { id: string; label: string; price: number } | null;
-}
 
 interface LogEntry {
   kind: "line" | "reply";
@@ -46,9 +30,20 @@ function plain(html: string): string {
   return html.replace(/<[^>]+>/g, "");
 }
 
-export function PosterLanding({ event }: { event: PosterEventInfo | null }) {
+export function PosterLanding({
+  campaignSlug,
+  event,
+}: {
+  /** Slug only — the config holds functions, which can't cross the RSC
+   *  boundary; both sides import the same registry instead. */
+  campaignSlug: string;
+  event: PosterEventInfo | null;
+}) {
   const params = useSearchParams();
   const { track } = useAnalytics();
+  // Server pages validate the slug; the fallback only guards a stale bundle
+  const campaign = getCampaign(campaignSlug) ?? DEFAULT_CAMPAIGN;
+  const HOUSE = campaign.house;
 
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [choices, setChoices] = useState<PosterChoice[] | null>(null);
@@ -138,15 +133,15 @@ export function PosterLanding({ event }: { event: PosterEventInfo | null }) {
     const utm = {
       utm_source: params?.get("utm_source") || "poster",
       utm_medium: params?.get("utm_medium") || "offline",
-      utm_campaign: params?.get("utm_campaign") || "friends-house",
+      utm_campaign: params?.get("utm_campaign") || campaign.slug,
       utm_content: params?.get("utm_content") || p || undefined,
     };
     utmRef.current = utm;
 
-    track(POSTER_SCANNED, { poster_location: p, event_id: event?.id, ...utm });
+    track(POSTER_SCANNED, { campaign: campaign.slug, poster_location: p, event_id: event?.id, ...utm });
 
-    const locLine = p ? POSTER_LOCATIONS[p] || null : null;
-    scriptRef.current = buildScript(locLine, timeLine(new Date().getHours()));
+    const locLine = p ? campaign.locations[p] || null : null;
+    scriptRef.current = campaign.buildScript(locLine, campaign.timeLine(new Date().getHours()));
     beatIdxRef.current = 0;
     pauseRef.current = setTimeout(nextBeat, reducedRef.current ? 100 : 700);
     return clearTimers;
@@ -170,6 +165,7 @@ export function PosterLanding({ event }: { event: PosterEventInfo | null }) {
     setChoices(null);
     setEntries((prev) => [...prev.map((e) => ({ ...e, typed: -1 })), { kind: "reply", html: choice.label, typed: -1 }]);
     track(POSTER_CHOICE_MADE, {
+      campaign: campaign.slug,
       question_index: questionIdx,
       answer: choice.label,
       poster_location: posterLocRef.current,
@@ -182,7 +178,7 @@ export function PosterLanding({ event }: { event: PosterEventInfo | null }) {
   };
 
   const lightsOn = () => {
-    track(POSTER_LIGHTS_ON, { poster_location: posterLocRef.current, event_id: event?.id });
+    track(POSTER_LIGHTS_ON, { campaign: campaign.slug, poster_location: posterLocRef.current, event_id: event?.id });
     if (!reducedRef.current) setBulb(true);
     setTimeout(
       () => {
@@ -195,12 +191,13 @@ export function PosterLanding({ event }: { event: PosterEventInfo | null }) {
 
   const book = () => {
     track(POSTER_CTA_CLICKED, {
+      campaign: campaign.slug,
       poster_location: posterLocRef.current,
-      event_id: event?.id || POSTER_EVENT_ID || undefined,
+      event_id: event?.id || campaign.eventId || undefined,
       ...utmRef.current,
     });
     window.location.href = buildAppHandoffUrl({
-      eventId: event?.id || POSTER_EVENT_ID || undefined,
+      eventId: event?.id || campaign.eventId || undefined,
       tierId: event?.tier?.id,
       source: "poster",
       utm: utmRef.current,
@@ -284,7 +281,7 @@ export function PosterLanding({ event }: { event: PosterEventInfo | null }) {
                 lightsOn();
               }}
             >
-              {REVEAL_BUTTON} 🏠
+              {campaign.revealButton}
             </button>
           )}
         </div>

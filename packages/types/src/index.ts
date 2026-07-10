@@ -407,6 +407,32 @@ export interface DiscountValidation {
   discount_amount?: number; // rupees off the given subtotal
 }
 
+// ── Trackable Link ───────────────────────────────
+
+/** Guerrilla landing pages the admin can point trackable links at.
+ *  Add an entry when registering a new campaign in
+ *  apps/landing/src/lib/posterCampaigns — the admin's link-create dropdown
+ *  reads this list. `path` must match the campaign's route. */
+export const GUERRILLA_PAGES: { path: string; label: string }[] = [
+  { path: "/hi", label: "friends house (/hi)" },
+];
+
+/** Admin-managed short link (comeoffline.com/l/<code>) for QR posters and
+ *  offline campaigns. Scans are counted server-side so attribution works even
+ *  when the destination's client-side analytics are blocked. */
+export interface TrackableLink {
+  code: string; // lowercase slug, doc ID in Firestore
+  destination: string; // path ("/hi?p=hsr") or absolute URL
+  label: string; // human name shown in admin ("HSR poster — bakery wall")
+  campaign?: string | null; // groups links in admin ("friends-house-jul18")
+  hits: number;
+  hits_by_day: Record<string, number>; // "2026-07-18" → count (IST days)
+  last_hit_at?: string | null; // ISO
+  active: boolean; // paused links redirect home without counting
+  created_at: string;
+  created_by?: string;
+}
+
 // ── Handoff Token ────────────────────────────────
 
 export interface HandoffToken {

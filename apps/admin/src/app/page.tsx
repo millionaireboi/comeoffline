@@ -17,6 +17,7 @@ import { BrandsTab } from "@/components/tabs/BrandsTab";
 import { SettingsTab } from "@/components/tabs/SettingsTab";
 import { BookingsTab } from "@/components/tabs/BookingsTab";
 import { DiscountsTab } from "@/components/tabs/DiscountsTab";
+import { LinksTab } from "@/components/tabs/LinksTab";
 import { WhatsAppTab } from "@/components/tabs/WhatsAppTab";
 import { ReportsTab } from "@/components/tabs/ReportsTab";
 import { LoginScreen } from "@/components/tabs/LoginScreen";
@@ -24,7 +25,7 @@ import { TabErrorBoundary } from "@/components/TabErrorBoundary";
 import { Toaster } from "@/components/Toaster";
 
 const TABS: Tab[] = [
-  "dashboard", "events", "bookings", "discounts", "check-in", "validation", "content",
+  "dashboard", "events", "bookings", "discounts", "links", "check-in", "validation", "content",
   "applications", "members", "reports", "contact", "brands", "whatsapp", "settings",
 ];
 
@@ -122,6 +123,7 @@ function AdminDashboard() {
         {tab === "events" && <TabErrorBoundary tabName="events" key="events"><EventsTab /></TabErrorBoundary>}
         {tab === "bookings" && <TabErrorBoundary tabName="bookings" key="bookings"><BookingsTab /></TabErrorBoundary>}
         {tab === "discounts" && <TabErrorBoundary tabName="discounts" key="discounts"><DiscountsTab /></TabErrorBoundary>}
+        {tab === "links" && <TabErrorBoundary tabName="links" key="links"><LinksTab /></TabErrorBoundary>}
         {tab === "check-in" && <TabErrorBoundary tabName="check-in" key="check-in"><CheckInTab /></TabErrorBoundary>}
         {tab === "validation" && <TabErrorBoundary tabName="validation" key="validation"><ValidationTab /></TabErrorBoundary>}
         {tab === "content" && <TabErrorBoundary tabName="content" key="content"><ContentTab /></TabErrorBoundary>}

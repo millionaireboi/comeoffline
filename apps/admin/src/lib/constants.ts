@@ -3,9 +3,14 @@ export const instrumentSerif = {
   variable: "--font-instrument-serif",
 };
 
-export type Tab = "dashboard" | "events" | "bookings" | "discounts" | "check-in" | "validation" | "content" | "applications" | "members" | "reports" | "contact" | "brands" | "whatsapp" | "settings";
+export type Tab = "dashboard" | "events" | "bookings" | "discounts" | "links" | "check-in" | "validation" | "content" | "applications" | "members" | "reports" | "contact" | "brands" | "whatsapp" | "settings";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+
+/** Public landing origin — short links and QR codes are minted against it.
+ *  www form: the bare domain 307s to www, and a printed QR shouldn't pay
+ *  for two redirect hops per scan. */
+export const LANDING_URL = process.env.NEXT_PUBLIC_LANDING_URL || "https://www.comeoffline.com";
 
 export const EVENT_STATUS_COLORS: Record<string, string> = {
   draft: "#7A8B9C",

@@ -32,6 +32,8 @@ import adminBookingsRouter from "./routes/admin/bookings";
 import adminDiscountsRouter from "./routes/admin/discounts";
 import adminWhatsappRouter from "./routes/admin/whatsapp";
 import adminWhatsappCampaignsRouter from "./routes/admin/whatsapp-campaigns";
+import adminLinksRouter from "./routes/admin/links";
+import publicLinksRouter from "./routes/links";
 import webhooksRouter from "./routes/webhooks";
 import whatsappWebhookRouter from "./routes/webhooks-whatsapp";
 import reportsRouter from "./routes/reports";
@@ -54,6 +56,9 @@ app.use(express.json({
 
 // Public read-only endpoints — exempt from rate limiting (high traffic, no auth)
 app.use("/api/events/public", publicEventsRouter);
+// Short-link hits arrive server-to-server from the landing app (one egress IP),
+// so per-IP limiting would throttle real scans
+app.use("/api/links/public", publicLinksRouter);
 
 // Admin routes — only adminLimiter, exempt from generalLimiter to avoid double-counting
 app.use("/api/admin/events", adminLimiter, adminEventsRouter);
@@ -71,6 +76,7 @@ app.use("/api/admin", adminLimiter, adminUploadRouter);
 app.use("/api/admin", adminLimiter, adminFloorplanRouter);
 app.use("/api/admin/bookings", adminLimiter, adminBookingsRouter);
 app.use("/api/admin/discounts", adminLimiter, adminDiscountsRouter);
+app.use("/api/admin/links", adminLimiter, adminLinksRouter);
 app.use("/api/admin", adminLimiter, adminWhatsappCampaignsRouter);
 app.use("/api/admin", adminLimiter, adminWhatsappRouter);
 

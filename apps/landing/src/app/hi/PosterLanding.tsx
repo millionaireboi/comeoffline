@@ -8,7 +8,9 @@ import {
   POSTER_SCANNED,
   POSTER_CHOICE_MADE,
   POSTER_LIGHTS_ON,
+  POSTER_SECTION_VIEWED,
   POSTER_CTA_CLICKED,
+  POSTER_WHATSAPP_CLICKED,
 } from "@comeoffline/analytics";
 import { buildAppHandoffUrl } from "@/lib/handoff";
 import { getCampaign, DEFAULT_CAMPAIGN, type PosterBeat, type PosterChoice } from "@/lib/posterCampaigns";
@@ -140,7 +142,9 @@ export function PosterLanding({
 
     track(POSTER_SCANNED, { campaign: campaign.slug, poster_location: p, event_id: event?.id, ...utm });
 
-    const locLine = p ? campaign.locations[p] || null : null;
+    // Exact placement key first, then its letter prefix — poster codes are
+    // minted per-spot (msr1..msr7) but share one location line per run
+    const locLine = p ? campaign.locations[p] || campaign.locations[p.replace(/\d+$/, "")] || null : null;
     scriptRef.current = campaign.buildScript(locLine, campaign.timeLine(new Date().getHours()));
     beatIdxRef.current = 0;
     pauseRef.current = setTimeout(nextBeat, reducedRef.current ? 100 : 700);
@@ -154,6 +158,35 @@ export function PosterLanding({
     return () => {
       document.body.style.overflow = "";
     };
+  }, [act]);
+
+  // Act 2 scroll depth — fire once per [data-section] as it scrolls into view.
+  // This is the only signal for WHERE readers stop between lights-on and the CTA.
+  const seenSectionsRef = useRef<Set<string>>(new Set());
+  const houseRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (act !== 2 || !houseRef.current) return;
+    const observer = new IntersectionObserver(
+      (observed) => {
+        for (const o of observed) {
+          const section = (o.target as HTMLElement).dataset.section;
+          if (!o.isIntersecting || !section || seenSectionsRef.current.has(section)) continue;
+          seenSectionsRef.current.add(section);
+          track(POSTER_SECTION_VIEWED, {
+            campaign: campaign.slug,
+            poster_location: posterLocRef.current,
+            section,
+            ...utmRef.current,
+          });
+          observer.unobserve(o.target);
+        }
+      },
+      // Low threshold so sections taller than the viewport still fire
+      { threshold: 0.2 }
+    );
+    houseRef.current.querySelectorAll<HTMLElement>("[data-section]").forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [act]);
 
   const hurry = () => {
@@ -189,6 +222,20 @@ export function PosterLanding({
     );
   };
 
+  const whatsappHref = () => {
+    const wa = campaign.whatsapp!;
+    return `https://wa.me/${wa.number}?text=${encodeURIComponent(wa.prefill(posterLocRef.current))}`;
+  };
+
+  const sayHi = () => {
+    track(POSTER_WHATSAPP_CLICKED, {
+      campaign: campaign.slug,
+      poster_location: posterLocRef.current,
+      event_id: event?.id || campaign.eventId || undefined,
+      ...utmRef.current,
+    });
+  };
+
   const book = () => {
     track(POSTER_CTA_CLICKED, {
       campaign: campaign.slug,
@@ -207,6 +254,9 @@ export function PosterLanding({
   // Which entries look "past": everything but the newest; older than 3 back go faint.
   const rendered = entries.slice(-8);
   const questionIdx = beatIdxRef.current;
+
+  // First photo is the lights-on reveal in the hero; the rest stay lower as receipts
+  const [heroShot, ...morePhotos] = HOUSE.photos ?? [];
 
   return (
     <>
@@ -298,20 +348,53 @@ export function PosterLanding({
             </span>
           </div>
 
-          <main className={s.house}>
+          <main className={s.house} ref={houseRef}>
             <div className={s.wrap}>
-              <header className={s.hero}>
-                <p className={s.eyebrow}>{HOUSE.presents}</p>
-                <h1>
-                  <span className={s.roof}>{HOUSE.emoji}</span>
-                  {HOUSE.title}
-                </h1>
-                <span className={s.tag}>{HOUSE.tagline}</span>
-                <p className={s.when}>{HOUSE.when}</p>
-                <p className={s.lede} dangerouslySetInnerHTML={{ __html: HOUSE.lede }} />
+              <header className={s.hero} data-section="hero">
+                {HOUSE.welcome ? (
+                  <p className={s.welcome}>{HOUSE.welcome}</p>
+                ) : (
+                  <p className={s.eyebrow}>{HOUSE.presents}</p>
+                )}
+                {HOUSE.note ? (
+                  <div className={s.note}>
+                    <span className={s.tape} />
+                    <h1 className={s.noteTitle}>{HOUSE.note.lines[0]}</h1>
+                    {HOUSE.note.lines.slice(1).map((line) => (
+                      <p key={line} className={s.noteLine} dangerouslySetInnerHTML={{ __html: line }} />
+                    ))}
+                    <p className={s.noteSign}>{HOUSE.note.signoff}</p>
+                  </div>
+                ) : (
+                  <>
+                    <h1>
+                      <span className={s.roof}>{HOUSE.emoji}</span>
+                      {HOUSE.title}
+                    </h1>
+                    <span className={s.tag}>{HOUSE.tagline}</span>
+                    <p className={s.when}>{HOUSE.when}</p>
+                    <p className={s.lede} dangerouslySetInnerHTML={{ __html: HOUSE.lede }} />
+                  </>
+                )}
+                {HOUSE.note?.scribble && <p className={s.scribble}>{HOUSE.note.scribble}</p>}
+                {heroShot && (
+                  <figure className={`${s.polaroid} ${s.heroShot}`}>
+                    <span className={s.tape} />
+                    <Image
+                      src={heroShot.src}
+                      alt={heroShot.alt}
+                      width={heroShot.w}
+                      height={heroShot.h}
+                      className={s.polaroidImg}
+                      priority
+                    />
+                    <figcaption className={s.polaroidCap}>{heroShot.caption}</figcaption>
+                  </figure>
+                )}
+                {HOUSE.note && <p className={s.lede} dangerouslySetInnerHTML={{ __html: HOUSE.lede }} />}
               </header>
 
-              <section className={s.sched}>
+              <section className={s.sched} data-section="schedule">
                 <h2 className={s.sectionLabel}>how the night actually goes</h2>
                 <ol>
                   {HOUSE.schedule.map((row) => (
@@ -323,7 +406,7 @@ export function PosterLanding({
                 </ol>
               </section>
 
-              <section className={s.rooms}>
+              <section className={s.rooms} data-section="rooms">
                 <h2 className={s.sectionLabel}>the house, room by room</h2>
                 {HOUSE.rooms.map((room) => (
                   <article key={room.name} className={s.card}>
@@ -337,12 +420,51 @@ export function PosterLanding({
                 ))}
               </section>
 
-              <section className={s.solo}>
+              <section className={s.solo} data-section="solo">
                 <p dangerouslySetInnerHTML={{ __html: HOUSE.soloQ }} />
                 <p className={s.soloAns}>{HOUSE.soloA}</p>
               </section>
 
-              <section className={s.incl}>
+              {morePhotos.length > 0 && (
+                <section className={s.photos} data-section="photos">
+                  <h2 className={s.sectionLabel}>the place, for the record</h2>
+                  {morePhotos.map((photo) => (
+                    <figure key={photo.src} className={s.polaroid}>
+                      <span className={s.tape} />
+                      <Image src={photo.src} alt={photo.alt} width={photo.w} height={photo.h} className={s.polaroidImg} />
+                      <figcaption className={s.polaroidCap}>{photo.caption}</figcaption>
+                    </figure>
+                  ))}
+                </section>
+              )}
+
+              <section className={s.nota} data-section="not_a_meetup">
+                <p className={s.crossed}>
+                  {HOUSE.notA.map((word) => (
+                    <s key={word}>{word}</s>
+                  ))}
+                </p>
+                <p className={s.truth}>{HOUSE.truth}</p>
+                <p className={s.worst}>{HOUSE.worstCase}</p>
+              </section>
+
+              {campaign.whatsapp && (
+                <section className={s.wa} data-section="whatsapp">
+                  <p className={s.waPrompt}>{campaign.whatsapp.prompt}</p>
+                  <a
+                    className={s.waBtn}
+                    href={whatsappHref()}
+                    onClick={sayHi}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    💬 {campaign.whatsapp.button}
+                  </a>
+                  {campaign.whatsapp.note && <p className={s.waNote}>{campaign.whatsapp.note}</p>}
+                </section>
+              )}
+
+              <section className={s.incl} data-section="includes">
                 <h2 className={s.sectionLabel}>your spot covers</h2>
                 <ul>
                   {HOUSE.includes.map((line) => (
@@ -360,25 +482,15 @@ export function PosterLanding({
                 </dl>
               </section>
 
-              <section className={s.nota}>
-                <p className={s.crossed}>
-                  {HOUSE.notA.map((word) => (
-                    <s key={word}>{word}</s>
-                  ))}
-                </p>
-                <p className={s.truth}>{HOUSE.truth}</p>
-                <p className={s.worst}>{HOUSE.worstCase}</p>
-              </section>
-
               {event && event.spotsLeft > 0 && (
-                <section className={s.proof}>
+                <section className={s.proof} data-section="spots_left">
                   <div className={s.proofNum}>{event.spotsLeft}</div>
                   <p>spots left in the house.</p>
                   <p className={s.proofSub}>capped at {event.totalSpots} so it stays a house party.</p>
                 </section>
               )}
 
-              <footer className={s.foot}>
+              <footer className={s.foot} data-section="footer">
                 <Image src="/logo.png" alt="come offline logo" width={56} height={56} className={s.footLogo} />
                 <p className={s.brand}>comeoffline</p>
                 <p className={s.footTag}>{HOUSE.footTagline}</p>

@@ -22,6 +22,9 @@ export interface PosterBeat {
  *  is unreachable (a poster scan must never land on an error page). */
 export interface HouseCopy {
   presents: string;
+  /** One line in the poster's Act-1 voice, shown above the title — stitches
+   *  the two acts together. When set it replaces the `presents` eyebrow. */
+  welcome?: string;
   title: string;
   emoji: string;
   tagline: string;
@@ -33,6 +36,17 @@ export interface HouseCopy {
   soloQ: string; // may contain <em> markup
   soloA: string;
   includes: string[];
+  /** Past-event polaroids — the trust block. Files live in
+   *  public/hi/<slug>/; section is skipped when the list is empty. */
+  photos?: { src: string; alt: string; caption: string; w: number; h: number }[];
+  /** Handwritten-note hero — a taped paper invite replaces the big-title
+   *  hero when set. First line renders as the h1. May contain <em>/<strong>. */
+  note?: {
+    lines: string[];
+    signoff: string;
+    /** Scribbled aside under the note, pointing at the polaroid below */
+    scribble?: string;
+  };
   finePrint: { k: string; v: string }[];
   fineNote: string;
   notA: string[];
@@ -63,5 +77,16 @@ export interface PosterCampaignConfig {
   buildScript: (locLine: string | null, late: string | null) => PosterBeat[];
   /** Full label of the Act-1 → Act-2 button, emoji included */
   revealButton: string;
+  /** wa.me escape hatch for scanners not ready to prepay — captures the
+   *  interested-but-skeptical instead of losing them. Omit to hide. */
+  whatsapp?: {
+    /** Digits only, country code included — goes into wa.me/<number> */
+    number: string;
+    prompt: string;
+    button: string;
+    note?: string;
+    /** Prefilled message; placement code identifies which poster sent them */
+    prefill: (code: string | null) => string;
+  };
   house: HouseCopy;
 }

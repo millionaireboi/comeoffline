@@ -21,7 +21,7 @@ const router = Router();
 /** POST /api/tickets/create — Purchase a ticket */
 router.post("/create", requireAuth, strictLimiter, async (req: AuthRequest, res) => {
   try {
-    const { event_id, tier_id, pickup_point, time_slot_id, add_ons, seat_id, section_id, spot_seat_id, discount_code } = req.body;
+    const { event_id, tier_id, pickup_point, time_slot_id, add_ons, seat_id, section_id, spot_seat_id, discount_code, attribution } = req.body;
 
     // Input validation
     if (!event_id || typeof event_id !== "string") {
@@ -36,6 +36,21 @@ router.post("/create", requireAuth, strictLimiter, async (req: AuthRequest, res)
       res.status(400).json({ success: false, error: "Invalid discount_code" });
       return;
     }
+    // Attribution is client-supplied analytics context (poster/utm) — whitelist
+    // keys and clamp values so arbitrary junk can't land on the ticket doc.
+    let cleanAttribution: Record<string, string> | undefined;
+    if (attribution !== undefined && attribution !== null) {
+      if (typeof attribution !== "object" || Array.isArray(attribution)) {
+        res.status(400).json({ success: false, error: "Invalid attribution" });
+        return;
+      }
+      cleanAttribution = {};
+      for (const key of ["source", "utm_source", "utm_medium", "utm_campaign", "utm_content"]) {
+        const value = (attribution as Record<string, unknown>)[key];
+        if (typeof value === "string" && value.length > 0) cleanAttribution[key] = value.slice(0, 100);
+      }
+      if (Object.keys(cleanAttribution).length === 0) cleanAttribution = undefined;
+    }
     if (add_ons !== undefined) {
       if (!Array.isArray(add_ons)) {
         res.status(400).json({ success: false, error: "add_ons must be an array" });
@@ -49,7 +64,7 @@ router.post("/create", requireAuth, strictLimiter, async (req: AuthRequest, res)
       }
     }
 
-    const result = await createTicket(req.uid!, event_id, tier_id, pickup_point, time_slot_id, add_ons, seat_id, section_id, spot_seat_id, discount_code);
+    const result = await createTicket(req.uid!, event_id, tier_id, pickup_point, time_slot_id, add_ons, seat_id, section_id, spot_seat_id, discount_code, cleanAttribution);
 
     if (!result.success) {
       res.status(400).json({ success: false, error: result.error });

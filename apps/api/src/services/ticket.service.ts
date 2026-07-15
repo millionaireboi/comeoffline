@@ -48,6 +48,7 @@ export async function createTicket(
   sectionId?: string,
   spotSeatId?: string,
   discountCode?: string,
+  attribution?: Record<string, string>,
 ): Promise<CreateTicketResult> {
   const db = await getDb();
   return db.runTransaction(async (tx) => {
@@ -435,6 +436,9 @@ export async function createTicket(
       spot_name: assignedSpotName || null,
       spot_seat_id: spotSeatId || null,
       spot_seat_label: assignedSpotSeatLabel || null,
+      // Acquisition context from the handoff URL (source, utm_*) — ties the sale
+      // back to the poster/campaign that drove it.
+      attribution: attribution || null,
       purchased_at: new Date().toISOString(),
       checked_in_at: null,
     };

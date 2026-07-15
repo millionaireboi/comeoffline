@@ -186,6 +186,9 @@ export function EventFeed() {
       try {
         const token = await getIdToken();
         if (!token) { showToast("please sign in again.", "error"); return; }
+        // Acquisition attribution (poster/utm from the handoff URL) — stamped on the
+        // ticket doc so each sale is traceable to the poster/campaign that drove it.
+        const { attribution } = useAppStore.getState();
         const data = await apiFetch<{ success: boolean; data: Ticket }>("/api/tickets/create", {
           method: "POST",
           token,
@@ -199,6 +202,7 @@ export function EventFeed() {
             section_id: sectionId || undefined,
             spot_seat_id: spotSeatId || undefined,
             discount_code: discountCode || undefined,
+            attribution: attribution || undefined,
           }),
         });
         if (data.data) {
@@ -210,6 +214,7 @@ export function EventFeed() {
               ticket_id: data.data.id,
               tier_id: tierId,
               user_id: user?.id,
+              ...attribution,
             });
             // Paid event: redirect to Razorpay Payment Link
             window.location.href = data.data.payment_url;

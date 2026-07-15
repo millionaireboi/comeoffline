@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import type { Event, TicketTier, CheckoutStep, CheckoutAddOn, TimeSlot, SeatingSection, Seat, SeatingConfig, AddonSeatingConfig, Spot, DiscountValidation, DiscountType } from "@comeoffline/types";
 import { useAnalytics, trackFbEvent, CHECKOUT_STARTED, CHECKOUT_STEP_VIEWED, CHECKOUT_STEP_COMPLETED, TIER_SELECTED, CHECKOUT_COMPLETED, CHECKOUT_ABANDONED } from "@comeoffline/analytics";
 import { useAuth } from "@/hooks/useAuth";
+import { useAppStore } from "@/store/useAppStore";
 import { apiFetch } from "@/lib/api";
 
 interface SelectedAddon {
@@ -1103,6 +1104,10 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
   // and changes add-ons. Server re-validates at purchase either way.
   const [appliedDiscount, setAppliedDiscount] = useState<AppliedDiscount | null>(null);
 
+  // Acquisition attribution (source/utm from the handoff URL, e.g. a poster scan) —
+  // spread onto every checkout event so PostHog funnels can break down by poster.
+  const attribution = useAppStore((s) => s.attribution) || undefined;
+
   // Live seating polling
   const { getIdToken } = useAuth();
   const [liveSeating, setLiveSeating] = useState<SeatingConfig | null>(null);
@@ -1156,6 +1161,7 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
       event_title: event.title,
       tier_count: tiers.length,
       total_steps: steps.length,
+      ...attribution,
     });
     trackFbEvent("InitiateCheckout", {
       content_name: event.title,
@@ -1172,6 +1178,7 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
       event_id: event.id,
       step_type: step?.type === "checkout" ? step.stepData?.type : step?.type,
       step_index: currentStep,
+      ...attribution,
     });
   }, [currentStep]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1370,6 +1377,7 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
       event_id: event.id,
       step_type: step?.type === "checkout" ? step.stepData?.type : step?.type,
       step_index: currentStep,
+      ...attribution,
     });
 
     // Track tier selection specifically
@@ -1381,6 +1389,7 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
         tier_price: selectedTier?.price,
         revenue: selectedTier?.price,
         currency: "INR",
+        ...attribution,
       });
     }
 
@@ -1392,6 +1401,7 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
         total_steps: steps.length,
         revenue: selectedTier?.price,
         currency: "INR",
+        ...attribution,
       });
       trackFbEvent("Purchase", {
         content_name: event.title,
@@ -1447,6 +1457,7 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
       last_step_type: step?.type === "checkout" ? step.stepData?.type : step?.type,
       last_step_index: currentStep,
       selected_tier_id: selectedTierId,
+      ...attribution,
     });
     onClose();
   };

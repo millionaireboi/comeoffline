@@ -87,6 +87,13 @@ interface AppState {
   pendingDeepLinkTierId: string | null;
   setPendingDeepLinkTierId: (id: string | null) => void;
 
+  // Acquisition attribution from the handoff URL (?source=poster&utm_*). Persisted so it
+  // survives sign-in and the Razorpay redirect, then stamped on the ticket at purchase —
+  // this is what ties a sale back to a specific poster/campaign.
+  attribution: Record<string, string> | null;
+  setAttribution: (attribution: Record<string, string> | null) => void;
+  attributionAt: number | null;
+
   // Shows the "you're in! complete your profile" dialog after a successful ticket purchase.
   // Renders globally from page.tsx, regardless of which stage is active.
   showCompletionDialog: boolean;
@@ -151,6 +158,10 @@ export const useAppStore = create<AppState>()(
   pendingDeepLinkTierId: null,
   setPendingDeepLinkTierId: (id) => set({ pendingDeepLinkTierId: id }),
 
+  attribution: null,
+  setAttribution: (attribution) => set({ attribution, attributionAt: attribution ? Date.now() : null }),
+  attributionAt: null,
+
   showCompletionDialog: false,
   setShowCompletionDialog: (show) => set({ showCompletionDialog: show }),
 
@@ -175,12 +186,18 @@ export const useAppStore = create<AppState>()(
         pendingPurchaseEventId: state.pendingPurchaseEventId,
         pendingDeepLinkTierId: state.pendingDeepLinkTierId,
         pendingIntentAt: state.pendingIntentAt,
+        attribution: state.attribution,
+        attributionAt: state.attributionAt,
       }),
       onRehydrateStorage: () => (state) => {
         // Drop stale intent — a day-old ad click shouldn't force-open an event
         if (state?.pendingPurchaseEventId && (!state.pendingIntentAt || Date.now() - state.pendingIntentAt > INTENT_TTL_MS)) {
           state.setPendingPurchaseEventId(null);
           state.setPendingDeepLinkTierId(null);
+        }
+        // Same TTL for attribution — a week-old scan shouldn't claim today's purchase
+        if (state?.attribution && (!state.attributionAt || Date.now() - state.attributionAt > INTENT_TTL_MS)) {
+          state.setAttribution(null);
         }
       },
     },

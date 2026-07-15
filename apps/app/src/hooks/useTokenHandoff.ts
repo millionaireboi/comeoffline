@@ -48,21 +48,38 @@ export function useTokenHandoff() {
       if (deepLinkTierId) setPendingDeepLinkTierId(deepLinkTierId);
     }
 
-    if (!token) {
-      // Strip the params so a refresh doesn't re-capture stale intent
-      if (deepLinkEventId) {
-        window.history.replaceState({ stage: "gate" }, "", window.location.pathname);
-      }
-      setChecking(false);
-      return;
-    }
-
-    // Landing forwards utm_* on the handoff URL — capture them so app-side
-    // attribution doesn't depend on PostHog identity stitching alone.
+    // Landing forwards ?source= + utm_* on EVERY handoff URL — including the
+    // token-less open-entry path posters use. Capture them BEFORE branching on
+    // token so attribution survives sign-up and the Razorpay redirect.
+    const source = params.get("source");
     const utm: Record<string, string> = {};
     for (const key of ["utm_source", "utm_medium", "utm_campaign", "utm_content"]) {
       const value = params.get(key);
       if (value) utm[key] = value;
+    }
+    if (source || Object.keys(utm).length > 0) {
+      useAppStore.getState().setAttribution({ ...(source ? { source } : {}), ...utm });
+      // Super-properties: every later app event (checkout_*, etc.) carries the
+      // acquisition context even while the visitor is still anonymous.
+      posthog.register({ ...(source ? { acquisition_source: source } : {}), ...utm });
+    }
+
+    if (!token) {
+      if (deepLinkEventId) {
+        // Open entry with purchase intent — the app-side start of the funnel
+        // for poster scans, which never carry a token.
+        posthog.capture(FUNNEL_APP_HANDOFF_COMPLETED, {
+          event_id: deepLinkEventId,
+          tier_id: deepLinkTierId,
+          source,
+          open_entry: true,
+          ...utm,
+        });
+        // Strip the params so a refresh doesn't re-capture stale intent
+        window.history.replaceState({ stage: "gate" }, "", window.location.pathname);
+      }
+      setChecking(false);
+      return;
     }
 
     // Clean URL immediately (security: don't leave token visible)
@@ -84,15 +101,15 @@ export function useTokenHandoff() {
 
         if (data.success && data.data?.token) {
           // Capture onboarding source from handoff token
-          const source = data.data.source;
+          const tokenSource = data.data.source;
           const { setOnboardingSource, setUser } = useAppStore.getState();
           setOnboardingSource(
-            source === "chatbot" ? "landing_chatbot" : "landing_code"
+            tokenSource === "chatbot" ? "landing_chatbot" : "landing_code"
           );
           // Persist to localStorage for crash recovery
           if (typeof localStorage !== "undefined") {
             localStorage.setItem("co_onboarding_source",
-              source === "chatbot" ? "landing_chatbot" : "landing_code"
+              tokenSource === "chatbot" ? "landing_chatbot" : "landing_code"
             );
           }
           // Set user in store immediately if available
@@ -106,7 +123,7 @@ export function useTokenHandoff() {
             posthog.identify(data.data.user.id, {
               handle: data.data.user.handle,
               name: data.data.user.name,
-              entry_source: source,
+              entry_source: tokenSource,
               ...utm,
             });
           }
@@ -114,7 +131,7 @@ export function useTokenHandoff() {
             user_id: data.data.user?.id,
             event_id: deepLinkEventId,
             tier_id: deepLinkTierId,
-            source,
+            source: tokenSource,
             ...utm,
           });
           setHandled(true);

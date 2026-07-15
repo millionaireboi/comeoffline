@@ -91,6 +91,11 @@ router.post("/razorpay", async (req: Request, res: Response) => {
 
         if (ticket && posthog) {
           try {
+            // Acquisition context stamped on the ticket at purchase (poster/utm).
+            // `source` is renamed so it doesn't collide with the technical
+            // source: "razorpay_webhook" below.
+            const { source: acquisitionSource, ...attributionUtm } =
+              (ticket.attribution || {}) as Record<string, string>;
             // Legacy event — keep for backward compatibility with existing dashboards.
             posthog.capture({
               distinctId: ticket.user_id,
@@ -117,6 +122,8 @@ router.post("/razorpay", async (req: Request, res: Response) => {
                 revenue: ticket.price,
                 currency: "INR",
                 source: "razorpay_webhook",
+                acquisition_source: acquisitionSource,
+                ...attributionUtm,
               },
             });
           } catch (phErr) {

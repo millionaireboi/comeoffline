@@ -372,6 +372,7 @@ export interface Ticket {
   discount_code?: string | null; // discount code applied at purchase
   discount_amount?: number; // rupees knocked off by the code
   original_price?: number; // price before discount (price = original_price - discount_amount)
+  attribution?: Record<string, string> | null; // acquisition context from the handoff URL (source, utm_*) — ties the sale to a poster/campaign
   purchased_at: string;
   checked_in_at?: string;
   checked_in_by?: string;

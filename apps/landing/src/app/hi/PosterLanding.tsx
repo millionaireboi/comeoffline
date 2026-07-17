@@ -9,12 +9,13 @@ import {
   POSTER_CHOICE_MADE,
   POSTER_LIGHTS_ON,
   POSTER_SECTION_VIEWED,
+  POSTER_DATE_PICKED,
   POSTER_CTA_CLICKED,
   POSTER_WHATSAPP_CLICKED,
 } from "@comeoffline/analytics";
 import { buildAppHandoffUrl } from "@/lib/handoff";
 import { getCampaign, DEFAULT_CAMPAIGN, type PosterBeat, type PosterChoice } from "@/lib/posterCampaigns";
-import type { PosterEventInfo } from "@/lib/posterCampaigns/server";
+import type { PosterDateOption } from "@/lib/posterCampaigns/server";
 import s from "./poster.module.css";
 
 interface LogEntry {
@@ -34,18 +35,28 @@ function plain(html: string): string {
 
 export function PosterLanding({
   campaignSlug,
-  event,
+  dates,
 }: {
   /** Slug only — the config holds functions, which can't cross the RSC
    *  boundary; both sides import the same registry instead. */
   campaignSlug: string;
-  event: PosterEventInfo | null;
+  /** Upcoming editions, earliest first. Empty = live fetch failed → static copy. */
+  dates: PosterDateOption[];
 }) {
   const params = useSearchParams();
   const { track } = useAnalytics();
   // Server pages validate the slug; the fallback only guards a stale bundle
   const campaign = getCampaign(campaignSlug) ?? DEFAULT_CAMPAIGN;
   const HOUSE = campaign.house;
+
+  // Repeatable IP: 2+ live dates turn on the picker. Default to the earliest
+  // date still open so the CTA works even if the scanner never picks.
+  const multiDate = dates.length >= 2;
+  const [selectedId, setSelectedId] = useState<string | null>(
+    () => (dates.find((d) => !d.soldOut) ?? dates[0])?.id ?? null
+  );
+  const selected = dates.find((d) => d.id === selectedId) ?? null;
+  const note = multiDate && HOUSE.noteMulti ? HOUSE.noteMulti : HOUSE.note;
 
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [choices, setChoices] = useState<PosterChoice[] | null>(null);
@@ -140,7 +151,7 @@ export function PosterLanding({
     };
     utmRef.current = utm;
 
-    track(POSTER_SCANNED, { campaign: campaign.slug, poster_location: p, event_id: event?.id, ...utm });
+    track(POSTER_SCANNED, { campaign: campaign.slug, poster_location: p, event_id: dates[0]?.id, ...utm });
 
     // Exact placement key first, then its letter prefix — poster codes are
     // minted per-spot (msr1..msr7) but share one location line per run
@@ -211,7 +222,7 @@ export function PosterLanding({
   };
 
   const lightsOn = () => {
-    track(POSTER_LIGHTS_ON, { campaign: campaign.slug, poster_location: posterLocRef.current, event_id: event?.id });
+    track(POSTER_LIGHTS_ON, { campaign: campaign.slug, poster_location: posterLocRef.current, event_id: selected?.id });
     if (!reducedRef.current) setBulb(true);
     setTimeout(
       () => {
@@ -231,7 +242,19 @@ export function PosterLanding({
     track(POSTER_WHATSAPP_CLICKED, {
       campaign: campaign.slug,
       poster_location: posterLocRef.current,
-      event_id: event?.id || campaign.eventId || undefined,
+      event_id: selected?.id || campaign.eventId || undefined,
+      ...utmRef.current,
+    });
+  };
+
+  const pickDate = (d: PosterDateOption) => {
+    if (d.soldOut) return;
+    setSelectedId(d.id);
+    track(POSTER_DATE_PICKED, {
+      campaign: campaign.slug,
+      poster_location: posterLocRef.current,
+      event_id: d.id,
+      date_label: d.dateLabel,
       ...utmRef.current,
     });
   };
@@ -240,12 +263,12 @@ export function PosterLanding({
     track(POSTER_CTA_CLICKED, {
       campaign: campaign.slug,
       poster_location: posterLocRef.current,
-      event_id: event?.id || campaign.eventId || undefined,
+      event_id: selected?.id || campaign.eventId || undefined,
       ...utmRef.current,
     });
     window.location.href = buildAppHandoffUrl({
-      eventId: event?.id || campaign.eventId || undefined,
-      tierId: event?.tier?.id,
+      eventId: selected?.id || campaign.eventId || undefined,
+      tierId: selected?.tier?.id,
       source: "poster",
       utm: utmRef.current,
     });
@@ -356,14 +379,14 @@ export function PosterLanding({
                 ) : (
                   <p className={s.eyebrow}>{HOUSE.presents}</p>
                 )}
-                {HOUSE.note ? (
+                {note ? (
                   <div className={s.note}>
                     <span className={s.tape} />
-                    <h1 className={s.noteTitle}>{HOUSE.note.lines[0]}</h1>
-                    {HOUSE.note.lines.slice(1).map((line) => (
+                    <h1 className={s.noteTitle}>{note.lines[0]}</h1>
+                    {note.lines.slice(1).map((line) => (
                       <p key={line} className={s.noteLine} dangerouslySetInnerHTML={{ __html: line }} />
                     ))}
-                    <p className={s.noteSign}>{HOUSE.note.signoff}</p>
+                    <p className={s.noteSign}>{note.signoff}</p>
                   </div>
                 ) : (
                   <>
@@ -376,7 +399,7 @@ export function PosterLanding({
                     <p className={s.lede} dangerouslySetInnerHTML={{ __html: HOUSE.lede }} />
                   </>
                 )}
-                {HOUSE.note?.scribble && <p className={s.scribble}>{HOUSE.note.scribble}</p>}
+                {note?.scribble && <p className={s.scribble}>{note.scribble}</p>}
                 {heroShot && (
                   <figure className={`${s.polaroid} ${s.heroShot}`}>
                     <span className={s.tape} />
@@ -391,7 +414,7 @@ export function PosterLanding({
                     <figcaption className={s.polaroidCap}>{heroShot.caption}</figcaption>
                   </figure>
                 )}
-                {HOUSE.note && <p className={s.lede} dangerouslySetInnerHTML={{ __html: HOUSE.lede }} />}
+                {note && <p className={s.lede} dangerouslySetInnerHTML={{ __html: HOUSE.lede }} />}
               </header>
 
               <section className={s.sched} data-section="schedule">
@@ -482,11 +505,41 @@ export function PosterLanding({
                 </dl>
               </section>
 
-              {event && event.spotsLeft > 0 && (
+              {multiDate && (
+                <section className={s.dates} data-section="dates">
+                  <h2 className={s.sectionLabel}>{HOUSE.datesTitle ?? "pick your date"}</h2>
+                  {HOUSE.datesHint && <p className={s.datesHint}>{HOUSE.datesHint}</p>}
+                  <div className={s.dateList}>
+                    {dates.map((d) => (
+                      <button
+                        key={d.id}
+                        className={`${s.dateCard} ${d.id === selectedId ? s.dateCardOn : ""} ${d.soldOut ? s.dateCardSold : ""}`}
+                        onClick={() => pickDate(d)}
+                        disabled={d.soldOut}
+                        aria-pressed={d.id === selectedId}
+                      >
+                        <span className={s.dateWhen}>{d.dateLabel}</span>
+                        <span className={s.dateMeta}>
+                          {d.soldOut
+                            ? "house full"
+                            : [d.tier ? `₹${d.tier.price}` : null, d.spotsLeft > 0 ? `${d.spotsLeft} spots left` : null]
+                                .filter(Boolean)
+                                .join(" · ")}
+                        </span>
+                        <span className={s.dateTick} aria-hidden="true">
+                          {d.id === selectedId ? "✓" : ""}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {selected && selected.spotsLeft > 0 && (
                 <section className={s.proof} data-section="spots_left">
-                  <div className={s.proofNum}>{event.spotsLeft}</div>
-                  <p>spots left in the house.</p>
-                  <p className={s.proofSub}>capped at {event.totalSpots} so it stays a house party.</p>
+                  <div className={s.proofNum}>{selected.spotsLeft}</div>
+                  <p>spots left in the house{multiDate && selected.dateLabel ? ` on ${selected.dateLabel.split(" · ")[0]}` : ""}.</p>
+                  <p className={s.proofSub}>capped at {selected.totalSpots} so it stays a house party.</p>
                 </section>
               )}
 
@@ -506,9 +559,9 @@ export function PosterLanding({
                   {HOUSE.title} {HOUSE.emoji}
                 </b>
                 {[
-                  HOUSE.ctaWhen,
-                  event?.tier ? `₹${event.tier.price}` : null,
-                  event && event.spotsLeft > 0 ? `${event.spotsLeft} left` : null,
+                  selected?.dateLabel || HOUSE.ctaWhen,
+                  selected?.tier ? `₹${selected.tier.price}` : null,
+                  selected && selected.spotsLeft > 0 ? `${selected.spotsLeft} left` : null,
                 ]
                   .filter(Boolean)
                   .join(" · ")}

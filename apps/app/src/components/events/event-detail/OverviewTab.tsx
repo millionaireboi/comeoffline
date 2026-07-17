@@ -9,6 +9,7 @@ import { PickupSection } from "./PickupSection";
 import { ScheduleSection } from "./ScheduleSection";
 import { OrganizerMessage } from "./OrganizerMessage";
 import { FAQSection } from "./FAQSection";
+import { PastPhotosSection } from "./PastPhotosSection";
 
 interface OverviewTabProps {
   event: Event;
@@ -32,6 +33,9 @@ export function OverviewTab({ event }: OverviewTabProps) {
           {event.description}
         </p>
       )}
+
+      {/* Previous editions — trust proof before the pitch details */}
+      <PastPhotosSection photos={event.past_photos} accent={event.accent_dark || "#B8845A"} />
 
       {/* What's included — backs up the price */}
       <IncludesSection

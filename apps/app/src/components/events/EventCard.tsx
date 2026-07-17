@@ -10,6 +10,8 @@ interface EventCardProps {
   onOpen: (event: Event) => void;
   /** "Your people are going" — my connections with active tickets for this event */
   connectionsGoing?: { count: number; names: string[] };
+  /** Editions in this event's series — >1 reframes the date line as "next: …" */
+  dateCount?: number;
 }
 
 function getPriceLabel(event: Event): string {
@@ -22,7 +24,7 @@ function getPriceLabel(event: Event): string {
   return `from \u20B9${min}`;
 }
 
-export function EventCard({ event, index, onOpen, connectionsGoing }: EventCardProps) {
+export function EventCard({ event, index, onOpen, connectionsGoing, dateCount = 1 }: EventCardProps) {
   const spotsLeft = (event.total_spots ?? 0) - (event.spots_taken ?? 0);
   const daysUntilVenue = event.venue_reveal_date
     ? Math.max(
@@ -144,7 +146,7 @@ export function EventCard({ event, index, onOpen, connectionsGoing }: EventCardP
         <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1">
           <div className="font-sans text-[13px] text-soft-black">
             {[
-              formatEventDateShort(event.date, event.time),
+              (dateCount > 1 ? "next: " : "") + formatEventDateShort(event.date, event.time),
               event.venue_area ? event.venue_area.toLowerCase() : null,
             ].filter(Boolean).join(" · ")}
           </div>

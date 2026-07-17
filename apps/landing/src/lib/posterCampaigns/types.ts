@@ -47,6 +47,17 @@ export interface HouseCopy {
     /** Scribbled aside under the note, pointing at the polaroid below */
     scribble?: string;
   };
+  /** Alternate note shown when the campaign resolves 2+ live dates — lets a
+   *  repeatable series drop "this saturday" phrasing without touching the
+   *  single-date fallback copy. Omit to reuse `note` as-is. */
+  noteMulti?: {
+    lines: string[];
+    signoff: string;
+    scribble?: string;
+  };
+  /** Date-picker section (rendered only with 2+ live dates) */
+  datesTitle?: string;
+  datesHint?: string;
   finePrint: { k: string; v: string }[];
   fineNote: string;
   notA: string[];
@@ -62,6 +73,11 @@ export interface PosterCampaignConfig {
   slug: string;
   /** Event the campaign sells — CTA deep-links it even if the live fetch fails */
   eventId: string;
+  /** Repeatable-IP mode: every upcoming event whose title contains
+   *  `titleMatch` (case-insensitive) becomes a pickable date on the page.
+   *  Admin creates the next edition → it appears here, no deploy. `eventId`
+   *  stays as the fallback when the list can't be fetched or comes back empty. */
+  series?: { titleMatch: string };
   meta: {
     title: string;
     description: string;

@@ -25,9 +25,11 @@ interface FeedEventCardProps {
   event: any;
   index: number;
   onOpen: (event: any) => void;
+  /** Editions in this event's series — >1 reframes the date line as "next: …" */
+  dateCount?: number;
 }
 
-export function FeedEventCard({ event, index, onOpen }: FeedEventCardProps) {
+export function FeedEventCard({ event, index, onOpen, dateCount = 1 }: FeedEventCardProps) {
   const [hovered, setHovered] = useState(false);
   const cardRef = useRef<HTMLAnchorElement>(null);
   const { track } = useAnalytics();
@@ -58,9 +60,10 @@ export function FeedEventCard({ event, index, onOpen }: FeedEventCardProps) {
   const accent = event.accent || P.caramel;
   const priceLabel = getPriceLabel(event);
 
-  // when + where-ish, on one human line: "sat, 20 jun · 8:00 pm · indiranagar"
+  // when + where-ish, on one human line: "sat, 20 jun · 8:00 pm · indiranagar".
+  // Multi-date series lead with the next open date: "next: sat, 18 jul · …"
   const whenWhere = [
-    formatEventDateShort(event.date, event.time),
+    (dateCount > 1 ? "next: " : "") + formatEventDateShort(event.date, event.time),
     event.venue_area ? event.venue_area.toLowerCase() : null,
   ].filter(Boolean).join(" · ");
 

@@ -12,6 +12,18 @@ import { useChat } from "@/components/chat/ChatProvider";
 interface FeedEventDetailProps {
   event: any;
   onClose: () => void;
+  /** Other editions of the same series (event included), earliest first —
+   *  renders the "pick your date" row when there are 2+. */
+  siblings?: any[];
+  /** Called when the user taps another date; parent swaps the shown event
+   *  (feed) or navigates to it (share page). */
+  onSwitchEvent?: (e: any) => void;
+  /** Render in place instead of portaling to <body>. The share page SSRs the
+   *  sheet as the page itself — portaling there kept the content out of the
+   *  server HTML and hydration-mismatched (server rendered null). The feed
+   *  overlay must keep the portal: it escapes the homepage stacking-context
+   *  trap where z-[1] sibling wrappers paint over fixed overlays. */
+  inline?: boolean;
 }
 
 type GateStage = "idle" | "confirmed";
@@ -166,10 +178,30 @@ function CoverMedia({ event }: { event: any }) {
   );
 }
 
-export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
+export function FeedEventDetail({ event, onClose, siblings, onSwitchEvent, inline }: FeedEventDetailProps) {
   const { openChat } = useChat();
   const { track, identify } = useAnalytics();
   const [gateStage, setGateStage] = useState<GateStage>("idle");
+
+  // Repeatable-IP series: 2+ editions → date row. Parent passes the full
+  // sibling list (this event included) and handles the actual switch.
+  const dateOptions = (siblings ?? []).length >= 2 ? (siblings as any[]) : [];
+
+  // Scroll affordance — the sheet opens with tiers filling the viewport and
+  // nothing says the description/gallery/FAQ exist below. Nudge until the
+  // first scroll; skip when everything already fits.
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+  const [showScrollHint, setShowScrollHint] = useState(false);
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    setShowScrollHint(el.scrollHeight > el.clientHeight + 60);
+    const onScroll = () => {
+      if (el.scrollTop > 24) setShowScrollHint(false);
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [event.id, gateStage]);
 
   // UTMs from the ad URL — forwarded on the app handoff for attribution
   const prefilledUtmRef = useRef<{ utm_source?: string; utm_medium?: string; utm_campaign?: string; utm_content?: string }>({});
@@ -305,14 +337,13 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
     }, 900);
   }, [event.id, event.title, track, selectedTierId]);
 
-  // Portaled to <body>: on the homepage this dialog renders inside a
-  // `relative z-[1]` wrapper, so its z-index: 600 only counted WITHIN that
-  // stacking context — the sibling z-[1] brand-story sections painted over
-  // the sheet (and ate the Buy Tickets button) whenever the page was
-  // scrolled. At body level the overlay genuinely sits above everything.
-  if (typeof document === "undefined") return null;
-
-  return createPortal(
+  // Portaled to <body> (unless inline): on the homepage this dialog renders
+  // inside a `relative z-[1]` wrapper, so its z-index: 600 only counted
+  // WITHIN that stacking context — the sibling z-[1] brand-story sections
+  // painted over the sheet (and ate the Buy Tickets button) whenever the
+  // page was scrolled. At body level the overlay genuinely sits above
+  // everything.
+  const sheet = (
     <div
       role="dialog"
       aria-modal="true"
@@ -545,6 +576,7 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
                 max-height flex column (otherwise it grows to content height
                 and pushes the CTA out of the sheet) */}
             <div
+              ref={bodyRef}
               style={{
                 flex: 1,
                 minHeight: 0,
@@ -554,6 +586,57 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
                 WebkitOverflowScrolling: "touch",
               }}
             >
+              {/* Other dates — same series, pick-n-choose (repeatable IP) */}
+              {dateOptions.length > 0 && (
+                <div style={{ marginBottom: 24 }}>
+                  <span
+                    className="font-mono text-[10px] uppercase tracking-[2px]"
+                    style={{ color: P.muted, display: "block", marginBottom: 10 }}
+                  >
+                    pick your date
+                  </span>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 8,
+                      overflowX: "auto",
+                      WebkitOverflowScrolling: "touch",
+                      margin: "0 -20px",
+                      padding: "0 20px 4px",
+                    }}
+                  >
+                    {dateOptions.map((sib) => {
+                      const isCurrent = sib.id === event.id;
+                      const sibFull =
+                        sib.status === "sold_out" || (sib.total_spots ?? 0) - (sib.spots_taken ?? 0) <= 0;
+                      return (
+                        <button
+                          key={sib.id}
+                          onClick={() => !isCurrent && !sibFull && onSwitchEvent?.(sib)}
+                          disabled={sibFull && !isCurrent}
+                          className="font-sans text-[12px] font-medium"
+                          style={{
+                            flex: "0 0 auto",
+                            background: isCurrent ? accentDark : "#FFFFFF",
+                            color: isCurrent ? "#FFFFFF" : sibFull ? P.muted : P.nearBlack,
+                            border: `1.5px solid ${isCurrent ? accentDark : accent + "30"}`,
+                            borderRadius: 100,
+                            padding: "9px 14px",
+                            cursor: isCurrent || sibFull ? "default" : "pointer",
+                            opacity: sibFull && !isCurrent ? 0.55 : 1,
+                            whiteSpace: "nowrap",
+                            transition: "all 0.18s ease",
+                          }}
+                        >
+                          {formatEventDateShort(sib.date)}
+                          {sibFull ? " · full" : ""}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Tier cards — pricing transparency for cold traffic */}
               {tiers.length > 0 && !isFree && (
                 <div style={{ marginBottom: 24 }}>
@@ -756,6 +839,54 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
                 </div>
               )}
 
+              {/* From previous editions — trust gallery (admin: past_photos) */}
+              {Array.isArray(event.past_photos) && event.past_photos.length > 0 && (
+                <div style={{ marginBottom: 20 }}>
+                  <span
+                    className="font-mono text-[10px] uppercase tracking-[2px]"
+                    style={{ color: P.muted, display: "block", marginBottom: 10 }}
+                  >
+                    from the last one
+                  </span>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 10,
+                      overflowX: "auto",
+                      WebkitOverflowScrolling: "touch",
+                      margin: "0 -20px",
+                      padding: "0 20px 4px",
+                    }}
+                  >
+                    {event.past_photos.map((photo: { url: string; caption?: string }) => (
+                      <figure key={photo.url} style={{ margin: 0, flex: "0 0 auto", width: 210 }}>
+                        <img
+                          src={photo.url}
+                          alt={photo.caption || `${event.title} — a previous edition`}
+                          loading="lazy"
+                          style={{
+                            width: 210,
+                            height: 150,
+                            objectFit: "cover",
+                            borderRadius: 12,
+                            display: "block",
+                            border: `1px solid ${accent}20`,
+                          }}
+                        />
+                        {photo.caption && (
+                          <figcaption
+                            className="font-hand text-[13px]"
+                            style={{ color: P.warmBrown, margin: "6px 2px 0", lineHeight: 1.35 }}
+                          >
+                            {photo.caption}
+                          </figcaption>
+                        )}
+                      </figure>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Dress code */}
               {event.dress_code && (
                 <div
@@ -887,6 +1018,19 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
                 padding: "20px 20px calc(24px + env(safe-area-inset-bottom, 0px))",
               }}
             >
+              {showScrollHint && (
+                <p
+                  className="font-hand text-[14px]"
+                  style={{
+                    textAlign: "center",
+                    color: P.warmBrown,
+                    margin: "0 0 8px",
+                    animation: "hintBounce 1.6s ease-in-out infinite",
+                  }}
+                >
+                  there&apos;s more below ↓
+                </p>
+              )}
               <button
                 onClick={handleImIn}
                 disabled={spotsLeft === 0}
@@ -958,8 +1102,15 @@ export function FeedEventDetail({ event, onClose }: FeedEventDetailProps) {
           60% { transform: translateX(-4px); }
           80% { transform: translateX(4px); }
         }
+        @keyframes hintBounce {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(4px); }
+        }
       `}</style>
-    </div>,
-    document.body,
+    </div>
   );
+
+  if (inline) return sheet;
+  if (typeof document === "undefined") return null;
+  return createPortal(sheet, document.body);
 }

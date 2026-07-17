@@ -257,6 +257,30 @@ export interface SeatingConfig {
   allow_choice: boolean; // if false, seats auto-assigned
 }
 
+// ── Event series (repeatable IP) ─────────────────
+// An event belongs to a series when its title contains `titleMatch`
+// (case-insensitive). Admin "adds a date" by duplicating an edition with a
+// new date; public surfaces group matching events into pick-your-date UIs.
+// The landing poster campaigns declare the same match string in their config.
+export const EVENT_SERIES = [
+  { key: "friends-house", titleMatch: "friends house" },
+] as const;
+
+/** Series key for an event title, or null when it isn't part of one. */
+export function eventSeriesKey(title: string | undefined | null): string | null {
+  const t = (title || "").toLowerCase();
+  if (!t) return null;
+  for (const s of EVENT_SERIES) {
+    if (t.includes(s.titleMatch)) return s.key;
+  }
+  return null;
+}
+
+export interface PastPhoto {
+  url: string;
+  caption?: string;
+}
+
 export interface Event {
   id: string;
   title: string;
@@ -290,6 +314,7 @@ export interface Event {
   cover_type?: "image" | "video"; // media type of the cover
   cover_focus?: string; // CSS object-position value for crop focus (e.g. "top", "center", "bottom")
   gallery_urls?: string[]; // additional images for carousel (images only)
+  past_photos?: PastPhoto[]; // photos from previous editions — trust gallery on the detail page
   waitlist_count?: number; // number of users on the waitlist (announced events)
   faq?: EventFAQItem[]; // per-event Q&A authored in admin; falls back to generic items when empty
 }

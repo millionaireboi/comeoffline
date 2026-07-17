@@ -1,5 +1,5 @@
 import { getDb } from "../config/firebase-admin";
-import type { Event } from "@comeoffline/types";
+import type { Event, PastPhoto } from "@comeoffline/types";
 
 /** Only allow http/https URLs; reject javascript:, data:, etc. */
 function sanitizeUrl(raw?: string): string {
@@ -12,6 +12,18 @@ function sanitizeUrl(raw?: string): string {
     // invalid URL
   }
   return "";
+}
+
+/** Previous-edition trust-gallery photos — keep only valid http(s) URLs */
+function sanitizePastPhotos(raw: unknown): PastPhoto[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((p) => ({
+      url: sanitizeUrl((p as PastPhoto)?.url),
+      caption: String((p as PastPhoto)?.caption ?? "").trim(),
+    }))
+    .filter((p) => p.url)
+    .map((p) => ({ url: p.url, ...(p.caption ? { caption: p.caption } : {}) }));
 }
 
 /** Fetch all upcoming/live events for the user feed */
@@ -150,6 +162,7 @@ export async function getPublicEvents(): Promise<Partial<Event>[]> {
         cover_type: e.cover_type,
         cover_focus: e.cover_focus,
         gallery_urls: e.gallery_urls,
+        ...(Array.isArray(e.past_photos) && e.past_photos.length > 0 ? { past_photos: e.past_photos } : {}),
         ...(ticketing && { ticketing: ticketing as unknown as Event["ticketing"] }),
         ...(venueRevealed && e.venue_name ? { venue_name: e.venue_name } : {}),
         ...(venueRevealed && Array.isArray(e.venue_photos) && e.venue_photos.length > 0 ? { venue_photos: e.venue_photos } : {}),
@@ -192,6 +205,7 @@ export async function getPublicEvent(eventId: string): Promise<Partial<Event> | 
     cover_url: e.cover_url,
     cover_type: e.cover_type,
     gallery_urls: e.gallery_urls,
+    ...(Array.isArray(e.past_photos) && e.past_photos.length > 0 ? { past_photos: e.past_photos } : {}),
     ...(ticketing && { ticketing: ticketing as unknown as Event["ticketing"] }),
     ...(venueRevealed && e.venue_name ? { venue_name: e.venue_name } : {}),
     ...(venueRevealed && Array.isArray(e.venue_photos) && e.venue_photos.length > 0 ? { venue_photos: e.venue_photos } : {}),
@@ -242,6 +256,15 @@ export async function createEvent(
     ...(data.cover_url ? { cover_url: data.cover_url, cover_type: data.cover_type || "image" } : {}),
     ...(data.cover_url && data.cover_focus ? { cover_focus: data.cover_focus } : {}),
     ...(Array.isArray(data.gallery_urls) && data.gallery_urls.length > 0 ? { gallery_urls: data.gallery_urls } : {}),
+    past_photos: sanitizePastPhotos(data.past_photos),
+    // Config blocks — without these, "create as published" and event
+    // duplication silently lost tiers/checkout/seating until the next edit
+    // (updateEvent always passed them through, which masked the gap).
+    ...(data.ticketing ? { ticketing: data.ticketing } : {}),
+    ...(data.checkout ? { checkout: data.checkout } : {}),
+    ...(data.seating ? { seating: data.seating } : {}),
+    ...(data.post_booking ? { post_booking: data.post_booking } : {}),
+    ...(typeof data.is_free === "boolean" ? { is_free: data.is_free } : {}),
   };
 
   const ref = await db.collection("events").add(eventData);
@@ -265,6 +288,11 @@ export async function updateEvent(
   // Sanitize directions URL if present
   if (typeof safeData.venue_directions_url === "string") {
     safeData.venue_directions_url = sanitizeUrl(safeData.venue_directions_url);
+  }
+
+  // Sanitize past photos if present (empty array = admin cleared the gallery)
+  if ("past_photos" in safeData) {
+    safeData.past_photos = sanitizePastPhotos(safeData.past_photos);
   }
 
   // Sanitize pickup_points capacity if present

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { EventDetailPage } from "./EventDetailPage";
+import { seriesSiblings } from "@/lib/series";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
@@ -56,6 +57,22 @@ async function getEvent(id: string): Promise<PublicEvent | null> {
   }
 }
 
+/** Sibling editions for the "pick your date" row — same series, from the
+ *  public list. Failure just hides the row. */
+async function getSiblings(event: PublicEvent): Promise<PublicEvent[]> {
+  try {
+    const res = await fetch(`${API_URL}/api/events/public`, {
+      next: { revalidate: 60 },
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (!data.success || !Array.isArray(data.data)) return [];
+    return seriesSiblings(event, data.data as PublicEvent[]);
+  } catch {
+    return [];
+  }
+}
+
 export async function generateMetadata({
   params,
 }: {
@@ -102,6 +119,7 @@ export default async function EventPage({
 }) {
   const { id } = await params;
   const event = await getEvent(id);
+  const siblings = event ? await getSiblings(event) : [];
 
   if (!event) {
     return (
@@ -174,7 +192,7 @@ export default async function EventPage({
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(eventJsonLd) }}
       />
-      <EventDetailPage event={event} />
+      <EventDetailPage event={event} siblings={siblings} />
     </>
   );
 }

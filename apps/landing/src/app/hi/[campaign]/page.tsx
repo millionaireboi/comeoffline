@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { PosterLanding } from "../PosterLanding";
 import { getCampaign, POSTER_CAMPAIGNS } from "@/lib/posterCampaigns";
-import { getPosterEventInfo, campaignMetadata } from "@/lib/posterCampaigns/server";
+import { getPosterDates, campaignMetadata } from "@/lib/posterCampaigns/server";
 
 /** /hi/<slug> — one route per registered guerrilla campaign. */
 
@@ -25,10 +25,10 @@ export default async function CampaignPage({ params }: { params: Promise<{ campa
   // as poster traffic (same fallback as /l/<code>)
   if (!campaign) redirect("/?utm_source=poster&utm_medium=offline");
 
-  const event = await getPosterEventInfo(campaign.eventId);
+  const dates = await getPosterDates(campaign);
   return (
     <Suspense>
-      <PosterLanding campaignSlug={campaign.slug} event={event} />
+      <PosterLanding campaignSlug={campaign.slug} dates={dates} />
     </Suspense>
   );
 }

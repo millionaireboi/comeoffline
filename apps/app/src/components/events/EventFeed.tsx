@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useAppStore } from "@/store/useAppStore";
 import { apiFetch } from "@/lib/api";
 import { isFullProfileComplete } from "@/lib/profile-completion";
+import { groupSeries, seriesSiblings } from "@/lib/series";
 import { GlitchText } from "@/components/ui/GlitchText";
 import { EventCard } from "@/components/events/EventCard";
 import { EventDetail } from "@/components/events/EventDetail";
@@ -19,6 +20,9 @@ export function EventFeed() {
   const user = useAppStore((s) => s.user);
   const { setCurrentEvent, setActiveRsvp, setActiveTicket, setActiveWaitlistEntry, setStage, setProfileCompleteMode, showToast, pendingPurchaseEventId, setPendingPurchaseEventId, pendingDeepLinkTierId, setPendingDeepLinkTierId, setShowCompletionDialog } = useAppStore();
   const events = useAppStore((s) => s.events);
+  // One card per series (repeatable IP) — deep links still resolve against
+  // the full `events` list, so a non-representative edition opens fine.
+  const eventGroups = groupSeries(events);
   const setEvents = useAppStore((s) => s.setEvents);
   const [loading, setLoading] = useState(events.length === 0);
   const [fetchError, setFetchError] = useState(false);
@@ -479,14 +483,21 @@ export function EventFeed() {
           upcoming events
         </span>
         <span className="font-mono text-[11px] text-caramel">
-          {events.length} event{events.length !== 1 ? "s" : ""}
+          {eventGroups.length} event{eventGroups.length !== 1 ? "s" : ""}
         </span>
       </div>
 
-      {/* Event cards */}
+      {/* Event cards — one per series; the detail offers the other dates */}
       <section className="flex flex-col gap-4 px-4">
-        {events.map((event, i) => (
-          <EventCard key={event.id} event={event} index={i} onOpen={openEventDetail} connectionsGoing={connectionsGoing[event.id]} />
+        {eventGroups.map((group, i) => (
+          <EventCard
+            key={group.event.id}
+            event={group.event}
+            index={i}
+            onOpen={openEventDetail}
+            connectionsGoing={connectionsGoing[group.event.id]}
+            dateCount={group.siblings.length}
+          />
         ))}
 
         {/* Coming soon placeholder */}
@@ -507,7 +518,11 @@ export function EventFeed() {
       {/* Detail sheet */}
       {detailEvent && (
         <EventDetail
+          // Remount on date switch so tier selection and purchase state reset
+          key={detailEvent.id}
           event={detailEvent}
+          siblings={seriesSiblings(detailEvent, events)}
+          onSwitchEvent={(e) => { setDetailEvent(e); setDetailInitialTierId(null); }}
           initialTierId={detailInitialTierId}
           onClose={() => { setDetailEvent(null); setDetailInitialTierId(null); }}
           onRsvp={() => handleRsvp(detailEvent)}

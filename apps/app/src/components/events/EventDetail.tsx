@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { apiFetch } from "@/lib/api";
 import { posthog, FUNNEL_EVENT_DETAIL_OPENED_IN_APP, FUNNEL_TIER_SELECTED_IN_APP, FUNNEL_CHECKOUT_OPENED } from "@comeoffline/analytics";
 import { CheckoutWizard } from "@/components/events/CheckoutWizard";
+import { formatEventDateShort } from "@comeoffline/ui";
 import { CollapsibleHeader } from "./event-detail/CollapsibleHeader";
 import { OverviewTab } from "./event-detail/OverviewTab";
 import { TicketsTab } from "./event-detail/TicketsTab";
@@ -32,9 +33,14 @@ interface EventDetailProps {
   onJoinWaitlist?: (spotsWanted: number) => void;
   onLeaveWaitlist?: (entryId: string) => void;
   loading?: boolean;
+  /** Other editions of the same series (this event included) — 2+ renders
+   *  the "pick your date" row above the tickets */
+  siblings?: Event[];
+  /** Called when the user taps another date — parent swaps the open event */
+  onSwitchEvent?: (e: Event) => void;
 }
 
-export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPurchase, onJoinWaitlist, onLeaveWaitlist, loading }: EventDetailProps) {
+export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPurchase, onJoinWaitlist, onLeaveWaitlist, loading, siblings, onSwitchEvent }: EventDetailProps) {
   const user = useAppStore((s) => s.user);
   const activeWaitlistEntry = useAppStore((s) => s.activeWaitlistEntry);
   const setEventDetailOpen = useAppStore((s) => s.setEventDetailOpen);
@@ -118,6 +124,21 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
   const [showWizard, setShowWizard] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const ticketsRef = useRef<HTMLDivElement>(null);
+
+  // Scroll affordance — the sheet opens with tickets filling the viewport and
+  // nothing says the description/rooms/photos/FAQ exist below. Show a nudge
+  // until the first real scroll; skip it when everything already fits.
+  const [showScrollHint, setShowScrollHint] = useState(false);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setShowScrollHint(el.scrollHeight > el.clientHeight + 60);
+    const onScroll = () => {
+      if (el.scrollTop > 24) setShowScrollHint(false);
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [event.id]);
 
   const selectedTier = tiers.find((t) => t.id === selectedTierId);
   const timeSlotsEnabled = event.ticketing?.time_slots_enabled && (event.ticketing?.time_slots?.length || 0) > 0;
@@ -211,6 +232,40 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
           ref={scrollRef}
           className="flex-1 overflow-y-auto px-6 pb-6 pt-3"
         >
+          {/* Pick your date — series editions, before the conversion moment */}
+          {(siblings?.length ?? 0) >= 2 && (
+            <div className="mb-6">
+              <p className="mb-2.5 font-mono text-[10px] uppercase tracking-[2px] text-muted">
+                pick your date
+              </p>
+              <div className="-mx-6 flex gap-2 overflow-x-auto px-6 pb-1">
+                {siblings!.map((sib) => {
+                  const isCurrent = sib.id === event.id;
+                  const sibFull =
+                    sib.status === "sold_out" || (sib.total_spots ?? 0) - (sib.spots_taken ?? 0) <= 0;
+                  return (
+                    <button
+                      key={sib.id}
+                      onClick={() => !isCurrent && !sibFull && onSwitchEvent?.(sib)}
+                      disabled={sibFull && !isCurrent}
+                      className={`shrink-0 whitespace-nowrap rounded-full border-[1.5px] px-3.5 py-2 font-sans text-[12px] font-medium transition ${
+                        isCurrent
+                          ? "border-transparent text-white"
+                          : sibFull
+                            ? "border-sand text-muted opacity-60"
+                            : "border-sand bg-white text-near-black"
+                      }`}
+                      style={isCurrent ? { background: event.accent_dark || "#B8845A" } : undefined}
+                    >
+                      {formatEventDateShort(sib.date)}
+                      {sibFull ? " · full" : ""}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Tickets — first thing visible after the header. This is the conversion moment. */}
           {isTicketed && !isAnnounced && (
             <div ref={ticketsRef} className="mb-6">
@@ -247,6 +302,15 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
             </div>
           )}
         </div>
+
+        {/* Scroll nudge — floats above the CTA until the first scroll */}
+        {showScrollHint && (
+          <div className="pointer-events-none absolute bottom-28 left-0 right-0 z-20 flex justify-center">
+            <span className="animate-bounce rounded-full bg-near-black/85 px-4 py-1.5 font-hand text-[14px] text-cream shadow-lg">
+              there&apos;s more below ↓
+            </span>
+          </div>
+        )}
 
         {/* Floating CTA */}
         <FloatingCTA

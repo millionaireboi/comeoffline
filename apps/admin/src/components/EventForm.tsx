@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import type { Event, Zone, PickupPoint, TicketTier, TicketingConfig, PostBookingContent, PostBookingSection, CheckoutStep, CheckoutAddOn, SeatingMode, SeatingSection, SeatRow, Spot, AddonSeatingConfig } from "@comeoffline/types";
 import { apiClient } from "@/lib/apiClient";
+import { SeriesDatesPanel } from "@/components/SeriesDatesPanel";
 import { EventPreview } from "@/components/EventPreview";
 import { ImageUpload } from "@/components/ImageUpload";
 import { MediaUpload } from "@/components/MediaUpload";
@@ -1947,6 +1948,9 @@ function EventFormInner({ event, seed, draftKey, onSave, onCancel, serifClassNam
   const [coverType, setCoverType] = useState<"image" | "video">(seed?.cover_type || "image");
   const [coverFocus, setCoverFocus] = useState<string>(seed?.cover_focus || "center");
   const [galleryUrls, setGalleryUrls] = useState<string[]>(seed?.gallery_urls || []);
+  const [pastPhotos, setPastPhotos] = useState<{ url: string; caption: string }[]>(
+    (seed?.past_photos || []).map((p) => ({ url: p.url, caption: p.caption || "" })),
+  );
 
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
@@ -2131,6 +2135,9 @@ function EventFormInner({ event, seed, draftKey, onSave, onCancel, serifClassNam
       cover_type: coverUrl ? coverType : undefined,
       cover_focus: coverUrl ? (coverFocus || undefined) : undefined,
       gallery_urls: coverType === "image" && galleryUrls.length > 0 ? galleryUrls : undefined,
+      past_photos: pastPhotos
+        .filter((p) => p.url)
+        .map((p) => ({ url: p.url, ...(p.caption.trim() ? { caption: p.caption.trim() } : {}) })),
       status: event?.status || "draft",
     } as Event;
   }
@@ -2281,6 +2288,10 @@ function EventFormInner({ event, seed, draftKey, onSave, onCancel, serifClassNam
       cover_type: coverUrl ? coverType : undefined,
       cover_focus: coverUrl ? (coverFocus || undefined) : undefined,
       gallery_urls: coverType === "image" && galleryUrls.length > 0 ? galleryUrls : undefined,
+      // Always an array — [] tells the API the admin cleared the gallery
+      past_photos: pastPhotos
+        .filter((p) => p.url)
+        .map((p) => ({ url: p.url, ...(p.caption.trim() ? { caption: p.caption.trim() } : {}) })),
       status,
     };
 
@@ -2399,6 +2410,10 @@ function EventFormInner({ event, seed, draftKey, onSave, onCancel, serifClassNam
           </div>
         </div>
 
+        {/* All dates of this event — repeatable-IP panel (saved events only:
+            a new date is a duplicate of this one, so it needs an id) */}
+        {event && <SeriesDatesPanel event={event} />}
+
         {/* Capacity + Tag */}
         <div className="grid grid-cols-2 gap-2.5">
           <div>
@@ -2472,6 +2487,44 @@ function EventFormInner({ event, seed, draftKey, onSave, onCancel, serifClassNam
             </p>
           </div>
         )}
+
+        {/* Previous event photos — trust gallery on the public detail page */}
+        <div>
+          <label className="mb-2 block font-mono text-[10px] uppercase tracking-[2px] text-muted">
+            previous event photos
+          </label>
+          <ImageUpload
+            multiple
+            values={pastPhotos.map((p) => p.url)}
+            onChangeMultiple={(urls) =>
+              setPastPhotos(urls.map((u) => pastPhotos.find((p) => p.url === u) ?? { url: u, caption: "" }))
+            }
+            pathPrefix="events/past"
+            label="add photos from past editions"
+          />
+          {pastPhotos.length > 0 && (
+            <div className="mt-2.5 flex flex-col gap-2">
+              {pastPhotos.map((p, i) => (
+                <div key={p.url} className="flex items-center gap-2.5">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={p.url} alt="" className="h-9 w-9 shrink-0 rounded-lg object-cover" />
+                  <input
+                    type="text"
+                    placeholder="caption (optional) — e.g. last house. everyone here walked in solo."
+                    value={p.caption}
+                    onChange={(e) =>
+                      setPastPhotos(pastPhotos.map((x, xi) => (xi === i ? { ...x, caption: e.target.value } : x)))
+                    }
+                    className={inputClass}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="mt-1.5 font-mono text-[9px] text-muted/40">
+            shown as a &quot;from the last one&quot; gallery on the event page — proof this actually happens. captions optional.
+          </p>
+        </div>
 
         {/* Description */}
         <div>

@@ -65,6 +65,9 @@ function buildScript(locLine: string | null, late: string | null): PosterBeat[] 
 export const friendsHouse: PosterCampaignConfig = {
   slug: "friends-house",
   eventId: process.env.NEXT_PUBLIC_POSTER_EVENT_ID || "DypaseoM65w3wljoLvfV",
+  // Repeatable IP: any upcoming event titled "friends house ..." becomes a
+  // pickable date on this page the moment it's created in admin.
+  series: { titleMatch: "friends house" },
   meta: {
     title: "friends house — come offline",
     description:
@@ -103,6 +106,21 @@ export const friendsHouse: PosterCampaignConfig = {
       signoff: "— friends house 🏠",
       scribble: "↓ proof we actually do this",
     },
+    // Shown instead of `note` when 2+ houses are live — same invite, minus
+    // the "this saturday" phrasing that stops being true with a calendar.
+    noteMulti: {
+      lines: [
+        "yep, this is about making friends.",
+        "friends house is a house party. games out, someone on the guitar, snacks till 10, carry your own bottle.",
+        "the difference? <strong>everyone comes to meet people.</strong>",
+        "<strong>so pick a saturday and come over.</strong>",
+        "the house opens every few weekends · 6–10 pm",
+      ],
+      signoff: "— friends house 🏠",
+      scribble: "↓ proof we actually do this",
+    },
+    datesTitle: "pick your saturday",
+    datesHint: "same house, same energy — different night. grab whichever one you're free for.",
     title: "friends house",
     emoji: "🏠",
     tagline: "byob, bring your voice too",

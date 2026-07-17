@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { AnalyticsProvider } from "@/components/AnalyticsProvider";
 import "./globals.css";
@@ -37,6 +37,14 @@ const caveat = localFont({
 export const metadata: Metadata = {
   title: "come offline \u00b7 ops",
   description: "ops dashboard",
+};
+
+// viewport-fit=cover lets the mobile bottom nav pad itself past the iPhone
+// home indicator via env(safe-area-inset-bottom).
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

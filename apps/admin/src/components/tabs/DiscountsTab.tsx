@@ -5,12 +5,18 @@ import { useApi } from "@/hooks/useApi";
 import { apiClient } from "@/lib/apiClient";
 import { toast } from "@/lib/toast";
 import { TableRowSkeleton } from "@/components/Skeleton";
+import { EventPicker } from "@/components/EventPicker";
 import type { DiscountCode, DiscountType, Event } from "@comeoffline/types";
 
-export function DiscountsTab() {
-  const { data: codes, loading, refetch } = useApi<DiscountCode[]>("/api/admin/discounts", {
+export function DiscountsTab({ eventId: lockedEventId }: { eventId?: string } = {}) {
+  const { data: allCodes, loading, refetch } = useApi<DiscountCode[]>("/api/admin/discounts", {
     dedupingInterval: 30 * 1000,
   });
+  // Locked (event-workspace) mode shows only codes that can apply at this
+  // event: codes scoped to it plus global ones.
+  const codes = lockedEventId
+    ? allCodes?.filter((dc) => !dc.event_id || dc.event_id === lockedEventId) ?? null
+    : allCodes;
   const { data: events } = useApi<Event[]>("/api/admin/events", {
     dedupingInterval: 2 * 60 * 1000,
     cacheTime: 10 * 60 * 1000,
@@ -21,7 +27,7 @@ export function DiscountsTab() {
   const [code, setCode] = useState("");
   const [type, setType] = useState<DiscountType>("percent");
   const [value, setValue] = useState("");
-  const [eventId, setEventId] = useState("");
+  const [eventId, setEventId] = useState(lockedEventId ?? "");
   const [maxUses, setMaxUses] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
   const [creating, setCreating] = useState(false);
@@ -33,7 +39,7 @@ export function DiscountsTab() {
     setCode("");
     setType("percent");
     setValue("");
-    setEventId("");
+    setEventId(lockedEventId ?? "");
     setMaxUses("");
     setExpiresAt("");
   };
@@ -170,17 +176,17 @@ export function DiscountsTab() {
                 />
               </div>
             </div>
-            <div>
-              <label className={labelClass}>event scope</label>
-              <select value={eventId} onChange={(e) => setEventId(e.target.value)} className={inputClass}>
-                <option value="">all events</option>
-                {(events || []).map((ev) => (
-                  <option key={ev.id} value={ev.id}>
-                    {ev.emoji} {ev.title}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {lockedEventId ? null : (
+              <div>
+                <label className={labelClass}>event scope</label>
+                <EventPicker
+                  value={eventId}
+                  onChange={setEventId}
+                  emptyLabel="all events"
+                  selectClassName={inputClass}
+                />
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={labelClass}>max uses</label>

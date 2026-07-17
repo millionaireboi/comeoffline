@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { useApi } from "@/hooks/useApi";
 import { API_URL } from "@/lib/constants";
+import { EventPicker } from "@/components/EventPicker";
 
 interface ApiTemplate {
   name: string;
@@ -13,13 +13,6 @@ interface ApiTemplate {
   bodyText: string;
   bodyVarCount: number;
   hasImageHeader: boolean;
-}
-
-interface EventOption {
-  id: string;
-  title: string;
-  date: string;
-  status?: string;
 }
 
 type AudienceType = "all" | "status" | "event" | "purchasers" | "never_purchased" | "manual";
@@ -99,8 +92,6 @@ export function MarketingPanel() {
   const [composing, setComposing] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const { data: events } = useApi<EventOption[]>("/api/admin/events");
-
   const authedFetch = useCallback(
     async (path: string, init?: RequestInit) => {
       const token = await getIdToken();
@@ -173,7 +164,6 @@ export function MarketingPanel() {
       {composing && (
         <CampaignComposer
           templates={usableTemplates}
-          events={events ?? []}
           authedFetch={authedFetch}
           onCreated={() => {
             setComposing(false);
@@ -208,12 +198,10 @@ export function MarketingPanel() {
 
 function CampaignComposer({
   templates,
-  events,
   authedFetch,
   onCreated,
 }: {
   templates: ApiTemplate[];
-  events: EventOption[];
   authedFetch: (path: string, init?: RequestInit) => Promise<any>;
   onCreated: () => void;
 }) {
@@ -432,18 +420,15 @@ function CampaignComposer({
         )}
 
         {audienceType === "event" && (
-          <select
+          <EventPicker
             value={eventId}
-            onChange={(e) => setEventId(e.target.value)}
-            className="w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 font-mono text-[11px] text-sand"
-          >
-            <option value="">— pick an event —</option>
-            {events.map((ev) => (
-              <option key={ev.id} value={ev.id}>
-                {ev.title} · {ev.date}
-              </option>
-            ))}
-          </select>
+            onChange={(id) => {
+              setEventId(id);
+              setPreview(null);
+            }}
+            emptyLabel="— pick an event —"
+            selectClassName="w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 font-mono text-[11px] text-sand"
+          />
         )}
 
         {audienceType === "manual" && (

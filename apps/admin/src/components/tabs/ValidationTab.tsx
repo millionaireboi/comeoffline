@@ -1,13 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { formatDate } from "@comeoffline/ui";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/lib/toast";
-import { useApi } from "@/hooks/useApi";
 import { instrumentSerif, API_URL } from "@/lib/constants";
 import { TableRowSkeleton } from "@/components/Skeleton";
-import type { Event } from "@comeoffline/types";
+import { EventPicker } from "@/components/EventPicker";
 
 interface ValidationQueueItem {
   user_id: string;
@@ -28,10 +26,6 @@ interface ValidationQueueItem {
 
 export function ValidationTab() {
   const { getIdToken } = useAuth();
-  const { data: events } = useApi<Event[]>("/api/admin/events", {
-    dedupingInterval: 2 * 60 * 1000,
-    cacheTime: 10 * 60 * 1000,
-  });
   const [queue, setQueue] = useState<ValidationQueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -115,23 +109,12 @@ export function ValidationTab() {
 
   return (
     <div className="w-full space-y-6 sm:max-w-3xl">
-      <div>
-        <label className="mb-2 block font-mono text-[10px] uppercase tracking-[2px] text-muted">
-          filter by event (optional)
-        </label>
-        <select
-          value={eventId}
-          onChange={(e) => setEventId(e.target.value)}
-          className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 font-mono text-sm text-cream focus:border-caramel/50 focus:outline-none"
-        >
-          <option value="">All events</option>
-          {(events || []).map((e) => (
-            <option key={e.id} value={e.id}>
-              {e.title} ({formatDate(e.date)}) • {e.status}
-            </option>
-          ))}
-        </select>
-      </div>
+      <EventPicker
+        value={eventId}
+        onChange={setEventId}
+        label="filter by event (optional)"
+        emptyLabel="All events"
+      />
 
       {actionStatus && (
         <div className="rounded-xl bg-caramel/10 px-4 py-3 font-mono text-[12px] text-caramel">

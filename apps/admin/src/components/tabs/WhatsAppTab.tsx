@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { API_URL } from "@/lib/constants";
-import { MarketingPanel } from "./WhatsAppMarketingPanel";
 
 type TemplateStatus = "APPROVED" | "PENDING" | "REJECTED" | "PAUSED" | "DISABLED" | string;
 
@@ -36,7 +35,7 @@ interface Scenario {
   updatedBy: string | null;
 }
 
-type Section = "scenarios" | "marketing" | "install" | "advanced";
+type Section = "scenarios" | "install" | "advanced";
 type AdvancedTab = "templates" | "diagnostics";
 
 export function WhatsAppTab() {
@@ -47,12 +46,12 @@ export function WhatsAppTab() {
       <header>
         <h2 className="font-serif text-2xl tracking-tight text-cream">WhatsApp</h2>
         <p className="mt-1 font-mono text-[11px] text-muted">
-          notification settings · marketing campaigns · install funnel · template mappings · diagnostics
+          notification settings · install funnel · template mappings · diagnostics — campaigns moved to growth → marketing
         </p>
       </header>
 
       <nav className="flex gap-1 border-b border-white/5">
-        {(["scenarios", "marketing", "install", "advanced"] as Section[]).map((s) => (
+        {(["scenarios", "install", "advanced"] as Section[]).map((s) => (
           <button
             key={s}
             onClick={() => setSection(s)}
@@ -66,7 +65,6 @@ export function WhatsAppTab() {
       </nav>
 
       {section === "scenarios" && <ScenariosPanel />}
-      {section === "marketing" && <MarketingPanel />}
       {section === "install" && <InstallPanel />}
       {section === "advanced" && <AdvancedPanel />}
     </div>

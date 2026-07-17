@@ -23,7 +23,7 @@ export function DashboardTab({ onNavigate }: { onNavigate?: (tab: Tab) => void }
   const triage: Array<{ label: string; value: number; emoji: string; tab: Tab }> = [
     { label: "pending applications", value: Number(stats?.applications_pending ?? 0), emoji: "📝", tab: "applications" },
     { label: "validation queue", value: Number(stats?.provisional_users ?? 0), emoji: "🌱", tab: "validation" },
-    { label: "open reports", value: Number(stats?.reports_open ?? 0), emoji: "🛡️", tab: "reports" },
+    { label: "open reports", value: Number(stats?.reports_open ?? 0), emoji: "🛡️", tab: "safety" },
     { label: "unread contacts", value: Number(stats?.contact_unread ?? 0), emoji: "📬", tab: "contact" },
     { label: "new brand leads", value: Number(stats?.brand_new ?? 0), emoji: "🤝", tab: "brands" },
   ];

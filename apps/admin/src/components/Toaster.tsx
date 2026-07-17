@@ -27,8 +27,7 @@ export function Toaster() {
 
   return (
     <div
-      className="pointer-events-none fixed inset-x-0 z-[900] flex flex-col items-center gap-2 px-4"
-      style={{ bottom: "calc(1rem + env(safe-area-inset-bottom, 0px))" }}
+      className="pointer-events-none fixed inset-x-0 z-[900] flex flex-col items-center gap-2 px-4 bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] sm:bottom-[calc(1rem+env(safe-area-inset-bottom,0px))]"
     >
       {toasts.map((t) => (
         <button

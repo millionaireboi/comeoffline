@@ -2,9 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { useApi } from "@/hooks/useApi";
 import { instrumentSerif, API_URL } from "@/lib/constants";
-import type { Event } from "@comeoffline/types";
+import { EventPicker } from "@/components/EventPicker";
 
 interface TicketData {
   id: string;
@@ -102,18 +101,14 @@ function saveFailedQueue(queue: QueuedCheckIn[]) {
   }
 }
 
-export function CheckInTab() {
+// Any event that can have ticket-holders is checkable — critically including
+// sold_out (the best-case door scenario) and completed (late stragglers /
+// post-event reconciliation). Only drafts and announced (no tickets yet) are excluded.
+const CHECKABLE = new Set(["live", "upcoming", "listed", "sold_out", "completed"]);
+
+export function CheckInTab({ eventId: lockedEventId }: { eventId?: string } = {}) {
   const { getIdToken } = useAuth();
-  const { data: allEvents } = useApi<Event[]>("/api/admin/events", {
-    dedupingInterval: 2 * 60 * 1000,
-    cacheTime: 10 * 60 * 1000,
-  });
-  // Any event that can have ticket-holders is checkable — critically including
-  // sold_out (the best-case door scenario) and completed (late stragglers /
-  // post-event reconciliation). Only drafts and announced (no tickets yet) are excluded.
-  const CHECKABLE = new Set(["live", "upcoming", "listed", "sold_out", "completed"]);
-  const events = (allEvents || []).filter((e) => CHECKABLE.has(e.status));
-  const [eventId, setEventId] = useState("");
+  const [eventId, setEventId] = useState(lockedEventId ?? "");
   const [tickets, setTickets] = useState<TicketData[]>([]);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [manualSearch, setManualSearch] = useState("");
@@ -463,24 +458,15 @@ export function CheckInTab() {
         </div>
       )}
 
-      {/* Event selector */}
-      <div>
-        <label className="mb-2 block font-mono text-[10px] uppercase tracking-[2px] text-muted">
-          select event
-        </label>
-        <select
+      {/* Event selector — hidden when the workspace already scoped us to one */}
+      {!lockedEventId && (
+        <EventPicker
           value={eventId}
-          onChange={(e) => setEventId(e.target.value)}
-          className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 font-mono text-sm text-cream focus:border-caramel/50 focus:outline-none"
-        >
-          <option value="">Choose event...</option>
-          {events.map((e) => (
-            <option key={e.id} value={e.id}>
-              {e.emoji} {e.title} ({e.status})
-            </option>
-          ))}
-        </select>
-      </div>
+          onChange={setEventId}
+          label="select event"
+          filter={(e) => CHECKABLE.has(e.status)}
+        />
+      )}
 
       {eventId && (
         <>

@@ -7,7 +7,7 @@ import { toast } from "@/lib/toast";
 import { useApi } from "@/hooks/useApi";
 import { API_URL, instrumentSerif, TICKET_STATUS_COLORS } from "@/lib/constants";
 import { apiClient } from "@/lib/apiClient";
-import type { Event } from "@comeoffline/types";
+import { EventPicker } from "@/components/EventPicker";
 
 interface TicketWithUser {
   id: string;
@@ -92,11 +92,11 @@ function formatDateTime(iso: string): string {
   });
 }
 
-export function BookingsTab() {
+export function BookingsTab({ eventId: lockedEventId }: { eventId?: string } = {}) {
   const { getIdToken } = useAuth();
 
   // Filters
-  const [eventFilter, setEventFilter] = useState("");
+  const [eventFilter, setEventFilter] = useState(lockedEventId ?? "");
   const [statusFilter, setStatusFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [fromDate, setFromDate] = useState("");
@@ -116,17 +116,15 @@ export function BookingsTab() {
   // Revenue breakdown
   const [showRevenue, setShowRevenue] = useState(false);
 
-  // Events list for filter dropdown
-  const { data: events } = useApi<Event[]>("/api/admin/events", {
-    dedupingInterval: 2 * 60 * 1000,
-    cacheTime: 10 * 60 * 1000,
-  });
-
-  // Stats
-  const { data: stats, refetch: refetchStats } = useApi<BookingsStats>("/api/admin/bookings/stats", {
-    dedupingInterval: 2 * 60 * 1000,
-    cacheTime: 10 * 60 * 1000,
-  });
+  // Stats are platform-wide, so they'd mislead inside a single event's
+  // workspace — skip fetching them entirely in locked mode.
+  const { data: stats, refetch: refetchStats } = useApi<BookingsStats>(
+    lockedEventId ? null : "/api/admin/bookings/stats",
+    {
+      dedupingInterval: 2 * 60 * 1000,
+      cacheTime: 10 * 60 * 1000,
+    },
+  );
 
   // Fetch tickets
   const fetchTickets = useCallback(async () => {
@@ -246,7 +244,8 @@ export function BookingsTab() {
   return (
     <>
       <div className="max-w-5xl space-y-6">
-        {/* Stats cards */}
+        {/* Stats cards — platform-wide, so hidden in single-event mode */}
+        {!lockedEventId && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
             { label: "total revenue", value: stats ? formatPrice(stats.total_revenue) : "—", emoji: "💰" },
@@ -263,6 +262,7 @@ export function BookingsTab() {
             </div>
           ))}
         </div>
+        )}
 
         {/* Revenue breakdown toggle */}
         {stats && stats.per_event.length > 0 && (
@@ -328,18 +328,14 @@ export function BookingsTab() {
             placeholder="Search by name or handle..."
             className="min-w-[200px] flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-3 font-mono text-sm text-cream placeholder:text-muted/30 focus:border-caramel/50 focus:outline-none"
           />
-          <select
-            value={eventFilter}
-            onChange={(e) => setEventFilter(e.target.value)}
-            className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 font-mono text-sm text-cream focus:border-caramel/50 focus:outline-none"
-          >
-            <option value="">all events</option>
-            {events?.map((ev) => (
-              <option key={ev.id} value={ev.id}>
-                {ev.emoji} {ev.title}
-              </option>
-            ))}
-          </select>
+          {!lockedEventId && (
+            <EventPicker
+              value={eventFilter}
+              onChange={setEventFilter}
+              emptyLabel="all events"
+              selectClassName="rounded-xl border border-white/10 bg-white/5 px-4 py-3 font-mono text-sm text-cream focus:border-caramel/50 focus:outline-none"
+            />
+          )}
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}

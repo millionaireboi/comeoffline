@@ -1,19 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { formatDate } from "@comeoffline/ui";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/lib/toast";
-import { useApi } from "@/hooks/useApi";
 import { API_URL } from "@/lib/constants";
 import { ImageUpload } from "@/components/ImageUpload";
-
-interface EventOption {
-  id: string;
-  title: string;
-  date: string;
-  status: string;
-}
+import { EventPicker } from "@/components/EventPicker";
 
 interface NotificationRecord {
   id: string;
@@ -176,13 +168,9 @@ function NotificationComposer() {
   );
 }
 
-export function ContentTab() {
+export function ContentTab({ eventId: lockedEventId }: { eventId?: string } = {}) {
   const { getIdToken } = useAuth();
-  const { data: events, loading: loadingEvents } = useApi<EventOption[]>("/api/admin/events", {
-    dedupingInterval: 2 * 60 * 1000,
-    cacheTime: 10 * 60 * 1000,
-  });
-  const [eventId, setEventId] = useState("");
+  const [eventId, setEventId] = useState(lockedEventId ?? "");
   const [polaroidUrl, setPolaroidUrl] = useState("");
   const [polaroidCaption, setPolaroidCaption] = useState("");
   const [polaroidWho, setPolaroidWho] = useState("");
@@ -279,31 +267,14 @@ export function ContentTab() {
 
   return (
     <div className="max-w-2xl space-y-8">
-      <div>
-        <label className="mb-2 block font-mono text-[10px] uppercase tracking-[2px] text-muted">select event</label>
-        {loadingEvents ? (
-          <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 font-mono text-sm text-muted">
-            Loading events...
-          </div>
-        ) : !events || events.length === 0 ? (
-          <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 font-mono text-sm text-muted">
-            No events found. Create an event first.
-          </div>
-        ) : (
-          <select
-            value={eventId}
-            onChange={(e) => setEventId(e.target.value)}
-            className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 font-mono text-sm text-cream focus:border-caramel/50 focus:outline-none"
-          >
-            <option value="">Choose an event...</option>
-            {events.map((event) => (
-              <option key={event.id} value={event.id}>
-                {event.title} ({formatDate(event.date)}) • {event.status}
-              </option>
-            ))}
-          </select>
-        )}
-      </div>
+      {!lockedEventId && (
+        <EventPicker
+          value={eventId}
+          onChange={setEventId}
+          label="select event"
+          emptyLabel="Choose an event..."
+        />
+      )}
 
       <section className="rounded-xl border border-white/5 p-5">
         <h3 className="mb-4 font-mono text-[11px] uppercase tracking-[2px] text-cream">add polaroid</h3>

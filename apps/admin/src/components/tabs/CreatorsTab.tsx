@@ -59,6 +59,8 @@ interface Creator {
   user_uid: string | null;
   payouts: CreatorPayout[];
   page: CreatorPage;
+  page_draft?: CreatorPage | null;
+  page_draft_at?: string | null;
   earnings: CreatorEarnings;
 }
 
@@ -84,10 +86,9 @@ const btnClass =
 
 const rupees = (n: number) => `₹${n.toLocaleString("en-IN")}`;
 
-/* Writers type *stars*; the page renders <em>. Convert on save/load so
-   nobody ever sees HTML in the admin. */
-const starsToEm = (line: string) => line.replace(/\*([^*]+)\*/g, "<em>$1</em>");
-const emToStars = (line: string) => line.replace(/<em>([\s\S]*?)<\/em>/g, "*$1*");
+/* Everyone writes plain text — the page auto-highlights the last note line.
+   Older saved lines may still carry <em>/<strong>; strip for display/edit. */
+const stripTags = (line: string) => line.replace(/<\/?(em|strong)>/g, "");
 
 const normTitle = (t: string) => t.trim().toLowerCase().replace(/\s+/g, " ");
 
@@ -133,6 +134,87 @@ function MemberPicker({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Creator-submitted page draft — publish copies it onto the live page. */
+function DraftPanel({ creator, onDone }: { creator: Creator; onDone: () => void }) {
+  const draft = creator.page_draft;
+  const [acting, setActing] = useState(false);
+  if (!draft) return null;
+
+  const act = async (action: "publish" | "discard") => {
+    setActing(true);
+    try {
+      if (action === "publish") {
+        await apiClient.post(`/api/admin/creators/${creator.handle}/draft/publish`, {});
+        toast.success(`${creator.handle}'s page is live`);
+      } else {
+        await apiClient.delete(`/api/admin/creators/${creator.handle}/draft`);
+        toast.success("draft discarded");
+      }
+      onDone();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : `${action} failed`);
+    } finally {
+      setActing(false);
+    }
+  };
+
+  const row = (label: string, value?: string | null) =>
+    value ? (
+      <div>
+        <p className={labelClass}>{label}</p>
+        <p className="font-mono text-[11px] text-cream">{stripTags(value)}</p>
+      </div>
+    ) : null;
+
+  return (
+    <div className="mt-4 space-y-3 rounded-lg border border-caramel/20 bg-caramel/5 p-4">
+      <p className="font-mono text-[10px] uppercase tracking-[1px] text-caramel">
+        draft from {creator.name}
+        {creator.page_draft_at &&
+          ` · ${new Date(creator.page_draft_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}`}
+      </p>
+      {draft.photo_url && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={draft.photo_url} alt="draft polaroid" className="h-28 w-28 rounded-lg object-cover" />
+      )}
+      {row("photo caption", draft.photo_caption)}
+      {row("hero line", draft.hero_line)}
+      {draft.turn && draft.turn.length > 0 && (
+        <div>
+          <p className={labelClass}>the turn</p>
+          {draft.turn.map((l, i) => (
+            <p key={i} className="font-mono text-[11px] text-cream">
+              {stripTags(l)}
+            </p>
+          ))}
+        </div>
+      )}
+      {draft.rooms && draft.rooms.length > 0 && (
+        <div>
+          <p className={labelClass}>rooms</p>
+          {draft.rooms.map((r) => (
+            <p key={r.title_match} className="font-mono text-[11px] text-cream">
+              {r.title_match} <span className="text-muted">— {stripTags(r.tie)}</span>
+            </p>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-2 pt-1">
+        <button
+          onClick={() => act("publish")}
+          disabled={acting}
+          className="rounded-lg bg-caramel px-4 py-2 font-mono text-[11px] font-medium uppercase tracking-[1px] text-near-black transition-opacity hover:opacity-80 disabled:opacity-40"
+        >
+          publish to /with/{creator.handle}
+        </button>
+        <button onClick={() => act("discard")} disabled={acting} className={btnClass}>
+          discard
+        </button>
+      </div>
     </div>
   );
 }
@@ -210,7 +292,7 @@ function PagePanel({ creator, events, onDone }: { creator: Creator; events: Admi
   const [photoUrl, setPhotoUrl] = useState(page.photo_url ?? "");
   const [photoCaption, setPhotoCaption] = useState(page.photo_caption ?? "");
   const [heroLine, setHeroLine] = useState(page.hero_line ?? "");
-  const [turn, setTurn] = useState((page.turn ?? []).map(emToStars).join("\n"));
+  const [turn, setTurn] = useState((page.turn ?? []).map(stripTags).join("\n"));
   const [saving, setSaving] = useState(false);
 
   // Rooms picker: one row per upcoming event series (unique normalized title),
@@ -257,7 +339,7 @@ function PagePanel({ creator, events, onDone }: { creator: Creator; events: Admi
         hero_line: heroLine.trim() || undefined,
         turn: turn
           .split("\n")
-          .map((l) => starsToEm(l.trim()))
+          .map((l) => l.trim())
           .filter(Boolean),
         rooms: [...rooms.entries()].map(([title_match, tie]) => ({ title_match, tie: tie.trim() || "i’ll be at this one." })),
       };
@@ -315,10 +397,10 @@ function PagePanel({ creator, events, onDone }: { creator: Creator; events: Admi
             value={turn}
             onChange={(e) => setTurn(e.target.value)}
             rows={4}
-            placeholder={"you know my coffee order from a story.\ni’m done doing this over dms. *so i’m doing this instead.*"}
+            placeholder={"you know my coffee order from a story.\ni’m done doing this over dms. so i’m doing this instead."}
             className={inputClass}
           />
-          <p className="mt-1 font-mono text-[9px] text-muted">wrap words in *stars* to highlight them on the page</p>
+          <p className="mt-1 font-mono text-[9px] text-muted">the last line auto-highlights on the page — make it the punchy one</p>
         </div>
 
         <div className="sm:col-span-2">
@@ -576,6 +658,11 @@ export function CreatorsTab() {
                           {e.lifetime_seats}/{c.activation_sales} to activate
                         </span>
                       )}
+                      {c.page_draft && (
+                        <span className="rounded-full bg-caramel/15 px-2.5 py-0.5 font-mono text-[9px] uppercase text-caramel">
+                          draft pending
+                        </span>
+                      )}
                     </div>
                     <p className="mt-1.5 font-mono text-[10px] text-muted">
                       {rupees(c.rate_per_ticket)}/seat · <span className="text-cream">{e.month_seats}</span> this month ·{" "}
@@ -604,6 +691,14 @@ export function CreatorsTab() {
                     >
                       {openPanel === `${c.handle}:page` ? "close" : "page"}
                     </button>
+                    {c.page_draft && (
+                      <button
+                        onClick={() => setOpenPanel(openPanel === `${c.handle}:draft` ? null : `${c.handle}:draft`)}
+                        className="rounded-lg bg-caramel/15 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[1px] text-caramel transition-colors hover:bg-caramel/25"
+                      >
+                        {openPanel === `${c.handle}:draft` ? "close" : "review draft"}
+                      </button>
+                    )}
                     {!c.user_uid && (
                       <button
                         onClick={() => setOpenPanel(openPanel === `${c.handle}:member` ? null : `${c.handle}:member`)}
@@ -638,6 +733,16 @@ export function CreatorsTab() {
                     )}
                   </div>
                 </div>
+
+                {openPanel === `${c.handle}:draft` && (
+                  <DraftPanel
+                    creator={c}
+                    onDone={() => {
+                      setOpenPanel(null);
+                      refetch();
+                    }}
+                  />
+                )}
 
                 {openPanel === `${c.handle}:member` && (
                   <div className="mt-4 rounded-lg border border-white/5 bg-white/[0.02] p-4">

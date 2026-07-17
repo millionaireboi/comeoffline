@@ -219,8 +219,14 @@ export function CreatorLanding({
         {/* ── the turn — their voice, our structure ── */}
         <section className={s.turn} data-section="turn">
           <span className={s.tape} aria-hidden="true" />
-          {creator.turn.map((line) => (
-            <p key={line} className={s.turnLine} dangerouslySetInnerHTML={{ __html: line }} />
+          {creator.turn.map((line, i) => (
+            <p
+              key={line}
+              // The last line is the punch line — auto-accented so writers
+              // never have to think about markup
+              className={`${s.turnLine} ${i === creator.turn.length - 1 ? s.turnLineAccent : ""}`}
+              dangerouslySetInnerHTML={{ __html: line }}
+            />
           ))}
           <p className={s.turnSign}>{creator.turnSign}</p>
         </section>

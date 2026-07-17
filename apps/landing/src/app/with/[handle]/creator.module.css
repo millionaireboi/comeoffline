@@ -203,6 +203,10 @@
   font-style: normal;
 }
 
+.turnLineAccent {
+  color: #c4704d;
+}
+
 .turnSign {
   font-family: var(--font-hand);
   font-size: 1.4rem;

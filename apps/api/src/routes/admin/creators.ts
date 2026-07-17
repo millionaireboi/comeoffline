@@ -6,6 +6,8 @@ import {
   updateCreator,
   recordPayout,
   deleteCreator,
+  publishDraft,
+  discardDraft,
 } from "../../services/creators.service";
 
 const router = Router();
@@ -98,6 +100,36 @@ router.post("/:handle/payouts", requireAdmin, async (req: AuthRequest, res) => {
     res.status(201).json({ success: true, data: result.data });
   } catch (err) {
     console.error("[admin/creators] payout error:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+});
+
+/** POST /api/admin/creators/:handle/draft/publish — approve a creator's page draft */
+router.post("/:handle/draft/publish", requireAdmin, async (req: AuthRequest, res) => {
+  try {
+    const result = await publishDraft(req.params.handle as string);
+    if (!result.success) {
+      res.status(400).json({ success: false, error: result.error });
+      return;
+    }
+    res.json({ success: true, data: result.data });
+  } catch (err) {
+    console.error("[admin/creators] publish draft error:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+});
+
+/** DELETE /api/admin/creators/:handle/draft — discard a creator's page draft */
+router.delete("/:handle/draft", requireAdmin, async (req: AuthRequest, res) => {
+  try {
+    const result = await discardDraft(req.params.handle as string);
+    if (!result.success) {
+      res.status(400).json({ success: false, error: result.error });
+      return;
+    }
+    res.json({ success: true, data: result.data });
+  } catch (err) {
+    console.error("[admin/creators] discard draft error:", err);
     res.status(500).json({ success: false, error: "Internal server error" });
   }
 });

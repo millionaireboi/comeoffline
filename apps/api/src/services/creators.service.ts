@@ -59,6 +59,10 @@ export interface Creator {
   user_uid: string | null;
   payouts: CreatorPayout[];
   page: CreatorPage;
+  /** Creator-submitted edits awaiting admin review — nothing a creator types
+   *  reaches the public page until publishDraft copies it over. */
+  page_draft?: CreatorPage | null;
+  page_draft_at?: string | null;
   created_at: string;
   created_by?: string;
 }
@@ -276,6 +280,82 @@ export async function deleteCreator(handle: string): Promise<{ success: boolean;
   if (!(await ref.get()).exists) return { success: false, error: "creator not found" };
   await ref.delete();
   return { success: true };
+}
+
+/* ── Creator self-serve drafts ────────────────────── */
+
+/** Escape everything, then re-allow the one tag the page renders. Creator
+ *  input lands in dangerouslySetInnerHTML on the landing page, so this is
+ *  load-bearing — never store creator text unsanitized. */
+function cleanText(v: unknown, max = 400): string | undefined {
+  if (typeof v !== "string") return undefined;
+  const t = v.trim().slice(0, max);
+  if (!t) return undefined;
+  return t
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/&lt;em&gt;/g, "<em>")
+    .replace(/&lt;\/em&gt;/g, "</em>");
+}
+
+function cleanLines(v: unknown, maxLines: number): string[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const lines = v.map((l) => cleanText(l)).filter((l): l is string => !!l);
+  return lines.length > 0 ? lines.slice(0, maxLines) : undefined;
+}
+
+/** Whitelist + sanitize a creator-submitted page. photo_url is only accepted
+ *  from our own storage bucket (the upload endpoint sets it) — never an
+ *  arbitrary external url. */
+export function sanitizeDraft(input: Record<string, unknown>, photoUrl?: string): CreatorPage {
+  const rooms = Array.isArray(input.rooms)
+    ? (input.rooms as Record<string, unknown>[])
+        .map((r) => ({ title_match: cleanText(r?.title_match, 80) ?? "", tie: cleanText(r?.tie, 120) ?? "" }))
+        .filter((r) => r.title_match && r.tie)
+        .slice(0, 12)
+    : undefined;
+  return {
+    ...(photoUrl && { photo_url: photoUrl }),
+    ...(cleanText(input.photo_caption, 120) && { photo_caption: cleanText(input.photo_caption, 120) }),
+    ...(cleanText(input.hero_line, 120) && { hero_line: cleanText(input.hero_line, 120) }),
+    ...(cleanLines(input.turn, 8) && { turn: cleanLines(input.turn, 8) }),
+    ...(rooms && rooms.length > 0 && { rooms }),
+  };
+}
+
+export async function saveDraft(handle: string, draft: CreatorPage): Promise<void> {
+  const db = await getDb();
+  await db.collection("creators").doc(normalizeHandle(handle)).update({
+    page_draft: draft,
+    page_draft_at: new Date().toISOString(),
+  });
+}
+
+/** Admin approves: draft becomes the live page. Draft photo/caption merge
+ *  over the existing page so admin-set fields the creator can't edit stay. */
+export async function publishDraft(handle: string): Promise<CreateResult> {
+  const db = await getDb();
+  const ref = db.collection("creators").doc(normalizeHandle(handle));
+  const snap = await ref.get();
+  if (!snap.exists) return { success: false, error: "creator not found" };
+  const creator = snap.data() as Creator;
+  if (!creator.page_draft) return { success: false, error: "no draft to publish" };
+  await ref.update({
+    page: { ...creator.page, ...creator.page_draft },
+    page_draft: null,
+    page_draft_at: null,
+  });
+  return { success: true, data: (await ref.get()).data() as Creator };
+}
+
+export async function discardDraft(handle: string): Promise<CreateResult> {
+  const db = await getDb();
+  const ref = db.collection("creators").doc(normalizeHandle(handle));
+  const snap = await ref.get();
+  if (!snap.exists) return { success: false, error: "creator not found" };
+  await ref.update({ page_draft: null, page_draft_at: null });
+  return { success: true, data: (await ref.get()).data() as Creator };
 }
 
 /* ── Public (landing) ─────────────────────────────── */

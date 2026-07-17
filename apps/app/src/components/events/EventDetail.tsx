@@ -8,6 +8,7 @@ import { apiFetch } from "@/lib/api";
 import { posthog, FUNNEL_EVENT_DETAIL_OPENED_IN_APP, FUNNEL_TIER_SELECTED_IN_APP, FUNNEL_CHECKOUT_OPENED } from "@comeoffline/analytics";
 import { CheckoutWizard } from "@/components/events/CheckoutWizard";
 import { formatEventDateShort } from "@comeoffline/ui";
+import { ageFromDob, identityNeeds } from "@/lib/identity";
 import { CollapsibleHeader } from "./event-detail/CollapsibleHeader";
 import { OverviewTab } from "./event-detail/OverviewTab";
 import { TicketsTab } from "./event-detail/TicketsTab";
@@ -42,6 +43,8 @@ interface EventDetailProps {
 
 export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPurchase, onJoinWaitlist, onLeaveWaitlist, loading, siblings, onSwitchEvent }: EventDetailProps) {
   const user = useAppStore((s) => s.user);
+  const setUser = useAppStore((s) => s.setUser);
+  const showToast = useAppStore((s) => s.showToast);
   const activeWaitlistEntry = useAppStore((s) => s.activeWaitlistEntry);
   const setEventDetailOpen = useAppStore((s) => s.setEventDetailOpen);
   const { getIdToken } = useAuth();
@@ -125,6 +128,51 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
   const scrollRef = useRef<HTMLDivElement>(null);
   const ticketsRef = useRef<HTMLDivElement>(null);
 
+  // Identity gate for the one-tap RSVP path — the checkout wizard collects
+  // name/DOB on its summary step, but free RSVPs skip the wizard entirely, so
+  // a small dialog picks them up here before the RSVP fires.
+  const { needsName, needsDob, ageBlocked } = identityNeeds(user, event.min_age);
+  const [showIdentityDialog, setShowIdentityDialog] = useState(false);
+  const [idName, setIdName] = useState("");
+  const [idDob, setIdDob] = useState("");
+  const [idError, setIdError] = useState<string | null>(null);
+  const [idSaving, setIdSaving] = useState(false);
+
+  const idEnteredAge = idDob ? ageFromDob(idDob) : null;
+  const idUnderAge = needsDob && !!idDob && (idEnteredAge == null || idEnteredAge < event.min_age!);
+  const identityValid =
+    (!needsName || idName.trim().length > 0) &&
+    (!needsDob || (!!idDob && !idUnderAge));
+
+  const confirmIdentity = async () => {
+    if (!identityValid || idSaving) return;
+    setIdSaving(true);
+    setIdError(null);
+    try {
+      const token = await getIdToken();
+      if (!token) throw new Error("please sign in again");
+      const body: Record<string, string> = {};
+      if (needsName) body.name = idName.trim();
+      if (needsDob) body.date_of_birth = idDob;
+      await apiFetch("/api/profile/me", { method: "PUT", token, body: JSON.stringify(body) });
+      if (user) {
+        setUser({
+          ...user,
+          ...(needsName ? { name: idName.trim() } : {}),
+          ...(needsDob ? { date_of_birth: idDob } : {}),
+        });
+      }
+      setShowIdentityDialog(false);
+      onRsvp?.();
+    } catch (err) {
+      setIdError(
+        err instanceof Error && err.message ? err.message.toLowerCase() : "couldn't save your details. try again.",
+      );
+    } finally {
+      setIdSaving(false);
+    }
+  };
+
   // Scroll affordance — the sheet opens with tickets filling the viewport and
   // nothing says the description/rooms/photos/FAQ exist below. Show a nudge
   // until the first real scroll; skip it when everything already fits.
@@ -175,6 +223,14 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
       // promo code field lives and the only order review before Razorpay.
       setShowWizard(true);
     } else if (onRsvp) {
+      if (ageBlocked) {
+        showToast(`this event is ${event.min_age}+`, "error");
+        return;
+      }
+      if (needsName || needsDob) {
+        setShowIdentityDialog(true);
+        return;
+      }
       onRsvp();
     }
   };
@@ -351,6 +407,82 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
           }}
           loading={loading}
         />
+      )}
+
+      {/* Identity dialog — free RSVPs skip the wizard, so name/DOB land here */}
+      {showIdentityDialog && (
+        <div className="absolute inset-0 z-[40] flex items-center justify-center bg-[rgba(10,9,7,0.45)] backdrop-blur-sm" style={{ animation: "fadeIn 0.15s ease both" }}>
+          <div className="mx-6 w-full max-w-[340px] rounded-[20px] bg-cream p-5 shadow-[0_12px_40px_rgba(26,23,21,0.3)]">
+            <p className="mb-1 font-serif text-[18px] text-near-black" style={{ letterSpacing: "-0.3px" }}>
+              one quick thing
+            </p>
+            <p className="mb-4 font-sans text-[13px] leading-relaxed text-warm-brown">
+              {needsName && needsDob
+                ? "we need a name for your spot, and this event checks age."
+                : needsName
+                  ? "we need a name for your spot."
+                  : "this event checks age."}
+            </p>
+            {needsName && (
+              <div>
+                <label className="mb-1.5 block font-sans text-[13px] text-warm-brown">
+                  name on your ticket
+                </label>
+                <input
+                  type="text"
+                  value={idName}
+                  onChange={(e) => setIdName(e.target.value)}
+                  placeholder="your full name"
+                  autoComplete="name"
+                  maxLength={100}
+                  className="w-full rounded-xl border border-sand bg-white px-3 py-2.5 font-sans text-[14px] text-near-black placeholder:text-muted focus:border-near-black/30 focus:outline-none"
+                />
+              </div>
+            )}
+            {needsDob && (
+              <div className={needsName ? "mt-3" : ""}>
+                <label className="mb-1.5 block font-sans text-[13px] text-warm-brown">
+                  date of birth
+                </label>
+                <input
+                  type="date"
+                  value={idDob}
+                  onChange={(e) => setIdDob(e.target.value)}
+                  autoComplete="bday"
+                  className="w-full rounded-xl border border-sand bg-white px-3 py-2.5 font-sans text-[14px] text-near-black focus:border-near-black/30 focus:outline-none"
+                />
+                {idUnderAge ? (
+                  <p className="mt-1.5 font-mono text-[10px] text-[#B85C4A]">
+                    this one&apos;s {event.min_age}+ only
+                  </p>
+                ) : (
+                  <p className="mt-1.5 font-mono text-[10px] text-muted">
+                    this event is {event.min_age}+ &mdash; saved to your profile, we won&apos;t ask again
+                  </p>
+                )}
+              </div>
+            )}
+            {idError && (
+              <p className="mt-2 font-mono text-[10px] text-[#B85C4A]">{idError}</p>
+            )}
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={confirmIdentity}
+                disabled={!identityValid || idSaving}
+                className="flex-1 rounded-xl bg-near-black py-3 font-sans text-[14px] font-medium text-cream transition-transform active:scale-[0.98] disabled:opacity-40"
+              >
+                {idSaving ? "saving..." : "count me in"}
+              </button>
+              <button
+                onClick={() => setShowIdentityDialog(false)}
+                disabled={idSaving}
+                className="rounded-xl border border-sand bg-white px-4 py-3 font-sans text-[14px] text-warm-brown transition-transform active:scale-[0.98]"
+              >
+                not now
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>

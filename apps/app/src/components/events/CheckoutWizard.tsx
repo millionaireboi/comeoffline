@@ -6,6 +6,7 @@ import { useAnalytics, trackFbEvent, CHECKOUT_STARTED, CHECKOUT_STEP_VIEWED, CHE
 import { useAuth } from "@/hooks/useAuth";
 import { useAppStore } from "@/store/useAppStore";
 import { apiFetch } from "@/lib/api";
+import { ageFromDob, identityNeeds } from "@/lib/identity";
 
 interface SelectedAddon {
   addon_id: string;
@@ -22,6 +23,21 @@ interface AppliedDiscount {
   code: string;
   type: DiscountType;
   value: number;
+}
+
+/** Identity fields collected on the summary step — slim onboarding means the
+ * account may only have a phone number, and age-gated events need a DOB. */
+interface IdentityDraft {
+  needsName: boolean;
+  needsDob: boolean;
+  minAge?: number;
+  name: string;
+  dob: string;
+  onNameChange: (v: string) => void;
+  onDobChange: (v: string) => void;
+  /** DOB already on file fails the event's age gate — purchase is blocked */
+  ageBlocked: boolean;
+  error: string | null;
 }
 
 /** Mirrors the server's discount math so the preview never drifts from the charge */
@@ -850,6 +866,7 @@ function SummaryStep({
   appliedDiscount,
   onApplyPromo,
   onRemovePromo,
+  identity,
 }: {
   event: Event;
   selectedTier: TicketTier | undefined;
@@ -865,6 +882,7 @@ function SummaryStep({
   appliedDiscount: AppliedDiscount | null;
   onApplyPromo: (code: string) => Promise<string | null>;
   onRemovePromo: () => void;
+  identity: IdentityDraft;
 }) {
   const [promoInput, setPromoInput] = useState("");
   const [promoError, setPromoError] = useState<string | null>(null);
@@ -910,7 +928,67 @@ function SummaryStep({
 
   const timeSlot = event.ticketing?.time_slots?.find((s) => s.id === timeSlotId);
 
+  const enteredAge = identity.dob ? ageFromDob(identity.dob) : null;
+  const underAge =
+    identity.needsDob && !!identity.minAge && !!identity.dob && (enteredAge == null || enteredAge < identity.minAge);
+
   return (
+    <>
+      {(identity.needsName || identity.needsDob || identity.ageBlocked) && (
+        <div className="mb-3 rounded-[16px] border border-sand bg-white p-5">
+          <span className="mb-3 block font-mono text-[10px] uppercase tracking-[2px] text-muted">
+            your details
+          </span>
+          {identity.needsName && (
+            <div>
+              <label className="mb-1.5 block font-sans text-[13px] text-warm-brown">
+                name on your ticket
+              </label>
+              <input
+                type="text"
+                value={identity.name}
+                onChange={(e) => identity.onNameChange(e.target.value)}
+                placeholder="your full name"
+                autoComplete="name"
+                maxLength={100}
+                className="w-full rounded-xl border border-sand bg-cream/50 px-3 py-2.5 font-sans text-[14px] text-near-black placeholder:text-muted focus:border-near-black/30 focus:outline-none"
+              />
+            </div>
+          )}
+          {identity.needsDob && (
+            <div className={identity.needsName ? "mt-3" : ""}>
+              <label className="mb-1.5 block font-sans text-[13px] text-warm-brown">
+                date of birth
+              </label>
+              <input
+                type="date"
+                value={identity.dob}
+                onChange={(e) => identity.onDobChange(e.target.value)}
+                autoComplete="bday"
+                className="w-full rounded-xl border border-sand bg-cream/50 px-3 py-2.5 font-sans text-[14px] text-near-black focus:border-near-black/30 focus:outline-none"
+              />
+              {underAge ? (
+                <p className="mt-1.5 font-mono text-[10px] text-[#B85C4A]">
+                  this one&apos;s {identity.minAge}+ only
+                </p>
+              ) : (
+                <p className="mt-1.5 font-mono text-[10px] text-muted">
+                  this event is {identity.minAge}+ &mdash; saved to your profile, we won&apos;t ask again
+                </p>
+              )}
+            </div>
+          )}
+          {identity.ageBlocked && (
+            <p className="font-sans text-[13px] text-[#B85C4A]">
+              this event is {identity.minAge}+ &mdash; catch us at the next one
+            </p>
+          )}
+          {identity.error && (
+            <p className="mt-2 font-mono text-[10px] text-[#B85C4A]">{identity.error}</p>
+          )}
+        </div>
+      )}
+
     <div className="rounded-[16px] border border-sand bg-white p-5">
       <span className="mb-4 block font-mono text-[10px] uppercase tracking-[2px] text-muted">
         order summary
@@ -1038,6 +1116,7 @@ function SummaryStep({
         </span>
       </div>
     </div>
+    </>
   );
 }
 
@@ -1107,6 +1186,16 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
   // Acquisition attribution (source/utm from the handoff URL, e.g. a poster scan) —
   // spread onto every checkout event so PostHog funnels can break down by poster.
   const attribution = useAppStore((s) => s.attribution) || undefined;
+
+  // Identity gate — slim onboarding reaches checkout with phone+OTP only, so the
+  // summary step is where we pick up the ticket name (and DOB for age-gated events).
+  const user = useAppStore((s) => s.user);
+  const setUser = useAppStore((s) => s.setUser);
+  const { needsName, needsDob, ageBlocked } = identityNeeds(user, event.min_age);
+  const [ticketName, setTicketName] = useState("");
+  const [ticketDob, setTicketDob] = useState("");
+  const [identityError, setIdentityError] = useState<string | null>(null);
+  const [savingIdentity, setSavingIdentity] = useState(false);
 
   // Live seating polling
   const { getIdToken } = useAuth();
@@ -1364,14 +1453,51 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
         }
         return true; // info steps always valid
       }
-      case "summary":
+      case "summary": {
+        if (ageBlocked) return false;
+        if (needsName && !ticketName.trim()) return false;
+        if (event.min_age && needsDob) {
+          const age = ticketDob ? ageFromDob(ticketDob) : null;
+          if (age == null || age < event.min_age) return false;
+        }
         return true;
+      }
       default:
         return true;
     }
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
+    // Name/DOB collected on the summary step are profile fields, not ticket
+    // fields — persist them before purchase so the payment link, admin lists,
+    // and the server-side age gate all see them.
+    if (isLastStep && (needsName || needsDob)) {
+      setSavingIdentity(true);
+      setIdentityError(null);
+      try {
+        const token = await getIdToken();
+        if (!token) throw new Error("please sign in again");
+        const body: Record<string, string> = {};
+        if (needsName) body.name = ticketName.trim();
+        if (needsDob) body.date_of_birth = ticketDob;
+        await apiFetch("/api/profile/me", { method: "PUT", token, body: JSON.stringify(body) });
+        if (user) {
+          setUser({
+            ...user,
+            ...(needsName ? { name: ticketName.trim() } : {}),
+            ...(needsDob ? { date_of_birth: ticketDob } : {}),
+          });
+        }
+      } catch (err) {
+        setIdentityError(
+          err instanceof Error && err.message ? err.message.toLowerCase() : "couldn't save your details. try again.",
+        );
+        setSavingIdentity(false);
+        return;
+      }
+      setSavingIdentity(false);
+    }
+
     // Track step completion
     track(CHECKOUT_STEP_COMPLETED, {
       event_id: event.id,
@@ -1494,7 +1620,7 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
 
   // CTA label
   const ctaLabel = () => {
-    if (loading) return "processing...";
+    if (loading || savingIdentity) return "processing...";
     if (isLastStep) {
       const discountAmount = appliedDiscount ? discountAmountFor(appliedDiscount, subtotal) : 0;
       const total = subtotal - discountAmount;
@@ -1635,6 +1761,17 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
               appliedDiscount={appliedDiscount}
               onApplyPromo={applyPromo}
               onRemovePromo={() => setAppliedDiscount(null)}
+              identity={{
+                needsName,
+                needsDob,
+                minAge: event.min_age,
+                name: ticketName,
+                dob: ticketDob,
+                onNameChange: setTicketName,
+                onDobChange: setTicketDob,
+                ageBlocked,
+                error: identityError,
+              }}
             />
           )}
         </div>
@@ -1654,12 +1791,12 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
         <div className="border-t border-sand bg-cream px-6 pt-4" style={{ paddingBottom: "calc(1.25rem + 56px + env(safe-area-inset-bottom, 0px))" }}>
           <button
             onClick={handleNext}
-            disabled={!canProceed() || loading}
+            disabled={!canProceed() || loading || savingIdentity}
             className="w-full rounded-2xl py-[18px] font-sans text-base font-medium transition-opacity disabled:opacity-40"
             style={{
               background: canProceed() ? "#1A1715" : "#E8DDD0",
               color: canProceed() ? "#fff" : "#9B8E82",
-              cursor: !canProceed() || loading ? "default" : "pointer",
+              cursor: !canProceed() || loading || savingIdentity ? "default" : "pointer",
             }}
           >
             {ctaLabel()}

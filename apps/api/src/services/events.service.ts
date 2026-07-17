@@ -234,6 +234,7 @@ export async function createEvent(
     tag: data.tag?.trim() || "",
     zones: Array.isArray(data.zones) ? data.zones : [],
     dress_code: data.dress_code?.trim() || "",
+    ...(Number(data.min_age) > 0 ? { min_age: Number(data.min_age) } : {}),
     includes: Array.isArray(data.includes) ? data.includes : [],
     faq: Array.isArray(data.faq)
       ? data.faq
@@ -293,6 +294,11 @@ export async function updateEvent(
   // Sanitize past photos if present (empty array = admin cleared the gallery)
   if ("past_photos" in safeData) {
     safeData.past_photos = sanitizePastPhotos(safeData.past_photos);
+  }
+
+  // Keep the age gate numeric — 0 clears it
+  if ("min_age" in safeData) {
+    safeData.min_age = Number(safeData.min_age) > 0 ? Number(safeData.min_age) : 0;
   }
 
   // Sanitize pickup_points capacity if present

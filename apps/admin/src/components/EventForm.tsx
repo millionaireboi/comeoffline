@@ -1854,6 +1854,7 @@ function EventFormInner({ event, seed, draftKey, onSave, onCancel, serifClassNam
   const [emoji, setEmoji] = useState(seed?.emoji || "");
   const [description, setDescription] = useState(seed?.description || "");
   const [dressCode, setDressCode] = useState(seed?.dress_code || "");
+  const [minAge, setMinAge] = useState(seed?.min_age ? String(seed.min_age) : "");
   const [accent, setAccent] = useState(seed?.accent || "#D4A574");
   const [accentDark, setAccentDark] = useState(seed?.accent_dark || "#B8845A");
   const [includes, setIncludes] = useState(seed?.includes?.join("\n") || "");
@@ -2042,6 +2043,7 @@ function EventFormInner({ event, seed, draftKey, onSave, onCancel, serifClassNam
       accent: accent,
       accent_dark: accentDark,
       dress_code: dressCode.trim(),
+      min_age: Number(minAge) > 0 ? Number(minAge) : undefined,
       includes: includes.split("\n").map((s) => s.trim()).filter(Boolean),
       zones: zones.map((z) => ({ icon: z.icon, name: z.name.trim(), desc: z.desc.trim() })),
       faq: faq.map((f) => ({ q: f.q.trim(), a: f.a.trim() })).filter((f) => f.q && f.a),
@@ -2186,6 +2188,9 @@ function EventFormInner({ event, seed, draftKey, onSave, onCancel, serifClassNam
       accent,
       accent_dark: accentDark,
       dress_code: dressCode.trim(),
+      // 0 (not undefined) when cleared — JSON.stringify drops undefined keys,
+      // so 0 is the only way an edit can remove an existing age gate
+      min_age: Number(minAge) > 0 ? Number(minAge) : 0,
       includes: includes.split("\n").map((s) => s.trim()).filter(Boolean),
       zones: zones.map((z) => ({ icon: z.icon, name: z.name.trim(), desc: z.desc.trim() })),
       faq: faq.map((f) => ({ q: f.q.trim(), a: f.a.trim() })).filter((f) => f.q && f.a),
@@ -2552,6 +2557,25 @@ function EventFormInner({ event, seed, draftKey, onSave, onCancel, serifClassNam
             onChange={(e) => setDressCode(e.target.value)}
             className={inputClass}
           />
+        </div>
+
+        {/* Age gate */}
+        <div>
+          <label className="mb-2 block font-mono text-[10px] uppercase tracking-[2px] text-muted">
+            minimum age
+          </label>
+          <input
+            type="number"
+            min={18}
+            max={99}
+            placeholder="e.g. 21 — leave empty for no age gate"
+            value={minAge}
+            onChange={(e) => setMinAge(e.target.value)}
+            className={inputClass}
+          />
+          <p className="mt-1 text-[11px] text-muted/60">
+            checkout asks for date of birth and blocks under-age bookings
+          </p>
         </div>
 
         {/* Accent Colors */}

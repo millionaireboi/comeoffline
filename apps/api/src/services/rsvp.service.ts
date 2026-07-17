@@ -3,7 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import QRCode from "qrcode";
 import crypto from "crypto";
 import type { RSVP, Event } from "@comeoffline/types";
-import { signQrPayload } from "./ticket.service";
+import { checkAgeGate, signQrPayload } from "./ticket.service";
 
 interface RsvpResult {
   success: boolean;
@@ -36,6 +36,12 @@ export async function createRsvp(
     // free RSVPs while still selling paid tickets
     if (!["upcoming", "listed", "live"].includes(event.status)) {
       return { success: false, error: "Event is not accepting RSVPs" };
+    }
+
+    // Age gate — the app collects DOB up front, but a direct API call must not bypass it.
+    if (event.min_age) {
+      const ageError = await checkAgeGate(tx, db, event.min_age, userId);
+      if (ageError) return { success: false, error: ageError };
     }
 
     const spotsLeft = event.total_spots - event.spots_taken;

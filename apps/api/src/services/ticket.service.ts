@@ -32,6 +32,27 @@ interface CreateTicketResult {
   error?: string;
 }
 
+/** Age gate shared by ticket purchases and free RSVPs. Reads the user inside
+ * the caller's transaction; returns an error message when blocked, else null. */
+export async function checkAgeGate(
+  tx: FirebaseFirestore.Transaction,
+  db: FirebaseFirestore.Firestore,
+  minAge: number,
+  userId: string,
+): Promise<string | null> {
+  const userDoc = await tx.get(db.collection("users").doc(userId));
+  const dobStr = userDoc.exists ? (userDoc.data()!.date_of_birth as string | undefined) : undefined;
+  const dob = dobStr ? new Date(dobStr) : null;
+  if (!dob || isNaN(dob.getTime())) {
+    return `This event is ${minAge}+ — add your date of birth to book`;
+  }
+  const age = Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+  if (age < minAge) {
+    return `This event is ${minAge}+`;
+  }
+  return null;
+}
+
 /**
  * Create a ticket (with QR code).
  * Admin controls all ticketing config per event: tier types, time slots, pricing.
@@ -66,6 +87,12 @@ export async function createTicket(
     }
     if (!["upcoming", "listed", "live"].includes(event.status)) {
       return { success: false, error: "Event is not accepting tickets" };
+    }
+
+    // Age gate — the app collects DOB up front, but a direct API call must not bypass it.
+    if (event.min_age) {
+      const ageError = await checkAgeGate(tx, db, event.min_age, userId);
+      if (ageError) return { success: false, error: ageError };
     }
 
     const ticketing = event.ticketing || { enabled: false, tiers: [], time_slots_enabled: false, max_per_user: 1 };

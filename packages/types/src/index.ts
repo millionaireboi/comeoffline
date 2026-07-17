@@ -317,6 +317,7 @@ export interface Event {
   past_photos?: PastPhoto[]; // photos from previous editions — trust gallery on the detail page
   waitlist_count?: number; // number of users on the waitlist (announced events)
   faq?: EventFAQItem[]; // per-event Q&A authored in admin; falls back to generic items when empty
+  min_age?: number; // age gate — checkout collects DOB and blocks under-age buyers; 0/absent = no gate
 }
 
 export interface EventFAQItem {

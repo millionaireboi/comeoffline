@@ -45,3 +45,7 @@ firestore-debug.log
 
 # Playwright MCP session artifacts (page snapshots, console logs)
 .playwright-mcp/
+
+# Local scratch files (mockups, sheet exports)
+event-page-mockup.html
+export-*.pdf

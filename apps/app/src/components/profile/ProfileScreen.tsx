@@ -9,6 +9,7 @@ import { SignQuiz } from "@/components/onboarding/SignQuiz";
 import { EditProfileScreen } from "@/components/profile/EditProfileScreen";
 import { ConnectionsList } from "@/components/profile/ConnectionsList";
 import { MyMemories } from "@/components/profile/MyMemories";
+import { CreatorStudio } from "@/components/profile/CreatorStudio";
 import { Noise } from "@/components/shared/Noise";
 import { PullToRefresh } from "@/components/shared/PullToRefresh";
 
@@ -137,6 +138,24 @@ export function ProfileScreen() {
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [showConnections, setShowConnections] = useState(false);
   const [showMemories, setShowMemories] = useState(false);
+  const [showCreatorStudio, setShowCreatorStudio] = useState(false);
+  // Creator studio entry only renders for accounts linked to a creator record
+  // (admin sets user_uid on the creator doc) — everyone else 404s silently.
+  const [isCreator, setIsCreator] = useState(false);
+  useEffect(() => {
+    if (authLoading) return;
+    (async () => {
+      try {
+        const token = await getIdToken();
+        if (!token) return;
+        const res = await apiFetch<{ success: boolean }>("/api/creators/me", { token, retries: 0 });
+        setIsCreator(!!res.success);
+      } catch {
+        // not a creator — keep the entry hidden
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading]);
   const autoOpenedEdit = useRef(false);
   const [expandedTicketId, setExpandedTicketId] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
@@ -476,6 +495,21 @@ export function ProfileScreen() {
             </div>
             <span className="font-mono text-[12px] text-caramel">\u2192</span>
           </button>
+          {isCreator && (
+            <button
+              onClick={() => setShowCreatorStudio(true)}
+              className="flex w-full items-center justify-between rounded-[14px] bg-white p-4 shadow-[0_1px_3px_rgba(26,23,21,0.04)] transition-transform active:scale-[0.99]"
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-xl">{"\u{1F4E3}"}</span>
+                <div className="text-left">
+                  <p className="font-sans text-[14px] font-medium text-near-black">creator studio</p>
+                  <p className="font-mono text-[10px] text-muted">your invite page, sales and payouts</p>
+                </div>
+              </div>
+              <span className="font-mono text-[12px] text-caramel">\u2192</span>
+            </button>
+          )}
         </div>
       </section>
 
@@ -759,6 +793,10 @@ export function ProfileScreen() {
 
       {showMemories && (
         <MyMemories onClose={() => setShowMemories(false)} />
+      )}
+
+      {showCreatorStudio && (
+        <CreatorStudio onClose={() => setShowCreatorStudio(false)} />
       )}
 
       {/* Edit profile overlay */}

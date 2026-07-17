@@ -10,8 +10,9 @@ import { TabHeader } from "@/components/nav/TabHeader";
 
 // Full-takeover funnel pages: no tab nav, no chatbot — every extra link is an
 // exit ramp before the booking CTA. They render their own branding.
-// "/hi" also covers /hi/<campaign> subroutes.
-const TAKEOVER_ROUTES = ["/hi"];
+// "/hi" also covers /hi/<campaign> subroutes; "/with" covers the creator
+// invite pages (/with/<handle>) for the same reason.
+const TAKEOVER_ROUTES = ["/hi", "/with"];
 
 export function ClientShell({ children }: { children: React.ReactNode }) {
   const [scrolled, setScrolled] = useState(false);

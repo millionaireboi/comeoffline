@@ -48,6 +48,14 @@ export const POSTER_SECTION_VIEWED = "poster_section_viewed"; // Act 2 section s
 export const POSTER_DATE_PICKED = "poster_date_picked"; // date card tapped on a multi-date series campaign
 export const POSTER_CTA_CLICKED = "poster_cta_clicked"; // booking handoff started
 export const POSTER_WHATSAPP_CLICKED = "poster_whatsapp_clicked"; // wa.me escape hatch tapped
+// ── Creator invite pages (/with/<handle> — creator bio-link landing) ──
+// Carries creator (handle), placement (?p= reel/story/bio) + utm_content so
+// each creator and each piece of their content is its own cell in PostHog.
+export const CREATOR_PAGE_VIEWED = "creator_page_viewed";
+export const CREATOR_SECTION_VIEWED = "creator_section_viewed"; // props: section
+export const CREATOR_EVENT_OPENED = "creator_event_opened"; // event sheet opened from a creator page
+export const CREATOR_WHATSAPP_CLICKED = "creator_whatsapp_clicked";
+
 export const FUNNEL_TIER_SELECTED_IN_APP = "funnel_tier_selected_in_app";
 export const FUNNEL_CHECKOUT_OPENED = "funnel_checkout_opened";
 export const FUNNEL_RAZORPAY_REDIRECTED = "funnel_razorpay_redirected";

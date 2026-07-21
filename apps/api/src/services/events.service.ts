@@ -315,19 +315,34 @@ export async function updateEvent(
   return { id: updated.id, ...updated.data() } as Event;
 }
 
-/** Hard-delete an event (admin) — drafts only, so a booking or waitlist row
- *  can never end up pointing at a missing event. Anything that was ever
- *  public gets cancelled instead. */
-export async function deleteDraftEvent(
+/** Ticket statuses that still mean "someone holds a spot / money is in
+ *  flight". Cancelled tickets are inert history and don't block deletion. */
+const ACTIVE_TICKET_STATUSES = ["pending_payment", "confirmed", "checked_in", "partially_checked_in"];
+
+/** Hard-delete an event (admin). Drafts always qualify. Completed and
+ *  cancelled events qualify only when no active ticket points at them, so a
+ *  live booking can never end up pointing at a missing event (already-
+ *  cancelled tickets survive; the bookings list renders missing events as
+ *  "Unknown Event"). Anything still public gets cancelled instead. */
+export async function deleteEvent(
   eventId: string,
-): Promise<"deleted" | "not_found" | "not_draft"> {
+): Promise<"deleted" | "not_found" | "not_deletable" | "has_bookings"> {
   const db = await getDb();
   const ref = db.collection("events").doc(eventId);
   const doc = await ref.get();
   if (!doc.exists) return "not_found";
-  if (doc.data()?.status !== "draft") return "not_draft";
+  const status = doc.data()?.status;
+  if (!["draft", "completed", "cancelled"].includes(status)) return "not_deletable";
 
-  await ref.delete();
+  if (status !== "draft") {
+    // Filter statuses in memory: an ==+in query would need a composite index.
+    const tickets = await db.collection("tickets").where("event_id", "==", eventId).get();
+    const hasActive = tickets.docs.some((t) => ACTIVE_TICKET_STATUSES.includes(t.data().status));
+    if (hasActive) return "has_bookings";
+  }
+
+  // recursiveDelete also clears subcollections (rsvps) instead of orphaning them.
+  await db.recursiveDelete(ref);
   return "deleted";
 }
 

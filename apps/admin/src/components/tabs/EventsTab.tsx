@@ -43,10 +43,11 @@ export function EventsTab({ onOpenEvent }: { onOpenEvent?: (eventId: string) => 
   }
 
   async function deleteEvent(event: Event) {
-    if (!window.confirm(`Delete draft "${event.title}"? This cannot be undone.`)) return;
+    const label = event.status === "draft" ? "draft" : `${event.status} event`;
+    if (!window.confirm(`Delete ${label} "${event.title}"? This cannot be undone.`)) return;
     try {
       await apiClient.delete(`/api/admin/events/${event.id}`);
-      toast.success("draft deleted");
+      toast.success(`${label} deleted`);
       refetch();
     } catch (err) {
       console.error("Delete failed:", err);
@@ -334,6 +335,17 @@ export function EventsTab({ onOpenEvent }: { onOpenEvent?: (eventId: string) => 
                   className="flex-1 rounded-lg bg-red-500/10 px-3 py-2 font-mono text-[10px] text-red-400 transition-colors hover:bg-red-500/20"
                 >
                   cancel
+                </button>
+              )}
+              {/* Completed events with zero RSVPs and cancelled events can be
+                  hard-deleted; the API re-checks for active bookings. */}
+              {(event.status === "cancelled" ||
+                (event.status === "completed" && (event.spots_taken || 0) === 0)) && (
+                <button
+                  onClick={() => deleteEvent(event)}
+                  className="flex-1 rounded-lg bg-red-500/10 px-3 py-2 font-mono text-[10px] text-red-400 transition-colors hover:bg-red-500/20"
+                >
+                  delete
                 </button>
               )}
             </div>

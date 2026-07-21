@@ -6,7 +6,7 @@ import {
   createEvent,
   updateEvent,
   updateEventStatus,
-  deleteDraftEvent,
+  deleteEvent,
 } from "../../services/events.service";
 import { getEventWaitlist, notifyAndOpenSales } from "../../services/waitlist.service";
 import { withCache, invalidateCache, isQuotaError } from "../../utils/cache";
@@ -80,19 +80,23 @@ router.put("/:id", requireAdmin, async (req: AuthRequest, res) => {
   }
 });
 
-/** DELETE /api/admin/events/:id — Hard-delete a draft. Published events can
- *  have bookings/waitlist rows pointing at them — those get cancelled via
- *  the status endpoint instead. */
+/** DELETE /api/admin/events/:id — Hard-delete a draft, or a completed/
+ *  cancelled event that has no active bookings. Anything still public gets
+ *  cancelled via the status endpoint instead. */
 router.delete("/:id", requireAdmin, async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string;
-    const result = await deleteDraftEvent(id);
+    const result = await deleteEvent(id);
     if (result === "not_found") {
       res.status(404).json({ success: false, error: "Event not found" });
       return;
     }
-    if (result === "not_draft") {
-      res.status(400).json({ success: false, error: "Only drafts can be deleted — cancel the event instead" });
+    if (result === "not_deletable") {
+      res.status(400).json({ success: false, error: "Only draft, completed, or cancelled events can be deleted — cancel the event instead" });
+      return;
+    }
+    if (result === "has_bookings") {
+      res.status(400).json({ success: false, error: "Event still has active bookings — cancel or refund them first" });
       return;
     }
     invalidateCache("admin-events");

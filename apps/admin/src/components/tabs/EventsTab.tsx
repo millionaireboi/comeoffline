@@ -34,6 +34,26 @@ export function EventsTab({ onOpenEvent }: { onOpenEvent?: (eventId: string) => 
     }
   }
 
+  async function cancelEvent(event: Event) {
+    const booked = event.spots_taken || 0;
+    if (!window.confirm(
+      `Cancel "${event.title}"? It disappears from the app immediately${booked ? ` — ${booked} booked spot${booked > 1 ? "s" : ""} will NOT be refunded automatically, handle those separately` : ""}.`,
+    )) return;
+    await updateStatus(event.id, "cancelled");
+  }
+
+  async function deleteEvent(event: Event) {
+    if (!window.confirm(`Delete draft "${event.title}"? This cannot be undone.`)) return;
+    try {
+      await apiClient.delete(`/api/admin/events/${event.id}`);
+      toast.success("draft deleted");
+      refetch();
+    } catch (err) {
+      console.error("Delete failed:", err);
+      toast.error(`delete failed — ${err instanceof Error ? err.message : "try again"}`);
+    }
+  }
+
   async function openSales(eventId: string) {
     try {
       const res = await apiClient.put<{ success: boolean; data: { sent: number; failed: number } }>(
@@ -276,6 +296,12 @@ export function EventsTab({ onOpenEvent }: { onOpenEvent?: (eventId: string) => 
                   >
                     list
                   </button>
+                  <button
+                    onClick={() => deleteEvent(event)}
+                    className="flex-1 rounded-lg bg-red-500/10 px-3 py-2 font-mono text-[10px] text-red-400 transition-colors hover:bg-red-500/20"
+                  >
+                    delete
+                  </button>
                 </>
               )}
               {event.status === "announced" && (
@@ -300,6 +326,14 @@ export function EventsTab({ onOpenEvent }: { onOpenEvent?: (eventId: string) => 
                   className="flex-1 rounded-lg bg-white/10 px-3 py-2 font-mono text-[10px] text-muted transition-colors hover:bg-white/20"
                 >
                   complete
+                </button>
+              )}
+              {["announced", "upcoming", "listed", "sold_out", "live"].includes(event.status) && (
+                <button
+                  onClick={() => cancelEvent(event)}
+                  className="flex-1 rounded-lg bg-red-500/10 px-3 py-2 font-mono text-[10px] text-red-400 transition-colors hover:bg-red-500/20"
+                >
+                  cancel
                 </button>
               )}
             </div>

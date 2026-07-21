@@ -6,6 +6,7 @@ import {
   createEvent,
   updateEvent,
   updateEventStatus,
+  deleteDraftEvent,
 } from "../../services/events.service";
 import { getEventWaitlist, notifyAndOpenSales } from "../../services/waitlist.service";
 import { withCache, invalidateCache, isQuotaError } from "../../utils/cache";
@@ -76,6 +77,30 @@ router.put("/:id", requireAdmin, async (req: AuthRequest, res) => {
   } catch (err) {
     console.error("[admin/events] update error:", err);
     res.status(500).json({ success: false, error: "Failed to update event" });
+  }
+});
+
+/** DELETE /api/admin/events/:id — Hard-delete a draft. Published events can
+ *  have bookings/waitlist rows pointing at them — those get cancelled via
+ *  the status endpoint instead. */
+router.delete("/:id", requireAdmin, async (req: AuthRequest, res) => {
+  try {
+    const id = req.params.id as string;
+    const result = await deleteDraftEvent(id);
+    if (result === "not_found") {
+      res.status(404).json({ success: false, error: "Event not found" });
+      return;
+    }
+    if (result === "not_draft") {
+      res.status(400).json({ success: false, error: "Only drafts can be deleted — cancel the event instead" });
+      return;
+    }
+    invalidateCache("admin-events");
+    invalidateCache(`admin-event-${id}`);
+    res.json({ success: true });
+  } catch (err) {
+    console.error("[admin/events] delete error:", err);
+    res.status(500).json({ success: false, error: "Failed to delete event" });
   }
 });
 

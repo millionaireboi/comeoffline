@@ -315,6 +315,22 @@ export async function updateEvent(
   return { id: updated.id, ...updated.data() } as Event;
 }
 
+/** Hard-delete an event (admin) — drafts only, so a booking or waitlist row
+ *  can never end up pointing at a missing event. Anything that was ever
+ *  public gets cancelled instead. */
+export async function deleteDraftEvent(
+  eventId: string,
+): Promise<"deleted" | "not_found" | "not_draft"> {
+  const db = await getDb();
+  const ref = db.collection("events").doc(eventId);
+  const doc = await ref.get();
+  if (!doc.exists) return "not_found";
+  if (doc.data()?.status !== "draft") return "not_draft";
+
+  await ref.delete();
+  return "deleted";
+}
+
 /** Update event status (admin) */
 export async function updateEventStatus(
   eventId: string,

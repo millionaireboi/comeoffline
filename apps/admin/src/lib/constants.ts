@@ -44,6 +44,7 @@ export const EVENT_STATUS_COLORS: Record<string, string> = {
   live: "#6B7A63",
   sold_out: "#D4836B",
   completed: "#9B8E82",
+  cancelled: "#C86B6B",
 };
 
 export const MEMBER_STATUS_COLORS: Record<string, string> = {

@@ -55,7 +55,7 @@
 /* ── hero ───────────────────────────────────────────── */
 
 .hero {
-  padding-top: 44px;
+  padding-top: 72px;
   text-align: center;
   position: relative;
 }
@@ -102,7 +102,7 @@
 .cta {
   display: block;
   max-width: 340px;
-  margin: 26px auto 0;
+  margin: 36px auto 0;
   padding: 18px 20px;
   background: #c4704d;
   color: #faf6f0;
@@ -170,17 +170,17 @@
 
 .polaroidCap {
   font-family: var(--font-hand);
-  font-size: 1.12rem;
+  font-size: 1.35rem;
   line-height: 1.3;
-  color: #5c4a3a;
-  padding-top: 10px;
+  color: #4a3a2c;
+  padding-top: 12px;
   text-align: center;
 }
 
 .heroScribble {
   font-family: var(--font-hand);
-  font-size: 1.2rem;
-  color: #9b8e82;
+  font-size: 1.3rem;
+  color: #8a7a6a;
   margin-top: 12px;
   transform: rotate(-1deg);
 }
@@ -222,7 +222,7 @@
 
 .why {
   text-align: center;
-  margin: 58px 0 6px;
+  margin: 64px 0 0;
 }
 
 .whyLine {
@@ -251,7 +251,7 @@
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: #6b5847;
-  margin: 54px 0 18px;
+  margin: 64px 0 18px;
 }
 
 .sectionStar {
@@ -446,7 +446,7 @@
 /* ── full-bleed photo band ──────────────────────────── */
 
 .photoBand {
-  margin: 58px -22px 0;
+  margin: 64px -22px 0;
 }
 
 .photoBandImg {
@@ -458,10 +458,10 @@
 
 .photoBandCap {
   font-family: var(--font-hand);
-  font-size: 1.15rem;
-  color: #6b5847;
+  font-size: 1.35rem;
+  color: #5c4a3a;
   text-align: center;
-  padding: 12px 26px 0;
+  padding: 14px 26px 0;
   transform: rotate(-0.6deg);
 }
 
@@ -610,11 +610,13 @@
 /* ── dashboard mock ─────────────────────────────────── */
 
 .dashMock {
-  border: 1px solid rgba(61, 46, 34, 0.2);
+  position: relative;
+  border: 1px solid rgba(61, 46, 34, 0.28);
   border-radius: 18px;
   background: #f4efe7;
   padding: 16px;
-  box-shadow: 0 12px 32px rgba(61, 46, 34, 0.14);
+  /* matte, paper-flat — the soft modern shadow broke the editorial system */
+  box-shadow: 5px 5px 0 rgba(212, 165, 116, 0.3);
   transform: rotate(-0.5deg);
 }
 
@@ -829,32 +831,53 @@
 
 /* ── why we built this — a postcard ─────────────────── */
 
+/* the philosophy, as a letter — ruled paper, left-aligned, signed */
 .built {
   position: relative;
-  background: #fffdf6;
-  padding: 30px 26px;
+  background:
+    repeating-linear-gradient(
+      transparent,
+      transparent 29px,
+      rgba(196, 112, 77, 0.14) 29px,
+      rgba(196, 112, 77, 0.14) 30px
+    ),
+    #fffdf6;
+  padding: 34px 28px 30px;
   box-shadow: 0 8px 26px rgba(61, 46, 34, 0.12);
   transform: rotate(0.5deg);
-  text-align: center;
+  text-align: left;
 }
 
 .builtBody {
   font-family: var(--font-serif);
   font-size: 1.15rem;
-  line-height: 1.5;
+  line-height: 30px;
   color: #3d2e22;
-}
-
-.builtBody + .builtBody {
-  margin-top: 12px;
 }
 
 .builtQuote {
   font-family: var(--font-hand);
-  font-size: 2.2rem;
+  font-size: 2.3rem;
   color: #c4704d;
-  margin-top: 14px;
+  margin-top: 10px;
   transform: rotate(-1.5deg);
+  text-align: center;
+}
+
+.builtSign {
+  font-family: var(--font-hand);
+  font-size: 1.25rem;
+  color: #6b5847;
+  text-align: right;
+  margin-top: 12px;
+}
+
+.faqAside {
+  font-family: var(--font-hand);
+  font-size: 1.15rem;
+  color: #9b8e82;
+  margin: -10px 0 14px;
+  transform: rotate(-0.8deg);
 }
 
 /* ── faq — softer, roomier ──────────────────────────── */
@@ -1013,7 +1036,7 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-  opacity: 0.07;
+  opacity: 0.13;
   filter: grayscale(1);
 }
 

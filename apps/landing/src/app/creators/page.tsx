@@ -50,6 +50,15 @@ const FAQS = [
     ),
   },
   {
+    q: "what if people click but don't buy?",
+    a: (
+      <>
+        you still earn. <strong>every 100 clicks on your link pays</strong> — before anyone books a ticket. seats are
+        the big money; clicks are the floor under it.
+      </>
+    ),
+  },
+  {
     q: "what if someone buys days after clicking?",
     a: (
       <>
@@ -102,7 +111,7 @@ export default function CreatorsPage() {
       <main className={s.wrap}>
         {/* ── hero ── */}
         <header className={s.hero}>
-          <p className={s.eyebrow}>bangalore&rsquo;s first ten creators</p>
+          <p className={s.eyebrow}>for creators who bring people together</p>
           <h1 className={s.headline}>get paid to go out.</h1>
           <p className={s.subhead}>turn the plans you&rsquo;re already making into income.</p>
           <p className={s.heroBody}>
@@ -117,6 +126,7 @@ export default function CreatorsPage() {
           <div className={s.pills}>
             <span className={s.pill}>✨ free entry to every event you promote</span>
             <span className={s.pill}>💸 ₹150+ per ticket you sell</span>
+            <span className={s.pill}>🔗 clicks pay too — even before anyone buys</span>
             <span className={s.pill}>📍 bangalore creators only</span>
           </div>
 
@@ -262,6 +272,10 @@ export default function CreatorsPage() {
                 <span>on a ₹250 campaign event</span>
                 <span className={s.calcAmount}>≈ ₹12,500</span>
               </div>
+              <div className={s.calcRow}>
+                <span>2,000 clicks on that reel — before a single sale</span>
+                <span className={s.calcAmount}>≈ ₹2,000</span>
+              </div>
             </div>
             <p className={s.moneyBigNote}>examples, not promises. you see the exact rate before you post.</p>
           </div>
@@ -291,6 +305,7 @@ export default function CreatorsPage() {
         {/* ── dashboard — the product, mocked crisp in html ── */}
         <SectionLabel>your creator dashboard</SectionLabel>
         <div className={s.dashMock} aria-label="a preview of the creator studio">
+          <span className={s.tape} aria-hidden="true" />
           <div className={s.dashMockHead}>
             <span className={s.dashMockTitle}>creator studio</span>
             <span className={s.dashMockLive}>● live</span>
@@ -378,10 +393,12 @@ export default function CreatorsPage() {
           </p>
           <p className={s.builtBody}>come offline exists because the best nights happen when someone says —</p>
           <p className={s.builtQuote}>&ldquo;come with me.&rdquo;</p>
+          <p className={s.builtSign}>— come offline, bangalore</p>
         </div>
 
         {/* ── faq ── */}
         <SectionLabel>questions you&rsquo;re probably asking</SectionLabel>
+        <p className={s.faqAside}>(the ones we actually get on whatsapp)</p>
         {FAQS.map((faq) => (
           <details key={faq.q} className={s.faq}>
             <summary>{faq.q}</summary>

@@ -27,7 +27,7 @@ interface Campaign {
   next_date: string | null;
   commission_per_seat: number;
   brief: string;
-  formats: string[];
+  formats: { label: string; ref_url: string | null }[];
   enrolled: boolean;
 }
 
@@ -438,12 +438,30 @@ export function CreatorStudio({ onClose }: { onClose: () => void }) {
                     {c.brief && <p className="mt-3 font-sans text-[13px] leading-relaxed text-near-black/80">{c.brief}</p>}
                     {c.formats.length > 0 && (
                       <div className="mt-2.5 flex flex-wrap gap-1.5">
-                        {c.formats.map((f) => (
-                          <span key={f} className="rounded-full bg-cream px-2.5 py-1 font-mono text-[9px] uppercase tracking-[1px] text-near-black/70">
-                            {f}
-                          </span>
-                        ))}
+                        {c.formats.map((f) =>
+                          f.ref_url ? (
+                            <a
+                              key={f.label}
+                              href={f.ref_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="rounded-full bg-caramel/10 px-2.5 py-1 font-mono text-[9px] uppercase tracking-[1px] text-caramel underline-offset-2"
+                            >
+                              {f.label} ↗
+                            </a>
+                          ) : (
+                            <span
+                              key={f.label}
+                              className="rounded-full bg-cream px-2.5 py-1 font-mono text-[9px] uppercase tracking-[1px] text-near-black/70"
+                            >
+                              {f.label}
+                            </span>
+                          )
+                        )}
                       </div>
+                    )}
+                    {c.formats.some((f) => f.ref_url) && (
+                      <p className="mt-1.5 font-mono text-[9px] text-muted">tap a format to see the reference</p>
                     )}
                     <div className="mt-3">
                       {c.enrolled ? (

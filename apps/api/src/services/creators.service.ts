@@ -87,18 +87,48 @@ export interface CreatorEarnings {
  * campaign rate applies to EVERY creator's sale of that event (locked with
  * founder); enrollment is the "i'm making content for this" signal.
  */
+export interface CampaignFormat {
+  /** e.g. "1 reel (30-60s, you at the event)" */
+  label: string;
+  /** Optional example to emulate — an IG/YT link the creator can open */
+  ref_url: string | null;
+}
+
 export interface CreatorCampaign {
   /** Normalized title this campaign matches (lowercase, single spaces) */
   title_match: string;
   commission_per_seat: number;
   /** What we want from creators — the brief, admin-written */
   brief: string;
-  /** Content formats expected, e.g. ["1 reel", "3 stories"] */
-  formats: string[];
+  /** Content formats expected, each with an optional reference link */
+  formats: CampaignFormat[];
   active: boolean;
   enrollments: Record<string, { enrolled_at: string }>; // keyed by handle
   created_at: string;
   updated_at: string;
+}
+
+/** Accept both the current {label, ref_url} shape and the legacy plain-string
+ *  arrays still stored on early campaign docs. Links must be http(s). */
+function normalizeFormats(v: unknown): CampaignFormat[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .map((f): CampaignFormat | null => {
+      if (typeof f === "string") {
+        const label = f.trim().slice(0, 120);
+        return label ? { label, ref_url: null } : null;
+      }
+      if (f && typeof f === "object") {
+        const o = f as Record<string, unknown>;
+        const label = typeof o.label === "string" ? o.label.trim().slice(0, 120) : "";
+        const url = typeof o.ref_url === "string" ? o.ref_url.trim().slice(0, 500) : "";
+        if (!label) return null;
+        return { label, ref_url: /^https?:\/\//i.test(url) ? url : null };
+      }
+      return null;
+    })
+    .filter((f): f is CampaignFormat => f !== null)
+    .slice(0, 12);
 }
 
 export function normalizeTitle(title: string): string {
@@ -355,7 +385,10 @@ export async function deleteCreator(handle: string): Promise<{ success: boolean;
 export async function listCampaigns(): Promise<CreatorCampaign[]> {
   const db = await getDb();
   const snap = await db.collection("creator_campaigns").get();
-  return snap.docs.map((d) => d.data() as CreatorCampaign);
+  return snap.docs.map((d) => {
+    const c = d.data() as CreatorCampaign;
+    return { ...c, formats: normalizeFormats(c.formats) };
+  });
 }
 
 /** Create or update the campaign for an event title. */
@@ -363,7 +396,7 @@ export async function upsertCampaign(input: {
   title_match: string;
   commission_per_seat: number;
   brief?: string;
-  formats?: string[];
+  formats?: unknown;
   active?: boolean;
 }): Promise<{ success: true; data: CreatorCampaign } | { success: false; error: string }> {
   const titleMatch = normalizeTitle(input.title_match);
@@ -380,9 +413,7 @@ export async function upsertCampaign(input: {
     title_match: titleMatch,
     commission_per_seat: input.commission_per_seat,
     brief: typeof input.brief === "string" ? input.brief.trim().slice(0, 2000) : (existing?.brief ?? ""),
-    formats: Array.isArray(input.formats)
-      ? input.formats.map((f) => String(f).trim().slice(0, 80)).filter(Boolean).slice(0, 12)
-      : (existing?.formats ?? []),
+    formats: Array.isArray(input.formats) ? normalizeFormats(input.formats) : normalizeFormats(existing?.formats),
     active: typeof input.active === "boolean" ? input.active : (existing?.active ?? true),
     enrollments: existing?.enrollments ?? {},
     created_at: existing?.created_at ?? now,
@@ -431,7 +462,7 @@ export async function listCampaignsForCreator(
     next_date: string | null;
     commission_per_seat: number;
     brief: string;
-    formats: string[];
+    formats: CampaignFormat[];
     enrolled: boolean;
   }[]
 > {
@@ -463,7 +494,7 @@ export async function listCampaignsForCreator(
       next_date: upcoming.get(c.title_match)!.date,
       commission_per_seat: c.commission_per_seat,
       brief: c.brief,
-      formats: c.formats,
+      formats: normalizeFormats(c.formats),
       enrolled: !!c.enrollments?.[creator.handle],
     }))
     .sort((a, b) => (a.next_date ?? "9999").localeCompare(b.next_date ?? "9999"));

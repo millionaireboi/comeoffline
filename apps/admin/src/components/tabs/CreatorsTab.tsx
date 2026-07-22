@@ -78,11 +78,16 @@ interface AdminEvent {
   status?: string;
 }
 
+interface CampaignFormat {
+  label: string;
+  ref_url: string | null;
+}
+
 interface Campaign {
   title_match: string;
   commission_per_seat: number;
   brief: string;
-  formats: string[];
+  formats: CampaignFormat[];
   active: boolean;
   enrollments: Record<string, { enrolled_at: string }>;
 }
@@ -116,8 +121,15 @@ function CampaignEditor({
   const [open, setOpen] = useState(!!defaultOpen);
   const [rate, setRate] = useState(campaign ? String(campaign.commission_per_seat) : "");
   const [brief, setBrief] = useState(campaign?.brief ?? "");
-  const [formats, setFormats] = useState((campaign?.formats ?? []).join("\n"));
+  const [formats, setFormats] = useState<{ label: string; ref_url: string }[]>(
+    (campaign?.formats ?? []).length > 0
+      ? (campaign?.formats ?? []).map((f) => ({ label: f.label, ref_url: f.ref_url ?? "" }))
+      : [{ label: "", ref_url: "" }]
+  );
   const [saving, setSaving] = useState(false);
+
+  const setFormat = (i: number, patch: Partial<{ label: string; ref_url: string }>) =>
+    setFormats((prev) => prev.map((f, n) => (n === i ? { ...f, ...patch } : f)));
 
   const enrolled = Object.keys(campaign?.enrollments ?? {});
 
@@ -134,9 +146,8 @@ function CampaignEditor({
         commission_per_seat: r,
         brief: brief.trim(),
         formats: formats
-          .split("\n")
-          .map((f) => f.trim())
-          .filter(Boolean),
+          .map((f) => ({ label: f.label.trim(), ref_url: f.ref_url.trim() || null }))
+          .filter((f) => f.label),
         ...(active !== undefined && { active }),
       });
       toast.success(`campaign for "${title}" saved`);
@@ -183,15 +194,43 @@ function CampaignEditor({
               <label className={labelClass}>commission for this event (₹ per seat — every creator's sales)</label>
               <input type="number" value={rate} onChange={(e) => setRate(e.target.value)} placeholder="250" className={inputClass} />
             </div>
-            <div>
-              <label className={labelClass}>content formats wanted — one per line</label>
-              <textarea
-                value={formats}
-                onChange={(e) => setFormats(e.target.value)}
-                rows={2}
-                placeholder={"1 reel (30-60s, you at the event)\n3 stories on event day"}
-                className={inputClass}
-              />
+            <div className="sm:col-span-2">
+              <label className={labelClass}>content formats wanted — with an optional reference link each</label>
+              <div className="space-y-2">
+                {formats.map((f, i) => (
+                  <div key={i} className="flex flex-col gap-2 sm:flex-row">
+                    <input
+                      type="text"
+                      value={f.label}
+                      onChange={(e) => setFormat(i, { label: e.target.value })}
+                      placeholder="1 reel (30-60s, you at the event)"
+                      className={inputClass}
+                    />
+                    <input
+                      type="text"
+                      value={f.ref_url}
+                      onChange={(e) => setFormat(i, { ref_url: e.target.value })}
+                      placeholder="reference link (optional) — https://instagram.com/reel/…"
+                      className={inputClass}
+                    />
+                    {formats.length > 1 && (
+                      <button
+                        onClick={() => setFormats((prev) => prev.filter((_, n) => n !== i))}
+                        className="shrink-0 rounded-lg bg-white/5 px-3 py-1.5 font-mono text-[10px] text-muted hover:text-[#B85C4A]"
+                        title="remove format"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button
+                  onClick={() => setFormats((prev) => [...prev, { label: "", ref_url: "" }])}
+                  className={btnClass}
+                >
+                  + add format
+                </button>
+              </div>
             </div>
             <div className="sm:col-span-2">
               <label className={labelClass}>the brief — what you want creators to make</label>

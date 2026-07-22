@@ -20,7 +20,9 @@ function LoginInner() {
       if (user) {
         try {
           const tokenResult = await user.getIdTokenResult();
-          if (tokenResult.claims.admin) {
+          // Admins and team roles (e.g. creator_ops) both get in — the
+          // dashboard scopes what each actually sees
+          if (tokenResult.claims.admin || typeof tokenResult.claims.role === "string") {
             setSessionCookie(await user.getIdToken());
             router.replace(searchParams.get("redirect") || "/");
             return;
@@ -45,8 +47,8 @@ function LoginInner() {
   const handleLogin = async (email: string, password: string) => {
     const cred = await signInWithEmailAndPassword(auth, email, password);
     const tokenResult = await cred.user.getIdTokenResult();
-    if (!tokenResult.claims.admin) {
-      throw new Error("Not an admin");
+    if (!tokenResult.claims.admin && typeof tokenResult.claims.role !== "string") {
+      throw new Error("This account has no dashboard access");
     }
     const token = await cred.user.getIdToken();
     setSessionCookie(token);

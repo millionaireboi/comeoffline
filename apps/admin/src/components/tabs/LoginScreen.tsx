@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { auth } from "@comeoffline/firebase";
+import { sendPasswordResetEmail } from "firebase/auth";
 import { instrumentSerif } from "@/lib/constants";
 
 interface LoginScreenProps {
@@ -12,6 +14,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [resetSent, setResetSent] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -24,6 +27,21 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
       setError("Invalid email or password");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleForgot() {
+    setError("");
+    if (!email.trim()) {
+      setError("Enter your email first, then tap forgot password");
+      return;
+    }
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
+      setResetSent(true);
+    } catch {
+      // Same message either way — don't leak which emails have accounts
+      setResetSent(true);
     }
   }
 
@@ -81,10 +99,24 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
           >
             {loading ? "signing in..." : "sign in"}
           </button>
+
+          {resetSent ? (
+            <p className="text-center font-mono text-[10px] text-caramel">
+              if that email has an account, a reset link is on its way
+            </p>
+          ) : (
+            <button
+              type="button"
+              onClick={handleForgot}
+              className="w-full border-none bg-transparent text-center font-mono text-[10px] text-muted underline-offset-2 hover:text-cream hover:underline"
+            >
+              forgot password?
+            </button>
+          )}
         </form>
 
         <p className="text-center font-mono text-[10px] text-muted/50">
-          admin access only
+          team access only
         </p>
       </div>
     </div>

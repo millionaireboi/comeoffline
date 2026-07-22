@@ -44,6 +44,27 @@ export function TeamTab() {
   const [tempPassword, setTempPassword] = useState("");
   const [adding, setAdding] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  const [resetOpen, setResetOpen] = useState<string | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [resetting, setResetting] = useState(false);
+
+  const handleReset = async (m: TeamMember) => {
+    if (newPassword.trim().length < 8) {
+      toast.error("password must be 8+ chars");
+      return;
+    }
+    setResetting(true);
+    try {
+      await apiClient.post(`/api/admin/team/${m.uid}/password`, { password: newPassword.trim() });
+      toast.success(`${m.name}'s password reset — share it with them safely`);
+      setResetOpen(null);
+      setNewPassword("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "reset failed");
+    } finally {
+      setResetting(false);
+    }
+  };
 
   const handleAdd = async () => {
     if (!email.trim().includes("@")) {
@@ -162,28 +183,57 @@ export function TeamTab() {
                   {m.email} · added {new Date(m.added_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
                 </p>
               </div>
-              {confirmRemove === m.uid ? (
-                <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => {
+                    setResetOpen(resetOpen === m.uid ? null : m.uid);
+                    setNewPassword("");
+                  }}
+                  className="rounded-lg bg-white/5 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[1px] text-muted transition-colors hover:bg-white/10 hover:text-cream"
+                >
+                  {resetOpen === m.uid ? "close" : "reset password"}
+                </button>
+                {confirmRemove === m.uid ? (
+                  <>
+                    <button
+                      onClick={() => handleRemove(m)}
+                      className="rounded-lg bg-[#B85C4A] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[1px] text-white hover:opacity-80"
+                    >
+                      confirm
+                    </button>
+                    <button
+                      onClick={() => setConfirmRemove(null)}
+                      className="rounded-lg bg-white/5 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[1px] text-muted hover:text-cream"
+                    >
+                      keep
+                    </button>
+                  </>
+                ) : (
                   <button
-                    onClick={() => handleRemove(m)}
-                    className="rounded-lg bg-[#B85C4A] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[1px] text-white hover:opacity-80"
+                    onClick={() => setConfirmRemove(m.uid)}
+                    className="rounded-lg bg-white/5 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[1px] text-muted transition-colors hover:bg-white/10 hover:text-[#B85C4A]"
                   >
-                    confirm
+                    remove
                   </button>
+                )}
+              </div>
+              {resetOpen === m.uid && (
+                <div className="flex w-full items-center gap-2 pt-1">
+                  <input
+                    type="text"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="new password (8+ chars) — share it safely"
+                    className={inputClass}
+                  />
                   <button
-                    onClick={() => setConfirmRemove(null)}
-                    className="rounded-lg bg-white/5 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[1px] text-muted hover:text-cream"
+                    onClick={() => handleReset(m)}
+                    disabled={resetting || newPassword.trim().length < 8}
+                    className="shrink-0 rounded-lg bg-caramel px-4 py-2 font-mono text-[10px] font-medium uppercase tracking-[1px] text-near-black transition-opacity hover:opacity-80 disabled:opacity-40"
                   >
-                    keep
+                    {resetting ? "setting…" : "set"}
                   </button>
                 </div>
-              ) : (
-                <button
-                  onClick={() => setConfirmRemove(m.uid)}
-                  className="rounded-lg bg-white/5 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[1px] text-muted transition-colors hover:bg-white/10 hover:text-[#B85C4A]"
-                >
-                  remove
-                </button>
               )}
             </div>
           ))}

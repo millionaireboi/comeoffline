@@ -95,6 +95,35 @@ router.post("/", requireAdmin, async (req: AuthRequest, res) => {
   }
 });
 
+/** POST /api/admin/team/:uid/password — set a new password for a team
+ *  member (founder types it, shares it safely). Never touches admin
+ *  accounts — this resets team seats only. */
+router.post("/:uid/password", requireAdmin, async (req: AuthRequest, res) => {
+  try {
+    const { password } = req.body;
+    if (!password || typeof password !== "string" || password.length < 8) {
+      res.status(400).json({ success: false, error: "password must be 8+ chars" });
+      return;
+    }
+    const uid = req.params.uid as string;
+    const auth = await getAuthService();
+    const user = await auth.getUser(uid).catch(() => null);
+    if (!user) {
+      res.status(404).json({ success: false, error: "account not found" });
+      return;
+    }
+    if (user.customClaims?.admin) {
+      res.status(400).json({ success: false, error: "can't reset an admin account from here" });
+      return;
+    }
+    await auth.updateUser(uid, { password });
+    res.json({ success: true });
+  } catch (err) {
+    console.error("[admin/team] password reset error:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+});
+
 /** DELETE /api/admin/team/:uid — revoke role + remove from the list */
 router.delete("/:uid", requireAdmin, async (req: AuthRequest, res) => {
   try {

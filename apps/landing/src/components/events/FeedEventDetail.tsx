@@ -756,6 +756,56 @@ export function FeedEventDetail({ event, onClose, siblings, onSwitchEvent, inlin
                 </p>
               )}
 
+              {/* From previous editions — trust gallery (admin: past_photos).
+                  Sits right after the pitch: proof it's real before the
+                  logistics lists, where cold traffic decides. */}
+              {Array.isArray(event.past_photos) && event.past_photos.length > 0 && (
+                <div style={{ marginBottom: 20 }}>
+                  <span
+                    className="font-mono text-[10px] uppercase tracking-[2px]"
+                    style={{ color: P.muted, display: "block", marginBottom: 10 }}
+                  >
+                    from the last one
+                  </span>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 10,
+                      overflowX: "auto",
+                      WebkitOverflowScrolling: "touch",
+                      margin: "0 -20px",
+                      padding: "0 20px 4px",
+                    }}
+                  >
+                    {event.past_photos.map((photo: { url: string; caption?: string }) => (
+                      <figure key={photo.url} style={{ margin: 0, flex: "0 0 auto", width: 210 }}>
+                        <img
+                          src={photo.url}
+                          alt={photo.caption || `${event.title} — a previous edition`}
+                          loading="lazy"
+                          style={{
+                            width: 210,
+                            height: 150,
+                            objectFit: "cover",
+                            borderRadius: 12,
+                            display: "block",
+                            border: `1px solid ${accent}20`,
+                          }}
+                        />
+                        {photo.caption && (
+                          <figcaption
+                            className="font-hand text-[13px]"
+                            style={{ color: P.warmBrown, margin: "6px 2px 0", lineHeight: 1.35 }}
+                          >
+                            {photo.caption}
+                          </figcaption>
+                        )}
+                      </figure>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* What's inside - zones grid */}
               {event.zones && event.zones.length > 0 && (
                 <div style={{ marginBottom: 20 }}>
@@ -836,54 +886,6 @@ export function FeedEventDetail({ event, onClose, siblings, onSwitchEvent, inlin
                       </li>
                     ))}
                   </ul>
-                </div>
-              )}
-
-              {/* From previous editions — trust gallery (admin: past_photos) */}
-              {Array.isArray(event.past_photos) && event.past_photos.length > 0 && (
-                <div style={{ marginBottom: 20 }}>
-                  <span
-                    className="font-mono text-[10px] uppercase tracking-[2px]"
-                    style={{ color: P.muted, display: "block", marginBottom: 10 }}
-                  >
-                    from the last one
-                  </span>
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 10,
-                      overflowX: "auto",
-                      WebkitOverflowScrolling: "touch",
-                      margin: "0 -20px",
-                      padding: "0 20px 4px",
-                    }}
-                  >
-                    {event.past_photos.map((photo: { url: string; caption?: string }) => (
-                      <figure key={photo.url} style={{ margin: 0, flex: "0 0 auto", width: 210 }}>
-                        <img
-                          src={photo.url}
-                          alt={photo.caption || `${event.title} — a previous edition`}
-                          loading="lazy"
-                          style={{
-                            width: 210,
-                            height: 150,
-                            objectFit: "cover",
-                            borderRadius: 12,
-                            display: "block",
-                            border: `1px solid ${accent}20`,
-                          }}
-                        />
-                        {photo.caption && (
-                          <figcaption
-                            className="font-hand text-[13px]"
-                            style={{ color: P.warmBrown, margin: "6px 2px 0", lineHeight: 1.35 }}
-                          >
-                            {photo.caption}
-                          </figcaption>
-                        )}
-                      </figure>
-                    ))}
-                  </div>
                 </div>
               )}
 

@@ -101,13 +101,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 export default function CreatorsPage() {
   return (
     <div className={s.page}>
-      <div className={s.topnav}>
-        <span className={s.brandlock}>
-          <Image src="/logo.png" alt="come offline logo" width={34} height={34} className={s.logo} />
-          <span className={s.wordmark}>comeoffline</span>
-        </span>
-      </div>
-
+      {/* Site TabHeader renders above (fixed) — no page-level brandlock needed */}
       <main className={s.wrap}>
         {/* ── hero ── */}
         <header className={s.hero}>

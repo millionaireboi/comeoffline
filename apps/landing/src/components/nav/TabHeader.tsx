@@ -10,6 +10,7 @@ const tabs = [
   { label: "community", href: "/community" },
   { label: "contact", href: "/contact" },
   { label: "for brands", href: "/brands" },
+  { label: "for creators", href: "/creators" },
 ];
 
 export function TabHeader() {
@@ -18,8 +19,8 @@ export function TabHeader() {
   // Logo always visible — the events-first homepage has no full-screen hero
   const showLogo = true;
 
-  // Adapt background — home (events feed) + event details are light (cream bg)
-  const isLightPage = pathname === "/" || pathname.startsWith("/events");
+  // Adapt background — home (events feed) + event details + creators are light (cream bg)
+  const isLightPage = pathname === "/" || pathname.startsWith("/events") || pathname.startsWith("/creators");
 
   return (
     <div
@@ -52,7 +53,7 @@ export function TabHeader() {
           />
         </Link>
         <div
-          className="flex gap-0.5 rounded-full p-[3px] backdrop-blur-xl"
+          className="flex max-w-[calc(100vw-72px)] gap-0.5 overflow-x-auto rounded-full p-[3px] backdrop-blur-xl"
           style={{
             background: isLightPage ? P.nearBlack + "08" : P.cream + "08",
             border: `1px solid ${isLightPage ? P.nearBlack + "10" : P.cream + "10"}`,
@@ -64,7 +65,7 @@ export function TabHeader() {
               <Link
                 key={tab.href}
                 href={tab.href}
-                className="rounded-full border-none font-sans text-xs transition-all duration-250 no-underline"
+                className="rounded-full border-none font-sans text-xs whitespace-nowrap transition-all duration-250 no-underline"
                 style={{
                   padding: "10px 16px",
                   background: isActive ? (isLightPage ? P.nearBlack : P.cream) : "transparent",

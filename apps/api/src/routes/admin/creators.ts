@@ -163,7 +163,7 @@ router.put("/:handle", ops, async (req: AuthRequest, res) => {
 /** POST /api/admin/creators/:handle/payouts — record a manual UPI payment */
 router.post("/:handle/payouts", requireAdmin, async (req: AuthRequest, res) => {
   try {
-    const { amount, date, note } = req.body;
+    const { amount, date, note, allow_overpay } = req.body;
     if (typeof amount !== "number" || amount <= 0) {
       res.status(400).json({ success: false, error: "amount must be a number > 0" });
       return;
@@ -172,6 +172,7 @@ router.post("/:handle/payouts", requireAdmin, async (req: AuthRequest, res) => {
       amount,
       date: typeof date === "string" ? date : undefined,
       note: typeof note === "string" ? note : undefined,
+      allow_overpay: allow_overpay === true,
     });
     if (!result.success) {
       res.status(400).json({ success: false, error: result.error });

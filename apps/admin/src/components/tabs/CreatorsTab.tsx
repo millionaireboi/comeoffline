@@ -465,8 +465,9 @@ function PayoutPanel({ creator, onDone }: { creator: Creator; onDone: () => void
   const [amount, setAmount] = useState(creator.earnings.owed > 0 ? String(creator.earnings.owed) : "");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
+  const [overpayPrompt, setOverpayPrompt] = useState(false);
 
-  const save = async () => {
+  const save = async (allowOverpay = false) => {
     const amt = Number(amount);
     if (!(amt > 0)) {
       toast.error("amount must be > 0");
@@ -474,11 +475,22 @@ function PayoutPanel({ creator, onDone }: { creator: Creator; onDone: () => void
     }
     setSaving(true);
     try {
-      await apiClient.post(`/api/admin/creators/${creator.handle}/payouts`, { amount: amt, note: note.trim() });
+      await apiClient.post(`/api/admin/creators/${creator.handle}/payouts`, {
+        amount: amt,
+        note: note.trim(),
+        ...(allowOverpay && { allow_overpay: true }),
+      });
       toast.success(`recorded ${rupees(amt)} to ${creator.handle}`);
       onDone();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "failed to record payout");
+      const msg = err instanceof Error ? err.message : "failed to record payout";
+      // Fat-finger guard tripped — surface an explicit confirm instead
+      if (msg.includes("exceeds owed")) {
+        setOverpayPrompt(true);
+        toast.error(msg);
+      } else {
+        toast.error(msg);
+      }
     } finally {
       setSaving(false);
     }
@@ -505,13 +517,24 @@ function PayoutPanel({ creator, onDone }: { creator: Creator; onDone: () => void
           />
         </div>
       </div>
-      <button
-        onClick={save}
-        disabled={saving}
-        className="rounded-lg bg-caramel px-4 py-2 font-mono text-[11px] font-medium uppercase tracking-[1px] text-near-black transition-opacity hover:opacity-80 disabled:opacity-40"
-      >
-        {saving ? "recording…" : "record payout"}
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => save(false)}
+          disabled={saving}
+          className="rounded-lg bg-caramel px-4 py-2 font-mono text-[11px] font-medium uppercase tracking-[1px] text-near-black transition-opacity hover:opacity-80 disabled:opacity-40"
+        >
+          {saving ? "recording…" : "record payout"}
+        </button>
+        {overpayPrompt && (
+          <button
+            onClick={() => save(true)}
+            disabled={saving}
+            className="rounded-lg bg-[#B85C4A] px-4 py-2 font-mono text-[11px] font-medium uppercase tracking-[1px] text-white transition-opacity hover:opacity-80 disabled:opacity-40"
+          >
+            it's more than owed — record anyway
+          </button>
+        )}
+      </div>
       {creator.payouts.length > 0 && (
         <div className="space-y-1 pt-2">
           <p className={labelClass}>ledger</p>
@@ -722,11 +745,20 @@ export function CreatorsTab() {
       const norm = normTitle(e.title);
       if (!seen.has(norm)) seen.set(norm, e.title);
     }
-    const byMatch = new Map((campaigns ?? []).map((c) => [c.title_match, c]));
-    const slots = [...seen.entries()].map(([norm, title]) => ({ norm, title, campaign: byMatch.get(norm) ?? null }));
+    // Contains-match with most-specific-wins — mirrors the server's rate
+    // resolution, so what this UI shows is what actually pays
+    const campaignFor = (norm: string): Campaign | null => {
+      let best: Campaign | null = null;
+      for (const c of campaigns ?? []) {
+        if (norm.includes(c.title_match) && (!best || c.title_match.length > best.title_match.length)) best = c;
+      }
+      return best;
+    };
+    const slots = [...seen.entries()].map(([norm, title]) => ({ norm, title, campaign: campaignFor(norm) }));
     // Campaigns whose event has passed stay visible so they can be paused/reviewed
+    const covered = new Set(slots.map((s2) => s2.campaign?.title_match).filter(Boolean));
     for (const c of campaigns ?? []) {
-      if (!seen.has(c.title_match)) slots.push({ norm: c.title_match, title: c.title_match, campaign: c });
+      if (!covered.has(c.title_match)) slots.push({ norm: c.title_match, title: c.title_match, campaign: c });
     }
     return slots;
   }, [events, campaigns]);

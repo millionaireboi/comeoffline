@@ -195,13 +195,107 @@ function clicksFor(handle: string, links: { destination: string; hits: number }[
     .reduce((sum, l) => sum + l.hits, 0);
 }
 
+/** One attributed ticket, shaped for the pure tally — no Firestore types. */
+export interface TallyTicket {
+  status: string;
+  quantity?: unknown;
+  purchased_at?: string;
+  event_id?: string;
+  user_id?: string;
+  via: "link" | "code";
+}
+
+/** Rate for one event title: the most specific active campaign whose
+ *  title_match is CONTAINED in the title (same semantics as page rooms —
+ *  "friends house" covers "friends house — vol 2"), else the default. */
+export function resolveRate(title: string | undefined, rates: Map<string, number>, fallback: number): number {
+  if (title) {
+    const norm = normalizeTitle(title);
+    let best: number | undefined;
+    let bestLen = -1;
+    for (const [match, rate] of rates) {
+      if (norm.includes(match) && match.length > bestLen) {
+        best = rate;
+        bestLen = match.length;
+      }
+    }
+    if (best !== undefined) return best;
+  }
+  return fallback;
+}
+
+/**
+ * The money math, pure — every locked rule lives here so it's unit-testable
+ * without Firestore:
+ *  - only confirmed-ish statuses count; refunds/cancels never do
+ *  - self-purchases (ticket.user_id == creator uid) never count
+ *  - per-sale rate = event campaign rate (contains-matched) else default
+ *  - activation is a lifetime seat threshold, RETROACTIVE once crossed
+ *  - clicks pay per completed block of 100, behind the same activation
+ */
+export function tallyEarnings(args: {
+  tickets: TallyTicket[];
+  titles: Map<string, string>; // event_id → title
+  rates: Map<string, number>; // normalized title_match → ₹/seat
+  clicks: number;
+  creator: Pick<Creator, "rate_per_ticket" | "rate_per_100_clicks" | "activation_sales" | "user_uid">;
+  nowIso: string;
+}): CreatorEarnings {
+  const { tickets, titles, rates, clicks, creator, nowIso } = args;
+  const counted = tickets.filter(
+    (t) => COUNTED_STATUSES.has(t.status) && !(creator.user_uid && t.user_id === creator.user_uid)
+  );
+
+  const seats = (t: TallyTicket) => (typeof t.quantity === "number" && t.quantity > 0 ? t.quantity : 1);
+  const rateFor = (t: TallyTicket) => resolveRate(t.event_id ? titles.get(t.event_id) : undefined, rates, creator.rate_per_ticket);
+
+  const seatsByMonth: Record<string, number> = {};
+  let lifetimeSeats = 0;
+  let totalCommission = 0;
+  for (const t of counted) {
+    const s = seats(t);
+    lifetimeSeats += s;
+    totalCommission += s * rateFor(t);
+    const month = t.purchased_at ? istMonthKey(t.purchased_at) : "unknown";
+    seatsByMonth[month] = (seatsByMonth[month] ?? 0) + s;
+  }
+
+  const recentSales = counted
+    .slice()
+    .sort((a, b) => (b.purchased_at ?? "").localeCompare(a.purchased_at ?? ""))
+    .slice(0, 25)
+    .map((t) => ({
+      date: (t.purchased_at ?? "").slice(0, 10),
+      event_title: (t.event_id && titles.get(t.event_id)) || "an event",
+      seats: seats(t),
+      via: t.via,
+      earned: seats(t) * rateFor(t),
+    }));
+
+  const activated = lifetimeSeats >= creator.activation_sales;
+  const salesEarned = activated ? totalCommission : 0;
+  const clickEarned = activated ? Math.floor(clicks / 100) * (creator.rate_per_100_clicks || 0) : 0;
+  const earned = salesEarned + clickEarned;
+
+  return {
+    lifetime_seats: lifetimeSeats,
+    month_seats: seatsByMonth[istMonthKey(nowIso)] ?? 0,
+    activated,
+    clicks,
+    sales_earned: salesEarned,
+    click_earned: clickEarned,
+    earned,
+    paid: 0, // caller adds the ledger
+    owed: 0,
+    seats_by_month: seatsByMonth,
+    recent_sales: recentSales,
+  };
+}
+
 /**
  * Compute a creator's earnings from live tickets. Two equality queries
- * (auto-indexed single fields), merged and deduped by ticket id; status is
- * filtered in code so no composite index is needed. A sale's rate is the
- * event's campaign rate when one is active for its title, else the
- * creator's default rate. Click money pays per completed block of 100
- * short-link clicks, behind the same (retroactive) activation as sales.
+ * (auto-indexed single fields), merged and deduped by ticket id; the money
+ * math itself is tallyEarnings above.
  */
 export async function computeEarnings(
   creator: Creator,
@@ -230,26 +324,17 @@ export async function computeEarnings(
     }
   }
 
-  // Locked rule: self-purchases never count — a creator buying through
-  // their own link/code earns no commission and no activation progress.
-  const counted = [...tickets.values()].filter(
-    (t) =>
-      COUNTED_STATUSES.has(t.data.status) &&
-      !(creator.user_uid && t.data.user_id === creator.user_uid)
-  );
+  const tallyTickets: TallyTicket[] = [...tickets.values()].map((t) => ({
+    status: t.data.status,
+    quantity: t.data.quantity,
+    purchased_at: t.data.purchased_at,
+    event_id: t.data.event_id,
+    user_id: t.data.user_id,
+    via: t.via,
+  }));
 
-  const seatsByMonth: Record<string, number> = {};
-  let lifetimeSeats = 0;
-  const eventIds = new Set<string>();
-  for (const t of counted) {
-    const seats = typeof t.data.quantity === "number" && t.data.quantity > 0 ? t.data.quantity : 1;
-    lifetimeSeats += seats;
-    const month = t.data.purchased_at ? istMonthKey(t.data.purchased_at) : "unknown";
-    seatsByMonth[month] = (seatsByMonth[month] ?? 0) + seats;
-    if (t.data.event_id) eventIds.add(t.data.event_id);
-  }
-
-  // Titles for the anonymized feed — one batched read, small volume
+  // Titles for rate resolution + the anonymized feed — one batched read
+  const eventIds = new Set(tallyTickets.map((t) => t.event_id).filter((id): id is string => !!id));
   const titles = new Map<string, string>();
   if (eventIds.size > 0) {
     const refs = [...eventIds].map((id) => db.collection("events").doc(id));
@@ -257,57 +342,16 @@ export async function computeEarnings(
     for (const snap of snaps) titles.set(snap.id, (snap.data()?.title as string) ?? "an event");
   }
 
-  /** Rate for one ticket: event campaign rate (matched by title) or default */
-  const rateFor = (eventId: string): number => {
-    const title = titles.get(eventId);
-    if (title) {
-      const campaignRate = rates.get(normalizeTitle(title));
-      if (campaignRate !== undefined) return campaignRate;
-    }
-    return creator.rate_per_ticket;
-  };
-
-  const recentSales = counted
-    .sort((a, b) => (b.data.purchased_at ?? "").localeCompare(a.data.purchased_at ?? ""))
-    .slice(0, 25)
-    .map((t) => {
-      const seats = typeof t.data.quantity === "number" && t.data.quantity > 0 ? t.data.quantity : 1;
-      return {
-        date: (t.data.purchased_at ?? "").slice(0, 10),
-        event_title: titles.get(t.data.event_id) ?? "an event",
-        seats,
-        via: t.via,
-        earned: seats * rateFor(t.data.event_id),
-      };
-    });
-
-  const activated = lifetimeSeats >= creator.activation_sales;
-  // Retroactive: crossing the threshold pays from sale #1, each sale at its
-  // event's resolved rate
-  const totalCommission = counted.reduce((sum, t) => {
-    const seats = typeof t.data.quantity === "number" && t.data.quantity > 0 ? t.data.quantity : 1;
-    return sum + seats * rateFor(t.data.event_id);
-  }, 0);
-  const clicks = clicksFor(creator.handle, links);
-  const clickRate = creator.rate_per_100_clicks || 0;
-  const salesEarned = activated ? totalCommission : 0;
-  const clickEarned = activated ? Math.floor(clicks / 100) * clickRate : 0;
-  const earned = salesEarned + clickEarned;
+  const earnings = tallyEarnings({
+    tickets: tallyTickets,
+    titles,
+    rates,
+    clicks: clicksFor(creator.handle, links),
+    creator,
+    nowIso: new Date().toISOString(),
+  });
   const paid = (creator.payouts ?? []).reduce((sum, p) => sum + (p.amount || 0), 0);
-
-  return {
-    lifetime_seats: lifetimeSeats,
-    month_seats: seatsByMonth[istMonthKey(new Date().toISOString())] ?? 0,
-    activated,
-    clicks,
-    sales_earned: salesEarned,
-    click_earned: clickEarned,
-    earned,
-    paid,
-    owed: Math.max(0, earned - paid),
-    seats_by_month: seatsByMonth,
-    recent_sales: recentSales,
-  };
+  return { ...earnings, paid, owed: Math.max(0, earnings.earned - paid) };
 }
 
 /* ── Admin CRUD ───────────────────────────────────── */
@@ -414,16 +458,28 @@ export async function updateCreator(
   return { success: true, data: (await ref.get()).data() as Creator };
 }
 
-/** Append a manual payout to the ledger — records money already sent by UPI. */
+/** Append a manual payout to the ledger — records money already sent by UPI.
+ *  Rejects amounts above what's owed unless explicitly overridden — a
+ *  fat-finger guard, not a hard rule (bonuses exist). */
 export async function recordPayout(
   handle: string,
-  payout: { amount: number; date?: string; note?: string }
+  payout: { amount: number; date?: string; note?: string; allow_overpay?: boolean }
 ): Promise<CreateResult> {
   if (!(payout.amount > 0)) return { success: false, error: "amount must be > 0" };
   const db = await getDb();
   const ref = db.collection("creators").doc(normalizeHandle(handle));
   const snap = await ref.get();
   if (!snap.exists) return { success: false, error: "creator not found" };
+
+  if (!payout.allow_overpay) {
+    const earnings = await computeEarnings(snap.data() as Creator);
+    if (payout.amount > earnings.owed) {
+      return {
+        success: false,
+        error: `amount exceeds owed (₹${earnings.owed.toLocaleString("en-IN")}) — confirm overpay to record anyway`,
+      };
+    }
+  }
 
   const entry: CreatorPayout = {
     amount: payout.amount,
@@ -549,13 +605,24 @@ export async function listCampaignsForCreator(
       upcoming.set(norm, { title: e.title, date: e.date ?? null });
     }
   }
+  // Contains-match, same as rate resolution: campaign "friends house"
+  // covers "friends house — vol 2". Earliest matching edition leads.
+  const editionFor = (titleMatch: string) => {
+    let best: { title: string; date: string | null } | null = null;
+    for (const [norm, entry] of upcoming) {
+      if (!norm.includes(titleMatch)) continue;
+      if (!best || (entry.date && best.date && entry.date < best.date) || (entry.date && !best.date)) best = entry;
+    }
+    return best;
+  };
   return campaignSnap.docs
     .map((d) => d.data() as CreatorCampaign)
-    .filter((c) => upcoming.has(c.title_match))
-    .map((c) => ({
+    .map((c) => ({ c, edition: editionFor(c.title_match) }))
+    .filter((x): x is { c: CreatorCampaign; edition: { title: string; date: string | null } } => x.edition !== null)
+    .map(({ c, edition }) => ({
       title_match: c.title_match,
-      event_title: upcoming.get(c.title_match)!.title,
-      next_date: upcoming.get(c.title_match)!.date,
+      event_title: edition.title,
+      next_date: edition.date,
       commission_per_seat: c.commission_per_seat,
       brief: c.brief,
       formats: normalizeFormats(c.formats),

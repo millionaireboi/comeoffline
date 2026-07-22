@@ -1,5 +1,8 @@
 import { Router } from "express";
-import { requireAdmin, type AuthRequest } from "../../middleware/auth";
+import { requireRole, type AuthRequest } from "../../middleware/auth";
+
+// creator_ops mints creators' /l/ links, so the role shares this surface
+const requireAdmin = requireRole("creator_ops");
 import { listLinks, createLink, updateLink, deleteLink } from "../../services/links.service";
 
 const router = Router();

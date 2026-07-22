@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
 import { useApi } from "@/hooks/useApi";
 import { apiClient } from "@/lib/apiClient";
 import { toast } from "@/lib/toast";
@@ -375,6 +376,7 @@ function RatesPanel({ creator, onDone }: { creator: Creator; onDone: () => void 
 
 /** Creator-submitted page draft — publish copies it onto the live page. */
 function DraftPanel({ creator, onDone }: { creator: Creator; onDone: () => void }) {
+  const { isAdmin } = useAuth();
   const draft = creator.page_draft;
   const [acting, setActing] = useState(false);
   if (!draft) return null;
@@ -438,18 +440,22 @@ function DraftPanel({ creator, onDone }: { creator: Creator; onDone: () => void 
           ))}
         </div>
       )}
-      <div className="flex gap-2 pt-1">
-        <button
-          onClick={() => act("publish")}
-          disabled={acting}
-          className="rounded-lg bg-caramel px-4 py-2 font-mono text-[11px] font-medium uppercase tracking-[1px] text-near-black transition-opacity hover:opacity-80 disabled:opacity-40"
-        >
-          publish to /with/{creator.handle}
-        </button>
-        <button onClick={() => act("discard")} disabled={acting} className={btnClass}>
-          discard
-        </button>
-      </div>
+      {isAdmin ? (
+        <div className="flex gap-2 pt-1">
+          <button
+            onClick={() => act("publish")}
+            disabled={acting}
+            className="rounded-lg bg-caramel px-4 py-2 font-mono text-[11px] font-medium uppercase tracking-[1px] text-near-black transition-opacity hover:opacity-80 disabled:opacity-40"
+          >
+            publish to /with/{creator.handle}
+          </button>
+          <button onClick={() => act("discard")} disabled={acting} className={btnClass}>
+            discard
+          </button>
+        </div>
+      ) : (
+        <p className="pt-1 font-mono text-[10px] text-muted">the founder reviews and publishes drafts</p>
+      )}
     </div>
   );
 }
@@ -697,7 +703,9 @@ export function CreatorsTab() {
   const { data: creators, loading, refetch } = useApi<Creator[]>("/api/admin/creators", {
     dedupingInterval: 30 * 1000,
   });
-  const { data: members } = useApi<Member[]>("/api/admin/members", { dedupingInterval: 60 * 1000 });
+  const { isAdmin } = useAuth();
+  // Minimal uid/name/handle list — works for creator_ops without member PII
+  const { data: members } = useApi<Member[]>("/api/admin/creators/member-options", { dedupingInterval: 60 * 1000 });
   const { data: events } = useApi<AdminEvent[]>("/api/admin/events", { dedupingInterval: 60 * 1000 });
   const { data: campaigns, refetch: refetchCampaigns } = useApi<Campaign[]>("/api/admin/creators/campaigns", {
     dedupingInterval: 30 * 1000,
@@ -891,6 +899,27 @@ export function CreatorsTab() {
         </div>
       )}
 
+      {/* Payout overview — totals across every creator, computed live */}
+      {creators && creators.length > 0 && (
+        <div className="flex flex-wrap gap-x-6 gap-y-1 rounded-xl border border-white/5 bg-white/[0.02] px-5 py-3 font-mono text-[11px]">
+          <span className="text-muted">
+            total earned <span className="text-cream">{rupees(creators.reduce((s2, c) => s2 + c.earnings.earned, 0))}</span>
+          </span>
+          <span className="text-muted">
+            paid <span className="text-cream">{rupees(creators.reduce((s2, c) => s2 + c.earnings.paid, 0))}</span>
+          </span>
+          <span className="text-muted">
+            owed <span className="text-caramel">{rupees(creators.reduce((s2, c) => s2 + c.earnings.owed, 0))}</span>
+          </span>
+          <span className="text-muted">
+            seats <span className="text-cream">{creators.reduce((s2, c) => s2 + c.earnings.lifetime_seats, 0)}</span>
+          </span>
+          <span className="text-muted">
+            clicks <span className="text-cream">{creators.reduce((s2, c) => s2 + c.earnings.clicks, 0).toLocaleString("en-IN")}</span>
+          </span>
+        </div>
+      )}
+
       {/* Event campaigns — per-event commission + content brief */}
       <div className="space-y-3">
         <p className="font-mono text-[11px] uppercase tracking-[1px] text-muted">
@@ -972,12 +1001,14 @@ export function CreatorsTab() {
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      onClick={() => setOpenPanel(openPanel === `${c.handle}:payout` ? null : `${c.handle}:payout`)}
-                      className={btnClass}
-                    >
-                      {openPanel === `${c.handle}:payout` ? "close" : "payouts"}
-                    </button>
+                    {isAdmin && (
+                      <button
+                        onClick={() => setOpenPanel(openPanel === `${c.handle}:payout` ? null : `${c.handle}:payout`)}
+                        className={btnClass}
+                      >
+                        {openPanel === `${c.handle}:payout` ? "close" : "payouts"}
+                      </button>
+                    )}
                     <button
                       onClick={() => setOpenPanel(openPanel === `${c.handle}:rates` ? null : `${c.handle}:rates`)}
                       className={btnClass}
@@ -1009,7 +1040,7 @@ export function CreatorsTab() {
                     <button onClick={() => handleToggleActive(c)} disabled={actioning === c.handle} className={btnClass}>
                       {c.active ? "pause" : "activate"}
                     </button>
-                    {confirmDelete === c.handle ? (
+                    {!isAdmin ? null : confirmDelete === c.handle ? (
                       <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => handleDelete(c)}

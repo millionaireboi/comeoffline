@@ -3,7 +3,7 @@ export const instrumentSerif = {
   variable: "--font-instrument-serif",
 };
 
-export type Tab = "dashboard" | "events" | "bookings" | "discounts" | "links" | "creators" | "check-in" | "validation" | "content" | "applications" | "members" | "safety" | "reports" | "contact" | "brands" | "marketing" | "whatsapp" | "settings";
+export type Tab = "dashboard" | "events" | "bookings" | "discounts" | "links" | "creators" | "pipeline" | "check-in" | "validation" | "content" | "applications" | "members" | "safety" | "reports" | "contact" | "brands" | "marketing" | "whatsapp" | "settings" | "team";
 
 /** Two-level nav: groups ordered by how often they're needed. A tab lives in
  *  exactly one group; the group row + sub-tab row replace the old flat strip. */
@@ -17,13 +17,24 @@ export interface TabGroup {
 export const TAB_GROUPS: TabGroup[] = [
   { key: "home", label: "home", emoji: "🏠", tabs: ["dashboard"] },
   { key: "events", label: "events", emoji: "🎪", tabs: ["events", "bookings", "check-in", "content"] },
-  { key: "growth", label: "growth", emoji: "📈", tabs: ["links", "discounts", "creators", "marketing"] },
+  { key: "growth", label: "growth", emoji: "📈", tabs: ["links", "discounts", "creators", "pipeline", "marketing"] },
   { key: "people", label: "people", emoji: "👥", tabs: ["members", "applications", "validation", "safety", "reports"] },
   { key: "inbox", label: "inbox", emoji: "📬", tabs: ["contact", "brands"] },
-  { key: "system", label: "system", emoji: "⚙️", tabs: ["whatsapp", "settings"] },
+  { key: "system", label: "system", emoji: "⚙️", tabs: ["whatsapp", "settings", "team"] },
 ];
 
 export const ALL_TABS: Tab[] = TAB_GROUPS.flatMap((g) => g.tabs);
+
+/** Which tabs a team role can open — admins see everything. Authorization is
+ *  enforced API-side; this only shapes the nav. */
+export const ROLE_TABS: Record<string, Tab[]> = {
+  creator_ops: ["pipeline", "creators", "links", "discounts"],
+};
+
+export function tabsFor(isAdmin: boolean, role: string | null): Tab[] {
+  if (isAdmin) return ALL_TABS;
+  return role ? (ROLE_TABS[role] ?? []) : [];
+}
 
 export function isTab(value: string | null): value is Tab {
   return value !== null && (ALL_TABS as string[]).includes(value);

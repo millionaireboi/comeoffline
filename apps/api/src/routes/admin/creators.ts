@@ -1,5 +1,6 @@
 import { Router } from "express";
-import { requireAdmin, type AuthRequest } from "../../middleware/auth";
+import { requireAdmin, requireRole, type AuthRequest } from "../../middleware/auth";
+import { getDb } from "../../config/firebase-admin";
 import {
   listCreators,
   createCreator,
@@ -15,8 +16,31 @@ import {
 
 const router = Router();
 
+/** creator_ops (acquisition role) can work the whole creator surface EXCEPT
+ *  money recording (payouts), deletion, and page-draft approval — those stay
+ *  founder-only below. */
+const ops = requireRole("creator_ops");
+
+/** GET /api/admin/creators/member-options — minimal member list (uid, name,
+ *  handle ONLY) for the link-their-account picker. Exists so creator_ops
+ *  never needs the PII-heavy members endpoint. */
+router.get("/member-options", ops, async (_req: AuthRequest, res) => {
+  try {
+    const db = await getDb();
+    const snap = await db.collection("users").get();
+    const options = snap.docs.map((d) => {
+      const u = d.data() as { name?: string; handle?: string };
+      return { id: d.id, name: u.name ?? "", handle: u.handle ?? "" };
+    });
+    res.json({ success: true, data: options });
+  } catch (err) {
+    console.error("[admin/creators] member-options error:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+});
+
 /** GET /api/admin/creators — all creators with computed earnings */
-router.get("/", requireAdmin, async (_req: AuthRequest, res) => {
+router.get("/", ops, async (_req: AuthRequest, res) => {
   try {
     const creators = await listCreators();
     res.json({ success: true, data: creators });
@@ -27,7 +51,7 @@ router.get("/", requireAdmin, async (_req: AuthRequest, res) => {
 });
 
 /** POST /api/admin/creators — onboard a creator */
-router.post("/", requireAdmin, async (req: AuthRequest, res) => {
+router.post("/", ops, async (req: AuthRequest, res) => {
   try {
     const { handle, name, rate_per_ticket, rate_per_100_clicks, activation_sales, discount_code, user_uid, page } = req.body;
     if (!handle || typeof handle !== "string") {
@@ -62,7 +86,7 @@ router.post("/", requireAdmin, async (req: AuthRequest, res) => {
 
 /** GET /api/admin/creators/campaigns — all event campaigns (registered
  *  before the :handle routes so "campaigns" never parses as a handle) */
-router.get("/campaigns", requireAdmin, async (_req: AuthRequest, res) => {
+router.get("/campaigns", ops, async (_req: AuthRequest, res) => {
   try {
     const campaigns = await listCampaigns();
     res.json({ success: true, data: campaigns });
@@ -73,7 +97,7 @@ router.get("/campaigns", requireAdmin, async (_req: AuthRequest, res) => {
 });
 
 /** PUT /api/admin/creators/campaigns — create/update a campaign for an event title */
-router.put("/campaigns", requireAdmin, async (req: AuthRequest, res) => {
+router.put("/campaigns", ops, async (req: AuthRequest, res) => {
   try {
     const { title_match, commission_per_seat, brief, formats, active } = req.body;
     if (!title_match || typeof title_match !== "string") {
@@ -97,7 +121,7 @@ router.put("/campaigns", requireAdmin, async (req: AuthRequest, res) => {
 });
 
 /** DELETE /api/admin/creators/campaigns/:titleMatch */
-router.delete("/campaigns/:titleMatch", requireAdmin, async (req: AuthRequest, res) => {
+router.delete("/campaigns/:titleMatch", ops, async (req: AuthRequest, res) => {
   try {
     const result = await deleteCampaign(req.params.titleMatch as string);
     if (!result.success) {
@@ -112,7 +136,7 @@ router.delete("/campaigns/:titleMatch", requireAdmin, async (req: AuthRequest, r
 });
 
 /** PUT /api/admin/creators/:handle — rate, code, uid link, page config, active */
-router.put("/:handle", requireAdmin, async (req: AuthRequest, res) => {
+router.put("/:handle", ops, async (req: AuthRequest, res) => {
   try {
     const { name, active, rate_per_ticket, rate_per_100_clicks, activation_sales, discount_code, user_uid, page } = req.body;
     const result = await updateCreator(req.params.handle as string, {

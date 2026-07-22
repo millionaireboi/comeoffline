@@ -35,6 +35,8 @@ import adminWhatsappCampaignsRouter from "./routes/admin/whatsapp-campaigns";
 import adminLinksRouter from "./routes/admin/links";
 import publicLinksRouter from "./routes/links";
 import adminCreatorsRouter from "./routes/admin/creators";
+import adminTeamRouter from "./routes/admin/team";
+import adminProspectsRouter from "./routes/admin/prospects";
 import creatorsRouter from "./routes/creators";
 import webhooksRouter from "./routes/webhooks";
 import whatsappWebhookRouter from "./routes/webhooks-whatsapp";
@@ -80,6 +82,8 @@ app.use("/api/admin/bookings", adminLimiter, adminBookingsRouter);
 app.use("/api/admin/discounts", adminLimiter, adminDiscountsRouter);
 app.use("/api/admin/links", adminLimiter, adminLinksRouter);
 app.use("/api/admin/creators", adminLimiter, adminCreatorsRouter);
+app.use("/api/admin/team", adminLimiter, adminTeamRouter);
+app.use("/api/admin/prospects", adminLimiter, adminProspectsRouter);
 app.use("/api/admin", adminLimiter, adminWhatsappCampaignsRouter);
 app.use("/api/admin", adminLimiter, adminWhatsappRouter);
 

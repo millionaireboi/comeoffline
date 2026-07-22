@@ -8,6 +8,9 @@ interface AuthContextValue {
   user: User | null;
   loading: boolean;
   isAdmin: boolean;
+  /** Team role custom claim (e.g. "creator_ops") — null for full admins
+   *  and for accounts with no access */
+  role: string | null;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   getIdToken: () => Promise<string | null>;
@@ -19,6 +22,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [role, setRole] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -28,17 +32,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           const tokenResult = await firebaseUser.getIdTokenResult(false);
           const admin = !!tokenResult.claims.admin;
+          const teamRole = typeof tokenResult.claims.role === "string" ? (tokenResult.claims.role as string) : null;
           setIsAdmin(admin);
-          if (admin) {
+          setRole(teamRole);
+          // Team roles need the session cookie too — the Next middleware
+          // only checks presence; real authorization happens API-side.
+          if (admin || teamRole) {
             const token = await firebaseUser.getIdToken();
             document.cookie = `admin_session=${token}; path=/; samesite=strict; secure; max-age=3600`;
           }
         } catch (error) {
           console.error('Failed to get token:', error);
           setIsAdmin(false);
+          setRole(null);
         }
       } else {
         setIsAdmin(false);
+        setRole(null);
       }
 
       setLoading(false);
@@ -71,7 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, isAdmin, login, logout, getIdToken }}>
+    <AuthContext.Provider value={{ user, loading, isAdmin, role, login, logout, getIdToken }}>
       {children}
     </AuthContext.Provider>
   );

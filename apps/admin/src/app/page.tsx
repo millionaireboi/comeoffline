@@ -3,7 +3,7 @@
 import { Suspense, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth, AuthProvider } from "@/hooks/useAuth";
-import { instrumentSerif, isTab, TAB_GROUPS, type Tab } from "@/lib/constants";
+import { instrumentSerif, isTab, tabsFor, TAB_GROUPS, type Tab } from "@/lib/constants";
 
 // Tab components
 import { DashboardTab } from "@/components/tabs/DashboardTab";
@@ -23,6 +23,8 @@ import { CreatorsTab } from "@/components/tabs/CreatorsTab";
 import { WhatsAppTab } from "@/components/tabs/WhatsAppTab";
 import { MarketingPanel } from "@/components/tabs/WhatsAppMarketingPanel";
 import { ReportsTab } from "@/components/tabs/ReportsTab";
+import { TeamTab } from "@/components/tabs/TeamTab";
+import { PipelineTab } from "@/components/tabs/PipelineTab";
 import { EventWorkspace } from "@/components/EventWorkspace";
 import { TabErrorBoundary } from "@/components/TabErrorBoundary";
 import { Toaster } from "@/components/Toaster";
@@ -39,14 +41,19 @@ export default function Home() {
 }
 
 function AdminDashboard() {
-  const { user, loading, isAdmin, logout } = useAuth();
+  const { user, loading, isAdmin, role, logout } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
+
+  // Role-scoped nav: admins see everything; team roles see their slice.
+  // Real authorization is API-side — this only shapes what renders.
+  const allowedTabs = tabsFor(isAdmin, role);
 
   // Tab + event workspace live in the URL so refresh, bookmarks (door phone!),
   // back button, and dashboard deep-links all work.
   const tabParam = searchParams.get("tab");
-  const tab: Tab = isTab(tabParam) ? tabParam : "dashboard";
+  const tab: Tab =
+    isTab(tabParam) && allowedTabs.includes(tabParam) ? tabParam : (allowedTabs[0] ?? "dashboard");
   const eventParam = searchParams.get("event");
 
   const setTab = useCallback(
@@ -58,7 +65,11 @@ function AdminDashboard() {
     [router],
   );
 
-  const activeGroup = TAB_GROUPS.find((g) => g.tabs.includes(tab)) ?? TAB_GROUPS[0];
+  // Groups collapse to only the tabs this account can open; empty groups vanish
+  const visibleGroups = TAB_GROUPS.map((g) => ({ ...g, tabs: g.tabs.filter((t) => allowedTabs.includes(t)) })).filter(
+    (g) => g.tabs.length > 0
+  );
+  const activeGroup = visibleGroups.find((g) => g.tabs.includes(tab)) ?? visibleGroups[0] ?? TAB_GROUPS[0];
 
   if (loading) {
     return (
@@ -75,7 +86,7 @@ function AdminDashboard() {
     return null;
   }
 
-  if (!isAdmin) {
+  if (!isAdmin && allowedTabs.length === 0) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-gate-black px-8 text-center">
         <span className="mb-6 text-5xl">🔒</span>
@@ -105,7 +116,7 @@ function AdminDashboard() {
           </h1>
           <div className="flex items-center gap-3">
             <span className="rounded-full bg-white/5 px-2.5 py-0.5 font-mono text-[9px] text-muted sm:px-3 sm:py-1 sm:text-[10px]">
-              admin
+              {isAdmin ? "admin" : (role ?? "").replace(/_/g, " ") || "team"}
             </span>
             <button
               onClick={logout}
@@ -120,7 +131,7 @@ function AdminDashboard() {
       {/* Group row — desktop only; phones get the bottom bar instead */}
       <nav className="hidden overflow-x-auto border-b border-white/5 px-4 sm:block sm:px-6">
         <div className="flex min-w-max gap-1">
-          {TAB_GROUPS.map((g) => (
+          {visibleGroups.map((g) => (
             <button
               key={g.key}
               onClick={() => setTab(g.tabs[0])}
@@ -171,6 +182,8 @@ function AdminDashboard() {
         {tab === "discounts" && <TabErrorBoundary tabName="discounts" key="discounts"><DiscountsTab /></TabErrorBoundary>}
         {tab === "links" && <TabErrorBoundary tabName="links" key="links"><LinksTab /></TabErrorBoundary>}
         {tab === "creators" && <TabErrorBoundary tabName="creators" key="creators"><CreatorsTab /></TabErrorBoundary>}
+        {tab === "pipeline" && <TabErrorBoundary tabName="pipeline" key="pipeline"><PipelineTab /></TabErrorBoundary>}
+        {tab === "team" && <TabErrorBoundary tabName="team" key="team"><TeamTab /></TabErrorBoundary>}
         {tab === "marketing" && <TabErrorBoundary tabName="marketing" key="marketing"><MarketingPanel /></TabErrorBoundary>}
         {tab === "check-in" && <TabErrorBoundary tabName="check-in" key="check-in"><CheckInTab /></TabErrorBoundary>}
         {tab === "validation" && <TabErrorBoundary tabName="validation" key="validation"><ValidationTab /></TabErrorBoundary>}
@@ -186,8 +199,8 @@ function AdminDashboard() {
 
       {/* Mobile bottom nav — one thumb-reachable button per group */}
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-gate-black/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden">
-        <div className="grid grid-cols-6">
-          {TAB_GROUPS.map((g) => (
+        <div className={`grid ${["grid-cols-1", "grid-cols-1", "grid-cols-2", "grid-cols-3", "grid-cols-4", "grid-cols-5", "grid-cols-6"][Math.min(visibleGroups.length, 6)]}`}>
+          {visibleGroups.map((g) => (
             <button
               key={g.key}
               onClick={() => setTab(g.tabs[0])}

@@ -1,5 +1,8 @@
 import { Router } from "express";
-import { requireAdmin, type AuthRequest } from "../../middleware/auth";
+import { requireRole, type AuthRequest } from "../../middleware/auth";
+
+// creator_ops mints creators' discount codes, so the role shares this surface
+const requireAdmin = requireRole("creator_ops");
 import {
   listDiscountCodes,
   createDiscountCode,

@@ -75,3 +75,21 @@ export async function requireAdmin(
     next();
   });
 }
+
+/**
+ * Requires the admin claim OR one of the given team roles (custom claim
+ * `role`, set via admin → team). Admins always pass — roles only widen
+ * access, never narrow the founder's.
+ */
+export function requireRole(...roles: string[]) {
+  return async (req: AuthRequest, res: Response, next: NextFunction) => {
+    await requireAuth(req, res, () => {
+      const role = typeof req.claims?.role === "string" ? (req.claims.role as string) : null;
+      if (!req.claims?.admin && !(role && roles.includes(role))) {
+        res.status(403).json({ success: false, error: "Access required" });
+        return;
+      }
+      next();
+    });
+  };
+}

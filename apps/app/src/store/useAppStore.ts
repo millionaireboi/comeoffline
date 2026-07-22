@@ -109,6 +109,10 @@ let toastTimeout: ReturnType<typeof setTimeout> | null = null;
 
 // Deep-link intent older than this is dropped on rehydrate
 const INTENT_TTL_MS = 24 * 60 * 60 * 1000;
+// Creator/campaign attribution outlives purchase intent: a creator's link
+// "remembers" the visitor for 30 days (locked with founder — last click wins,
+// a typed discount code still beats the link server-side).
+const ATTRIBUTION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 export const useAppStore = create<AppState>()(
   persist(
@@ -195,8 +199,9 @@ export const useAppStore = create<AppState>()(
           state.setPendingPurchaseEventId(null);
           state.setPendingDeepLinkTierId(null);
         }
-        // Same TTL for attribution — a week-old scan shouldn't claim today's purchase
-        if (state?.attribution && (!state.attributionAt || Date.now() - state.attributionAt > INTENT_TTL_MS)) {
+        // Attribution gets a longer window — a creator's link keeps credit for
+        // 30 days ("i'll book on payday" is a real purchase path at ₹700+)
+        if (state?.attribution && (!state.attributionAt || Date.now() - state.attributionAt > ATTRIBUTION_TTL_MS)) {
           state.setAttribution(null);
         }
       },

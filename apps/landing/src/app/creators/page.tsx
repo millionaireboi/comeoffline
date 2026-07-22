@@ -50,6 +50,15 @@ const FAQS = [
     ),
   },
   {
+    q: "what if someone buys days after clicking?",
+    a: (
+      <>
+        still yours. <strong>your link remembers whoever clicked it for 30 days</strong>, and your code never expires —
+        typed at checkout anytime, the sale counts for you.
+      </>
+    ),
+  },
+  {
     q: "can i choose which events i promote?",
     a: <>yes. enrol only for the ones you&rsquo;re genuinely excited about. no quotas, no forced calendars.</>,
   },
@@ -115,10 +124,10 @@ export default function CreatorsPage() {
           <figure className={s.heroPolaroid}>
             <span className={s.tape} aria-hidden="true" />
             <Image
-              src="/hi/friends-house/photo-1.jpg"
-              alt="a full room at the last friends house — everyone arrived solo"
-              width={1280}
-              height={960}
+              src="/creators/party-67.jpg"
+              alt="jenga getting serious at the last friends house"
+              width={1400}
+              height={912}
               className={s.heroShot}
               priority
             />
@@ -225,13 +234,13 @@ export default function CreatorsPage() {
         {/* ── full-bleed photo band — breathing room with humans in it ── */}
         <figure className={s.photoBand}>
           <Image
-            src="/hi/friends-house/photo-2.jpg"
-            alt="the living room at friends house — bean bags, warm lamps, the games table"
+            src="/creators/party-64.jpg"
+            alt="the room at friends house — warm lamps, the games table, everyone standing around it"
             width={1400}
-            height={1050}
+            height={912}
             className={s.photoBandImg}
           />
-          <figcaption className={s.photoBandCap}>the living room, mid-saturday. your audience has never been here. yet.</figcaption>
+          <figcaption className={s.photoBandCap}>saturday, mid-game. your audience has never been here. yet.</figcaption>
         </figure>
 
         {/* ── money — a ticket stub, because it pays per ticket ── */}
@@ -315,6 +324,28 @@ export default function CreatorsPage() {
         </div>
         <p className={s.dashNote}>watch the rupees tick up mid-party. live, in the app.</p>
 
+        {/* ── the ladder — soft wording by design, mechanics locked later ── */}
+        <SectionLabel>the ladder</SectionLabel>
+        <div className={s.ladder}>
+          <div className={s.rung}>
+            <span className={s.rungLevel}>level one · 10 seats</span>
+            <p className={s.rungText}>
+              payouts unlock. <strong>every seat from your first one pays.</strong>
+            </p>
+          </div>
+          <div className={s.rung}>
+            <span className={s.rungLevel}>level two · 50 seats</span>
+            <p className={s.rungText}>closer to the house — first look at new campaigns, a louder say in what we run.</p>
+          </div>
+          <div className={`${s.rung} ${s.rungTop}`}>
+            <span className={s.rungLevel}>level three · 150 seats</span>
+            <p className={s.rungText}>
+              founding creator. <strong>the perks up here are being saved for whoever arrives first.</strong>
+            </p>
+          </div>
+        </div>
+        <p className={s.ladderNote}>nobody&rsquo;s reached the top yet. the first ten start climbing together.</p>
+
         {/* ── who ── */}
         <SectionLabel>who we&rsquo;re looking for</SectionLabel>
         <p className={s.whoLede}>
@@ -383,10 +414,10 @@ export default function CreatorsPage() {
         {/* ── close — an ending, not a footer ── */}
         <section className={s.close}>
           <Image
-            src="/hi/friends-house/photo-1.jpg"
+            src="/creators/party-73.jpg"
             alt=""
-            width={1280}
-            height={960}
+            width={1400}
+            height={912}
             className={s.closeBg}
             aria-hidden="true"
           />

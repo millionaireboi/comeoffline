@@ -21,6 +21,16 @@ interface CreatorPage {
   rooms?: { title_match: string; tie: string }[];
 }
 
+interface Campaign {
+  title_match: string;
+  event_title: string;
+  next_date: string | null;
+  commission_per_seat: number;
+  brief: string;
+  formats: string[];
+  enrolled: boolean;
+}
+
 interface CreatorMe {
   handle: string;
   name: string;
@@ -31,6 +41,7 @@ interface CreatorMe {
   page: CreatorPage;
   page_draft: CreatorPage | null;
   page_draft_at: string | null;
+  campaigns: Campaign[];
   earnings: {
     lifetime_seats: number;
     month_seats: number;
@@ -38,8 +49,13 @@ interface CreatorMe {
     earned: number;
     paid: number;
     owed: number;
-    recent_sales: { date: string; event_title: string; seats: number; via: "link" | "code" }[];
+    recent_sales: { date: string; event_title: string; seats: number; via: "link" | "code"; earned: number }[];
   };
+}
+
+function formatDate(iso: string | null): string {
+  if (!iso) return "";
+  return new Date(iso + "T00:00:00").toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" }).toLowerCase();
 }
 
 /* Creators write plain text — the page auto-highlights the last line of the
@@ -287,6 +303,29 @@ export function CreatorStudio({ onClose }: { onClose: () => void }) {
   const [copied, setCopied] = useState<string | null>(null);
   const [editingPage, setEditingPage] = useState(false);
   const [draftSent, setDraftSent] = useState(false);
+  const [enrolling, setEnrolling] = useState<string | null>(null);
+
+  const setEnroll = async (titleMatch: string, enrolled: boolean) => {
+    setEnrolling(titleMatch);
+    try {
+      const token = await getIdToken();
+      if (!token) return;
+      await apiFetch(`/api/creators/me/campaigns/${encodeURIComponent(titleMatch)}/enroll`, {
+        method: enrolled ? "POST" : "DELETE",
+        token,
+      });
+      // Optimistic flip so the button doesn't wait on the full refetch
+      setMe((prev) =>
+        prev
+          ? { ...prev, campaigns: prev.campaigns.map((c) => (c.title_match === titleMatch ? { ...c, enrolled } : c)) }
+          : prev
+      );
+    } catch (err) {
+      console.error("Failed to update enrollment:", err);
+    } finally {
+      setEnrolling(null);
+    }
+  };
 
   const fetchMe = useCallback(async () => {
     setError(false);
@@ -373,9 +412,69 @@ export function CreatorStudio({ onClose }: { onClose: () => void }) {
               </div>
             )}
             <p className="mt-2 px-1 font-mono text-[9px] text-muted">
-              {rupees(me.rate_per_ticket)} per confirmed seat · refunds don’t count · paid monthly by upi
+              {rupees(me.rate_per_ticket)} per confirmed seat · event campaigns can pay more · refunds don’t count ·
+              paid monthly by upi
             </p>
           </section>
+
+          {/* Event campaigns — per-event commission + the content brief */}
+          {me.campaigns.length > 0 && (
+            <section className="animate-fadeSlideUp px-5 pt-5" style={{ animationDelay: "0.08s" }}>
+              <span className="mb-3 block font-mono text-[10px] uppercase tracking-[2px] text-muted">
+                event campaigns
+              </span>
+              <div className="flex flex-col gap-2">
+                {me.campaigns.map((c) => (
+                  <div key={c.title_match} className="rounded-[14px] bg-white p-4 shadow-[0_1px_3px_rgba(26,23,21,0.04)]">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-sans text-[15px] font-medium text-near-black">{c.event_title}</p>
+                        {c.next_date && <p className="font-mono text-[10px] text-muted">next: {formatDate(c.next_date)}</p>}
+                      </div>
+                      <span className="shrink-0 rounded-lg bg-caramel/10 px-3 py-1.5 font-mono text-[12px] text-caramel">
+                        {rupees(c.commission_per_seat)}/seat
+                      </span>
+                    </div>
+                    {c.brief && <p className="mt-3 font-sans text-[13px] leading-relaxed text-near-black/80">{c.brief}</p>}
+                    {c.formats.length > 0 && (
+                      <div className="mt-2.5 flex flex-wrap gap-1.5">
+                        {c.formats.map((f) => (
+                          <span key={f} className="rounded-full bg-cream px-2.5 py-1 font-mono text-[9px] uppercase tracking-[1px] text-near-black/70">
+                            {f}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <div className="mt-3">
+                      {c.enrolled ? (
+                        <div className="flex items-center justify-between">
+                          <p className="font-mono text-[10px] text-caramel">✓ you’re in — get the content going</p>
+                          <button
+                            onClick={() => setEnroll(c.title_match, false)}
+                            disabled={enrolling === c.title_match}
+                            className="font-mono text-[9px] text-muted underline-offset-2 hover:underline disabled:opacity-50"
+                          >
+                            leave
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setEnroll(c.title_match, true)}
+                          disabled={enrolling === c.title_match}
+                          className="w-full rounded-[12px] bg-caramel px-4 py-2.5 font-sans text-[13px] font-medium text-white disabled:opacity-50"
+                        >
+                          {enrolling === c.title_match ? "enrolling…" : "i’m in — enroll"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 px-1 font-mono text-[9px] text-muted">
+                campaign rates apply to your sales of that event either way — enrolling tells us you’re making content
+              </p>
+            </section>
+          )}
 
           {/* Tools */}
           <section className="animate-fadeSlideUp px-5 pt-5" style={{ animationDelay: "0.1s" }}>
@@ -455,17 +554,15 @@ export function CreatorStudio({ onClose }: { onClose: () => void }) {
                 {me.earnings.recent_sales.map((s, i) => (
                   <div
                     key={i}
-                    className="flex items-center justify-between rounded-[14px] bg-white p-4 shadow-[0_1px_3px_rgba(26,23,21,0.04)]"
+                    className="flex items-center justify-between gap-3 rounded-[14px] bg-white p-4 shadow-[0_1px_3px_rgba(26,23,21,0.04)]"
                   >
-                    <div>
+                    <div className="min-w-0 flex-1">
                       <p className="font-sans text-[13px] font-medium text-near-black">{s.event_title}</p>
                       <p className="font-mono text-[10px] text-muted">
-                        {s.date} · via your {s.via}
+                        {s.date} · {s.seats} seat{s.seats > 1 ? "s" : ""} · via your {s.via}
                       </p>
                     </div>
-                    <span className="font-mono text-[11px] text-near-black">
-                      {s.seats} seat{s.seats > 1 ? "s" : ""}
-                    </span>
+                    <span className="shrink-0 font-mono text-[12px] text-caramel">+{rupees(s.earned)}</span>
                   </div>
                 ))}
               </div>

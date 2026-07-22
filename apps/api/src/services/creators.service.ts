@@ -75,8 +75,38 @@ export interface CreatorEarnings {
   paid: number;
   owed: number;
   seats_by_month: Record<string, number>; // "2026-07" → seats
-  /** Anonymized, newest first — safe to show the creator. NO buyer PII. */
-  recent_sales: { date: string; event_title: string; seats: number; via: "link" | "code" }[];
+  /** Anonymized, newest first — safe to show the creator. NO buyer PII.
+   *  `earned` is that sale's commission (seats × the event's resolved rate). */
+  recent_sales: { date: string; event_title: string; seats: number; via: "link" | "code"; earned: number }[];
+}
+
+/**
+ * Event campaign — admin sets a per-event commission + content brief.
+ * Keyed by normalized event TITLE (doc id = slugged title) so one campaign
+ * covers every date of a series, same matching rule as page rooms. The
+ * campaign rate applies to EVERY creator's sale of that event (locked with
+ * founder); enrollment is the "i'm making content for this" signal.
+ */
+export interface CreatorCampaign {
+  /** Normalized title this campaign matches (lowercase, single spaces) */
+  title_match: string;
+  commission_per_seat: number;
+  /** What we want from creators — the brief, admin-written */
+  brief: string;
+  /** Content formats expected, e.g. ["1 reel", "3 stories"] */
+  formats: string[];
+  active: boolean;
+  enrollments: Record<string, { enrolled_at: string }>; // keyed by handle
+  created_at: string;
+  updated_at: string;
+}
+
+export function normalizeTitle(title: string): string {
+  return title.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function campaignDocId(titleMatch: string): string {
+  return normalizeTitle(titleMatch).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
 export function normalizeHandle(handle: string): string {
@@ -92,13 +122,31 @@ function istMonthKey(iso: string): string {
 
 /* ── Earnings ─────────────────────────────────────── */
 
+/** Active campaign rates keyed by normalized event title — fetched once and
+ *  passed into computeEarnings so a creators list doesn't refetch per row. */
+export async function getCampaignRates(): Promise<Map<string, number>> {
+  const db = await getDb();
+  const snap = await db.collection("creator_campaigns").where("active", "==", true).get();
+  const rates = new Map<string, number>();
+  for (const doc of snap.docs) {
+    const c = doc.data() as CreatorCampaign;
+    if (c.title_match && typeof c.commission_per_seat === "number") {
+      rates.set(c.title_match, c.commission_per_seat);
+    }
+  }
+  return rates;
+}
+
 /**
  * Compute a creator's earnings from live tickets. Two equality queries
  * (auto-indexed single fields), merged and deduped by ticket id; status is
- * filtered in code so no composite index is needed.
+ * filtered in code so no composite index is needed. A sale's rate is the
+ * event's campaign rate when one is active for its title, else the
+ * creator's default rate.
  */
-export async function computeEarnings(creator: Creator): Promise<CreatorEarnings> {
+export async function computeEarnings(creator: Creator, campaignRates?: Map<string, number>): Promise<CreatorEarnings> {
   const db = await getDb();
+  const rates = campaignRates ?? (await getCampaignRates());
 
   const [byLink, byCode] = await Promise.all([
     db.collection("tickets").where("attribution.utm_campaign", "==", creator.handle).get(),
@@ -137,19 +185,38 @@ export async function computeEarnings(creator: Creator): Promise<CreatorEarnings
     for (const snap of snaps) titles.set(snap.id, (snap.data()?.title as string) ?? "an event");
   }
 
+  /** Rate for one ticket: event campaign rate (matched by title) or default */
+  const rateFor = (eventId: string): number => {
+    const title = titles.get(eventId);
+    if (title) {
+      const campaignRate = rates.get(normalizeTitle(title));
+      if (campaignRate !== undefined) return campaignRate;
+    }
+    return creator.rate_per_ticket;
+  };
+
   const recentSales = counted
     .sort((a, b) => (b.data.purchased_at ?? "").localeCompare(a.data.purchased_at ?? ""))
     .slice(0, 25)
-    .map((t) => ({
-      date: (t.data.purchased_at ?? "").slice(0, 10),
-      event_title: titles.get(t.data.event_id) ?? "an event",
-      seats: typeof t.data.quantity === "number" && t.data.quantity > 0 ? t.data.quantity : 1,
-      via: t.via,
-    }));
+    .map((t) => {
+      const seats = typeof t.data.quantity === "number" && t.data.quantity > 0 ? t.data.quantity : 1;
+      return {
+        date: (t.data.purchased_at ?? "").slice(0, 10),
+        event_title: titles.get(t.data.event_id) ?? "an event",
+        seats,
+        via: t.via,
+        earned: seats * rateFor(t.data.event_id),
+      };
+    });
 
   const activated = lifetimeSeats >= creator.activation_sales;
-  // Retroactive: crossing the threshold pays from sale #1
-  const earned = activated ? lifetimeSeats * creator.rate_per_ticket : 0;
+  // Retroactive: crossing the threshold pays from sale #1, each sale at its
+  // event's resolved rate
+  const totalCommission = counted.reduce((sum, t) => {
+    const seats = typeof t.data.quantity === "number" && t.data.quantity > 0 ? t.data.quantity : 1;
+    return sum + seats * rateFor(t.data.event_id);
+  }, 0);
+  const earned = activated ? totalCommission : 0;
   const paid = (creator.payouts ?? []).reduce((sum, p) => sum + (p.amount || 0), 0);
 
   return {
@@ -168,9 +235,9 @@ export async function computeEarnings(creator: Creator): Promise<CreatorEarnings
 
 export async function listCreators(): Promise<(Creator & { earnings: CreatorEarnings })[]> {
   const db = await getDb();
-  const snap = await db.collection("creators").get();
+  const [snap, rates] = await Promise.all([db.collection("creators").get(), getCampaignRates()]);
   const creators = snap.docs.map((d) => d.data() as Creator);
-  return Promise.all(creators.map(async (c) => ({ ...c, earnings: await computeEarnings(c) })));
+  return Promise.all(creators.map(async (c) => ({ ...c, earnings: await computeEarnings(c, rates) })));
 }
 
 export async function getCreatorByHandle(handle: string): Promise<Creator | null> {
@@ -280,6 +347,126 @@ export async function deleteCreator(handle: string): Promise<{ success: boolean;
   if (!(await ref.get()).exists) return { success: false, error: "creator not found" };
   await ref.delete();
   return { success: true };
+}
+
+/* ── Event campaigns ──────────────────────────────── */
+
+/** All campaigns for the admin tab, active or not. */
+export async function listCampaigns(): Promise<CreatorCampaign[]> {
+  const db = await getDb();
+  const snap = await db.collection("creator_campaigns").get();
+  return snap.docs.map((d) => d.data() as CreatorCampaign);
+}
+
+/** Create or update the campaign for an event title. */
+export async function upsertCampaign(input: {
+  title_match: string;
+  commission_per_seat: number;
+  brief?: string;
+  formats?: string[];
+  active?: boolean;
+}): Promise<{ success: true; data: CreatorCampaign } | { success: false; error: string }> {
+  const titleMatch = normalizeTitle(input.title_match);
+  if (!titleMatch) return { success: false, error: "title_match is required" };
+  if (!(input.commission_per_seat >= 0)) {
+    return { success: false, error: "commission_per_seat must be a number ≥ 0" };
+  }
+  const db = await getDb();
+  const ref = db.collection("creator_campaigns").doc(campaignDocId(titleMatch));
+  const snap = await ref.get();
+  const now = new Date().toISOString();
+  const existing = snap.exists ? (snap.data() as CreatorCampaign) : null;
+  const campaign: CreatorCampaign = {
+    title_match: titleMatch,
+    commission_per_seat: input.commission_per_seat,
+    brief: typeof input.brief === "string" ? input.brief.trim().slice(0, 2000) : (existing?.brief ?? ""),
+    formats: Array.isArray(input.formats)
+      ? input.formats.map((f) => String(f).trim().slice(0, 80)).filter(Boolean).slice(0, 12)
+      : (existing?.formats ?? []),
+    active: typeof input.active === "boolean" ? input.active : (existing?.active ?? true),
+    enrollments: existing?.enrollments ?? {},
+    created_at: existing?.created_at ?? now,
+    updated_at: now,
+  };
+  await ref.set(campaign);
+  return { success: true, data: campaign };
+}
+
+export async function deleteCampaign(titleMatch: string): Promise<{ success: boolean; error?: string }> {
+  const db = await getDb();
+  const ref = db.collection("creator_campaigns").doc(campaignDocId(titleMatch));
+  if (!(await ref.get()).exists) return { success: false, error: "campaign not found" };
+  await ref.delete();
+  return { success: true };
+}
+
+/** Creator enrolls (or leaves) a campaign — a participation signal only;
+ *  the campaign rate applies to their sales either way. */
+export async function setEnrollment(
+  handle: string,
+  titleMatch: string,
+  enrolled: boolean
+): Promise<{ success: boolean; error?: string }> {
+  const db = await getDb();
+  const ref = db.collection("creator_campaigns").doc(campaignDocId(titleMatch));
+  const snap = await ref.get();
+  if (!snap.exists) return { success: false, error: "campaign not found" };
+  const key = `enrollments.${normalizeHandle(handle)}`;
+  if (enrolled) {
+    await ref.update({ [key]: { enrolled_at: new Date().toISOString() } });
+  } else {
+    await ref.update({ [key]: FieldValue.delete() });
+  }
+  return { success: true };
+}
+
+/** Active campaigns with a live upcoming event, shaped for the studio:
+ *  what it pays, the brief, and whether this creator has enrolled. */
+export async function listCampaignsForCreator(
+  creator: Creator
+): Promise<
+  {
+    title_match: string;
+    event_title: string;
+    next_date: string | null;
+    commission_per_seat: number;
+    brief: string;
+    formats: string[];
+    enrolled: boolean;
+  }[]
+> {
+  const db = await getDb();
+  const [campaignSnap, eventSnap] = await Promise.all([
+    db.collection("creator_campaigns").where("active", "==", true).get(),
+    db.collection("events").get(),
+  ]);
+  const today = new Date().toISOString().slice(0, 10);
+  // Earliest upcoming event per normalized title
+  const upcoming = new Map<string, { title: string; date: string | null }>();
+  for (const doc of eventSnap.docs) {
+    const e = doc.data() as { title?: string; date?: string; status?: string };
+    if (!e.title) continue;
+    if (e.status && ["draft", "cancelled", "completed"].includes(e.status)) continue;
+    if (e.date && e.date < today) continue;
+    const norm = normalizeTitle(e.title);
+    const prev = upcoming.get(norm);
+    if (!prev || (e.date && prev.date && e.date < prev.date)) {
+      upcoming.set(norm, { title: e.title, date: e.date ?? null });
+    }
+  }
+  return campaignSnap.docs
+    .map((d) => d.data() as CreatorCampaign)
+    .filter((c) => upcoming.has(c.title_match))
+    .map((c) => ({
+      title_match: c.title_match,
+      event_title: upcoming.get(c.title_match)!.title,
+      next_date: upcoming.get(c.title_match)!.date,
+      commission_per_seat: c.commission_per_seat,
+      brief: c.brief,
+      formats: c.formats,
+      enrolled: !!c.enrollments?.[creator.handle],
+    }))
+    .sort((a, b) => (a.next_date ?? "9999").localeCompare(b.next_date ?? "9999"));
 }
 
 /* ── Creator self-serve drafts ────────────────────── */

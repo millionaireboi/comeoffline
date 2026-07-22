@@ -7,6 +7,8 @@ import {
   computeEarnings,
   sanitizeDraft,
   saveDraft,
+  listCampaignsForCreator,
+  setEnrollment,
 } from "../services/creators.service";
 
 const router = Router();
@@ -43,7 +45,7 @@ router.get("/me", requireAuth, async (req: AuthRequest, res) => {
       res.status(404).json({ success: false, error: "not a creator" });
       return;
     }
-    const earnings = await computeEarnings(creator);
+    const [earnings, campaigns] = await Promise.all([computeEarnings(creator), listCampaignsForCreator(creator)]);
     res.json({
       success: true,
       data: {
@@ -56,6 +58,7 @@ router.get("/me", requireAuth, async (req: AuthRequest, res) => {
         page: creator.page ?? {},
         page_draft: creator.page_draft ?? null,
         page_draft_at: creator.page_draft_at ?? null,
+        campaigns,
         earnings,
       },
     });
@@ -110,6 +113,49 @@ router.put("/me/page", requireAuth, async (req: AuthRequest, res) => {
     res.json({ success: true, data: { page_draft: draft } });
   } catch (err) {
     console.error("[creators] draft error:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+});
+
+/**
+ * POST /api/creators/me/campaigns/:titleMatch/enroll — "i'm in, making
+ * content for this event". DELETE leaves. Participation signal only; the
+ * campaign rate applies to their sales either way.
+ */
+router.post("/me/campaigns/:titleMatch/enroll", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const creator = await getCreatorByUid(req.uid as string);
+    if (!creator || !creator.active) {
+      res.status(404).json({ success: false, error: "not a creator" });
+      return;
+    }
+    const result = await setEnrollment(creator.handle, req.params.titleMatch as string, true);
+    if (!result.success) {
+      res.status(404).json({ success: false, error: result.error });
+      return;
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error("[creators] enroll error:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+});
+
+router.delete("/me/campaigns/:titleMatch/enroll", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const creator = await getCreatorByUid(req.uid as string);
+    if (!creator || !creator.active) {
+      res.status(404).json({ success: false, error: "not a creator" });
+      return;
+    }
+    const result = await setEnrollment(creator.handle, req.params.titleMatch as string, false);
+    if (!result.success) {
+      res.status(404).json({ success: false, error: result.error });
+      return;
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error("[creators] unenroll error:", err);
     res.status(500).json({ success: false, error: "Internal server error" });
   }
 });

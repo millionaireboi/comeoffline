@@ -8,6 +8,9 @@ import {
   deleteCreator,
   publishDraft,
   discardDraft,
+  listCampaigns,
+  upsertCampaign,
+  deleteCampaign,
 } from "../../services/creators.service";
 
 const router = Router();
@@ -52,6 +55,57 @@ router.post("/", requireAdmin, async (req: AuthRequest, res) => {
     res.status(201).json({ success: true, data: result.data });
   } catch (err) {
     console.error("[admin/creators] create error:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+});
+
+/** GET /api/admin/creators/campaigns — all event campaigns (registered
+ *  before the :handle routes so "campaigns" never parses as a handle) */
+router.get("/campaigns", requireAdmin, async (_req: AuthRequest, res) => {
+  try {
+    const campaigns = await listCampaigns();
+    res.json({ success: true, data: campaigns });
+  } catch (err) {
+    console.error("[admin/creators] campaigns list error:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+});
+
+/** PUT /api/admin/creators/campaigns — create/update a campaign for an event title */
+router.put("/campaigns", requireAdmin, async (req: AuthRequest, res) => {
+  try {
+    const { title_match, commission_per_seat, brief, formats, active } = req.body;
+    if (!title_match || typeof title_match !== "string") {
+      res.status(400).json({ success: false, error: "title_match is required" });
+      return;
+    }
+    if (typeof commission_per_seat !== "number") {
+      res.status(400).json({ success: false, error: "commission_per_seat is required (₹ per seat)" });
+      return;
+    }
+    const result = await upsertCampaign({ title_match, commission_per_seat, brief, formats, active });
+    if (!result.success) {
+      res.status(400).json({ success: false, error: result.error });
+      return;
+    }
+    res.json({ success: true, data: result.data });
+  } catch (err) {
+    console.error("[admin/creators] campaign upsert error:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+});
+
+/** DELETE /api/admin/creators/campaigns/:titleMatch */
+router.delete("/campaigns/:titleMatch", requireAdmin, async (req: AuthRequest, res) => {
+  try {
+    const result = await deleteCampaign(req.params.titleMatch as string);
+    if (!result.success) {
+      res.status(404).json({ success: false, error: result.error });
+      return;
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error("[admin/creators] campaign delete error:", err);
     res.status(500).json({ success: false, error: "Internal server error" });
   }
 });

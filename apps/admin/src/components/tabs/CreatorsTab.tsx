@@ -46,7 +46,7 @@ interface CreatorEarnings {
   paid: number;
   owed: number;
   seats_by_month: Record<string, number>;
-  recent_sales: { date: string; event_title: string; seats: number; via: "link" | "code" }[];
+  recent_sales: { date: string; event_title: string; seats: number; via: "link" | "code"; earned: number }[];
 }
 
 interface Creator {
@@ -78,6 +78,15 @@ interface AdminEvent {
   status?: string;
 }
 
+interface Campaign {
+  title_match: string;
+  commission_per_seat: number;
+  brief: string;
+  formats: string[];
+  active: boolean;
+  enrollments: Record<string, { enrolled_at: string }>;
+}
+
 const inputClass =
   "w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-mono text-[12px] text-cream placeholder:text-muted focus:border-caramel/50 focus:outline-none";
 const labelClass = "mb-1 block font-mono text-[10px] uppercase tracking-[1px] text-muted";
@@ -91,6 +100,134 @@ const rupees = (n: number) => `₹${n.toLocaleString("en-IN")}`;
 const stripTags = (line: string) => line.replace(/<\/?(em|strong)>/g, "");
 
 const normTitle = (t: string) => t.trim().toLowerCase().replace(/\s+/g, " ");
+
+/** One event's campaign editor — commission + brief + formats + enrollments. */
+function CampaignEditor({
+  title,
+  campaign,
+  defaultOpen,
+  onSaved,
+}: {
+  title: string; // display title; normalized form is the campaign key
+  campaign: Campaign | null;
+  defaultOpen?: boolean;
+  onSaved: () => void;
+}) {
+  const [open, setOpen] = useState(!!defaultOpen);
+  const [rate, setRate] = useState(campaign ? String(campaign.commission_per_seat) : "");
+  const [brief, setBrief] = useState(campaign?.brief ?? "");
+  const [formats, setFormats] = useState((campaign?.formats ?? []).join("\n"));
+  const [saving, setSaving] = useState(false);
+
+  const enrolled = Object.keys(campaign?.enrollments ?? {});
+
+  const save = async (active?: boolean) => {
+    const r = Number(rate);
+    if (!(r >= 0)) {
+      toast.error("set a commission (₹ per seat)");
+      return;
+    }
+    setSaving(true);
+    try {
+      await apiClient.put("/api/admin/creators/campaigns", {
+        title_match: title,
+        commission_per_seat: r,
+        brief: brief.trim(),
+        formats: formats
+          .split("\n")
+          .map((f) => f.trim())
+          .filter(Boolean),
+        ...(active !== undefined && { active }),
+      });
+      toast.success(`campaign for "${title}" saved`);
+      onSaved();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "failed to save campaign");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
+      <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center justify-between text-left">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-mono text-[13px] text-cream">{title}</span>
+          {campaign ? (
+            <>
+              <span className="rounded-full bg-caramel/10 px-2.5 py-0.5 font-mono text-[10px] text-caramel">
+                {rupees(campaign.commission_per_seat)}/seat
+              </span>
+              {!campaign.active && (
+                <span className="rounded-full bg-white/5 px-2.5 py-0.5 font-mono text-[9px] uppercase text-muted">paused</span>
+              )}
+              {enrolled.length > 0 && (
+                <span className="rounded-full bg-white/5 px-2.5 py-0.5 font-mono text-[9px] text-muted">
+                  {enrolled.length} enrolled
+                </span>
+              )}
+            </>
+          ) : (
+            <span className="rounded-full bg-white/5 px-2.5 py-0.5 font-mono text-[9px] uppercase text-muted">
+              no campaign — creators earn their default rate
+            </span>
+          )}
+        </div>
+        <span className="font-mono text-[10px] text-muted">{open ? "close" : campaign ? "edit" : "set up"}</span>
+      </button>
+
+      {open && (
+        <div className="mt-4 space-y-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className={labelClass}>commission for this event (₹ per seat — every creator's sales)</label>
+              <input type="number" value={rate} onChange={(e) => setRate(e.target.value)} placeholder="250" className={inputClass} />
+            </div>
+            <div>
+              <label className={labelClass}>content formats wanted — one per line</label>
+              <textarea
+                value={formats}
+                onChange={(e) => setFormats(e.target.value)}
+                rows={2}
+                placeholder={"1 reel (30-60s, you at the event)\n3 stories on event day"}
+                className={inputClass}
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className={labelClass}>the brief — what you want creators to make</label>
+              <textarea
+                value={brief}
+                onChange={(e) => setBrief(e.target.value)}
+                rows={3}
+                placeholder="show the real thing — you walking in solo, the games table, the jam corner. no salesy voiceovers; talk like you're telling a friend."
+                className={inputClass}
+              />
+            </div>
+          </div>
+          {enrolled.length > 0 && (
+            <p className="font-mono text-[10px] text-muted">
+              enrolled: <span className="text-cream">{enrolled.join(", ")}</span>
+            </p>
+          )}
+          <div className="flex gap-2">
+            <button
+              onClick={() => save()}
+              disabled={saving}
+              className="rounded-lg bg-caramel px-4 py-2 font-mono text-[11px] font-medium uppercase tracking-[1px] text-near-black transition-opacity hover:opacity-80 disabled:opacity-40"
+            >
+              {saving ? "saving…" : campaign ? "save campaign" : "launch campaign"}
+            </button>
+            {campaign && (
+              <button onClick={() => save(!campaign.active)} disabled={saving} className={btnClass}>
+                {campaign.active ? "pause" : "resume"}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** Search-select over members — replaces raw uid entry. */
 function MemberPicker({
@@ -464,6 +601,29 @@ export function CreatorsTab() {
   });
   const { data: members } = useApi<Member[]>("/api/admin/members", { dedupingInterval: 60 * 1000 });
   const { data: events } = useApi<AdminEvent[]>("/api/admin/events", { dedupingInterval: 60 * 1000 });
+  const { data: campaigns, refetch: refetchCampaigns } = useApi<Campaign[]>("/api/admin/creators/campaigns", {
+    dedupingInterval: 30 * 1000,
+  });
+
+  // One campaign slot per unique upcoming event title (series = one slot)
+  const campaignSlots = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const seen = new Map<string, string>();
+    for (const e of events ?? []) {
+      if (!e.title) continue;
+      if (e.date && e.date < today) continue;
+      if (e.status && ["draft", "cancelled", "completed"].includes(e.status)) continue;
+      const norm = normTitle(e.title);
+      if (!seen.has(norm)) seen.set(norm, e.title);
+    }
+    const byMatch = new Map((campaigns ?? []).map((c) => [c.title_match, c]));
+    const slots = [...seen.entries()].map(([norm, title]) => ({ norm, title, campaign: byMatch.get(norm) ?? null }));
+    // Campaigns whose event has passed stay visible so they can be paused/reviewed
+    for (const c of campaigns ?? []) {
+      if (!seen.has(c.title_match)) slots.push({ norm: c.title_match, title: c.title_match, campaign: c });
+    }
+    return slots;
+  }, [events, campaigns]);
 
   const [showForm, setShowForm] = useState(false);
   const [handle, setHandle] = useState("");
@@ -626,6 +786,25 @@ export function CreatorsTab() {
         </div>
       )}
 
+      {/* Event campaigns — per-event commission + content brief */}
+      <div className="space-y-3">
+        <p className="font-mono text-[11px] uppercase tracking-[1px] text-muted">
+          event campaigns · per-event commission + brief, shown in every creator’s studio
+        </p>
+        {campaignSlots.length === 0 ? (
+          <p className="font-mono text-[10px] text-muted">no upcoming events — create an event first</p>
+        ) : (
+          campaignSlots.map((slot) => (
+            <CampaignEditor
+              key={slot.norm}
+              title={slot.title}
+              campaign={slot.campaign}
+              onSaved={refetchCampaigns}
+            />
+          ))
+        )}
+      </div>
+
       {loading ? (
         <div className="space-y-1">{Array.from({ length: 3 }).map((_, i) => <TableRowSkeleton key={i} columns={5} />)}</div>
       ) : !creators || creators.length === 0 ? (
@@ -758,7 +937,8 @@ export function CreatorsTab() {
                     <p className={labelClass}>recent sales</p>
                     {e.recent_sales.slice(0, 6).map((s2, i) => (
                       <p key={i} className="font-mono text-[10px] text-muted">
-                        {s2.date} · {s2.event_title} · {s2.seats} seat{s2.seats > 1 ? "s" : ""} · via {s2.via}
+                        {s2.date} · {s2.event_title} · {s2.seats} seat{s2.seats > 1 ? "s" : ""} · via {s2.via} ·{" "}
+                        <span className="text-cream">{rupees(s2.earned)}</span>
                       </p>
                     ))}
                   </div>

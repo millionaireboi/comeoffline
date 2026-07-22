@@ -1,0 +1,20 @@
+# API image build — run from repo root:
+#   npm run deploy:api
+# (or manually: gcloud builds submit --project comeoffline-509fc
+#   --region asia-south1 --config cloudbuild-api.yaml .
+#  then gcloud run deploy comeoffline-api --image <image below>)
+# Check the build reports SUCCESS before deploying — rolling :latest after a
+# failed build silently re-ships the previous image.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      [
+        "build",
+        "-t",
+        "asia-south1-docker.pkg.dev/comeoffline-509fc/comeoffline-api/api:latest",
+        "-f",
+        "apps/api/Dockerfile",
+        ".",
+      ]
+images:
+  - "asia-south1-docker.pkg.dev/comeoffline-509fc/comeoffline-api/api:latest"

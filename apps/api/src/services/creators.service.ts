@@ -230,7 +230,13 @@ export async function computeEarnings(
     }
   }
 
-  const counted = [...tickets.values()].filter((t) => COUNTED_STATUSES.has(t.data.status));
+  // Locked rule: self-purchases never count — a creator buying through
+  // their own link/code earns no commission and no activation progress.
+  const counted = [...tickets.values()].filter(
+    (t) =>
+      COUNTED_STATUSES.has(t.data.status) &&
+      !(creator.user_uid && t.data.user_id === creator.user_uid)
+  );
 
   const seatsByMonth: Record<string, number> = {};
   let lifetimeSeats = 0;
@@ -400,7 +406,9 @@ export async function updateCreator(
   if (updates.discount_code !== undefined)
     clean.discount_code = updates.discount_code ? String(updates.discount_code).trim().toUpperCase() : null;
   if (updates.user_uid !== undefined) clean.user_uid = updates.user_uid || null;
-  if (updates.page && typeof updates.page === "object") clean.page = updates.page;
+  // Ops accounts can edit pages, and page fields render as HTML on the
+  // landing — sanitize on this path exactly like the creator-draft path
+  if (updates.page && typeof updates.page === "object") clean.page = sanitizePage(updates.page as CreatorPage);
 
   await ref.update(clean);
   return { success: true, data: (await ref.get()).data() as Creator };
@@ -577,6 +585,47 @@ function cleanLines(v: unknown, maxLines: number): string[] | undefined {
   if (!Array.isArray(v)) return undefined;
   const lines = v.map((l) => cleanText(l)).filter((l): l is string => !!l);
   return lines.length > 0 ? lines.slice(0, maxLines) : undefined;
+}
+
+/** Sanitize a FULL page object — used on the admin/ops save path. Several
+ *  page fields render via dangerouslySetInnerHTML on the landing page, and
+ *  creator_ops accounts are not fully trusted, so everything that could
+ *  carry markup goes through cleanText (which allows only <em>). */
+export function sanitizePage(input: CreatorPage): CreatorPage {
+  const p = input ?? {};
+  const photoUrl =
+    typeof p.photo_url === "string" && /^https?:\/\//i.test(p.photo_url.trim())
+      ? p.photo_url.trim().slice(0, 500)
+      : undefined;
+  const rooms = Array.isArray(p.rooms)
+    ? p.rooms
+        .map((r) => ({ title_match: cleanText(r?.title_match, 80) ?? "", tie: cleanText(r?.tie, 120) ?? "" }))
+        .filter((r) => r.title_match && r.tie)
+        .slice(0, 12)
+    : undefined;
+  const proofLines = Array.isArray(p.proof_lines)
+    ? p.proof_lines
+        .map((l) => ({ quote: cleanText(l?.quote, 200) ?? "", by: cleanText(l?.by, 80) ?? "" }))
+        .filter((l) => l.quote)
+        .slice(0, 6)
+    : undefined;
+  return {
+    ...(photoUrl && { photo_url: photoUrl }),
+    ...(cleanText(p.photo_caption, 120) && { photo_caption: cleanText(p.photo_caption, 120) }),
+    ...(cleanText(p.hero_line, 120) && { hero_line: cleanText(p.hero_line, 120) }),
+    ...(cleanText(p.headline, 160) && { headline: cleanText(p.headline, 160) }),
+    ...(cleanLines(p.turn, 8) && { turn: cleanLines(p.turn, 8) }),
+    ...(cleanText(p.turn_sign, 60) && { turn_sign: cleanText(p.turn_sign, 60) }),
+    ...(rooms && rooms.length > 0 && { rooms }),
+    ...(cleanText(p.seal, 80) && { seal: cleanText(p.seal, 80) }),
+    ...(proofLines && proofLines.length > 0 && { proof_lines: proofLines }),
+    ...(cleanText(p.objection_q, 200) && { objection_q: cleanText(p.objection_q, 200) }),
+    ...(cleanLines(p.objection_a, 6) && { objection_a: cleanLines(p.objection_a, 6) }),
+    ...(cleanText(p.friction, 300) && { friction: cleanText(p.friction, 300) }),
+    ...(cleanText(p.close_lede, 120) && { close_lede: cleanText(p.close_lede, 120) }),
+    ...(cleanText(p.close, 120) && { close: cleanText(p.close, 120) }),
+    ...(cleanText(p.whatsapp_prefill, 200) && { whatsapp_prefill: cleanText(p.whatsapp_prefill, 200) }),
+  };
 }
 
 /** Whitelist + sanitize a creator-submitted page. photo_url is only accepted

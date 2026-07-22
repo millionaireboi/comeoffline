@@ -15,6 +15,7 @@
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
     "test:e2e": "./scripts/e2e-backend.sh",
+    "deploy:api": "gcloud builds submit --project comeoffline-509fc --region asia-south1 --config cloudbuild-api.yaml . && gcloud run deploy comeoffline-api --project comeoffline-509fc --region asia-south1 --image asia-south1-docker.pkg.dev/comeoffline-509fc/comeoffline-api/api:latest",
     "clean": "turbo clean && rm -rf node_modules"
   },
   "devDependencies": {

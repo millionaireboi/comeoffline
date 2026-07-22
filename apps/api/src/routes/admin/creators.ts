@@ -29,7 +29,7 @@ router.get("/", requireAdmin, async (_req: AuthRequest, res) => {
 /** POST /api/admin/creators — onboard a creator */
 router.post("/", requireAdmin, async (req: AuthRequest, res) => {
   try {
-    const { handle, name, rate_per_ticket, activation_sales, discount_code, user_uid, page } = req.body;
+    const { handle, name, rate_per_ticket, rate_per_100_clicks, activation_sales, discount_code, user_uid, page } = req.body;
     if (!handle || typeof handle !== "string") {
       res.status(400).json({ success: false, error: "handle is required" });
       return;
@@ -42,6 +42,7 @@ router.post("/", requireAdmin, async (req: AuthRequest, res) => {
       handle,
       name: typeof name === "string" ? name : handle,
       rate_per_ticket,
+      rate_per_100_clicks: typeof rate_per_100_clicks === "number" ? rate_per_100_clicks : undefined,
       activation_sales: typeof activation_sales === "number" ? activation_sales : undefined,
       discount_code: typeof discount_code === "string" ? discount_code : undefined,
       user_uid: typeof user_uid === "string" ? user_uid : undefined,
@@ -113,11 +114,12 @@ router.delete("/campaigns/:titleMatch", requireAdmin, async (req: AuthRequest, r
 /** PUT /api/admin/creators/:handle — rate, code, uid link, page config, active */
 router.put("/:handle", requireAdmin, async (req: AuthRequest, res) => {
   try {
-    const { name, active, rate_per_ticket, activation_sales, discount_code, user_uid, page } = req.body;
+    const { name, active, rate_per_ticket, rate_per_100_clicks, activation_sales, discount_code, user_uid, page } = req.body;
     const result = await updateCreator(req.params.handle as string, {
       name,
       active,
       rate_per_ticket,
+      rate_per_100_clicks,
       activation_sales,
       discount_code,
       user_uid,

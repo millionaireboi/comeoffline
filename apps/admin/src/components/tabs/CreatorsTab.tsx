@@ -42,6 +42,9 @@ interface CreatorEarnings {
   lifetime_seats: number;
   month_seats: number;
   activated: boolean;
+  clicks: number;
+  sales_earned: number;
+  click_earned: number;
   earned: number;
   paid: number;
   owed: number;
@@ -54,6 +57,7 @@ interface Creator {
   name: string;
   active: boolean;
   rate_per_ticket: number;
+  rate_per_100_clicks?: number;
   activation_sales: number;
   discount_code: string | null;
   user_uid: string | null;
@@ -310,6 +314,61 @@ function MemberPicker({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Edit a creator's money knobs after onboarding. */
+function RatesPanel({ creator, onDone }: { creator: Creator; onDone: () => void }) {
+  const [rate, setRate] = useState(String(creator.rate_per_ticket));
+  const [clickRate, setClickRate] = useState(String(creator.rate_per_100_clicks ?? 0));
+  const [activation, setActivation] = useState(String(creator.activation_sales));
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await apiClient.put(`/api/admin/creators/${creator.handle}`, {
+        rate_per_ticket: Number(rate) >= 0 ? Number(rate) : undefined,
+        rate_per_100_clicks: Number(clickRate) >= 0 ? Number(clickRate) : undefined,
+        activation_sales: Number(activation) >= 0 ? Number(activation) : undefined,
+      });
+      toast.success(`${creator.handle}'s rates updated`);
+      onDone();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "failed to save rates");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="mt-4 space-y-3 rounded-lg border border-white/5 bg-white/[0.02] p-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div>
+          <label className={labelClass}>default commission (₹/seat)</label>
+          <input type="number" value={rate} onChange={(e) => setRate(e.target.value)} className={inputClass} />
+        </div>
+        <div>
+          <label className={labelClass}>₹ per 100 link clicks (0 = off)</label>
+          <input type="number" value={clickRate} onChange={(e) => setClickRate(e.target.value)} className={inputClass} />
+        </div>
+        <div>
+          <label className={labelClass}>activation (sales)</label>
+          <input type="number" value={activation} onChange={(e) => setActivation(e.target.value)} className={inputClass} />
+        </div>
+      </div>
+      <p className="font-mono text-[9px] text-muted">
+        clicks count from their /l/ links pointing at /with/{creator.handle} · paid per completed 100 · unlocks with the
+        same activation, retroactively
+      </p>
+      <button
+        onClick={save}
+        disabled={saving}
+        className="rounded-lg bg-caramel px-4 py-2 font-mono text-[11px] font-medium uppercase tracking-[1px] text-near-black transition-opacity hover:opacity-80 disabled:opacity-40"
+      >
+        {saving ? "saving…" : "save rates"}
+      </button>
     </div>
   );
 }
@@ -668,6 +727,7 @@ export function CreatorsTab() {
   const [handle, setHandle] = useState("");
   const [name, setName] = useState("");
   const [rate, setRate] = useState("150");
+  const [clickRate, setClickRate] = useState("0");
   const [activation, setActivation] = useState("10");
   const [linkedMember, setLinkedMember] = useState<Member | null>(null);
   const [creating, setCreating] = useState(false);
@@ -680,6 +740,7 @@ export function CreatorsTab() {
     setHandle("");
     setName("");
     setRate("150");
+    setClickRate("0");
     setActivation("10");
     setLinkedMember(null);
   };
@@ -695,6 +756,7 @@ export function CreatorsTab() {
         handle: handle.trim(),
         name: name.trim() || handle.trim(),
         rate_per_ticket: Number(rate),
+        rate_per_100_clicks: Number(clickRate) >= 0 ? Number(clickRate) : 0,
         activation_sales: Number(activation) >= 0 ? Number(activation) : 10,
         user_uid: linkedMember?.id || undefined,
       });
@@ -792,6 +854,10 @@ export function CreatorsTab() {
               <input type="number" value={rate} onChange={(e) => setRate(e.target.value)} className={inputClass} />
             </div>
             <div>
+              <label className={labelClass}>₹ per 100 link clicks (0 = off)</label>
+              <input type="number" value={clickRate} onChange={(e) => setClickRate(e.target.value)} className={inputClass} />
+            </div>
+            <div>
               <label className={labelClass}>activation (sales before payouts unlock, retroactive)</label>
               <input type="number" value={activation} onChange={(e) => setActivation(e.target.value)} className={inputClass} />
             </div>
@@ -883,13 +949,22 @@ export function CreatorsTab() {
                       )}
                     </div>
                     <p className="mt-1.5 font-mono text-[10px] text-muted">
-                      {rupees(c.rate_per_ticket)}/seat · <span className="text-cream">{e.month_seats}</span> this month ·{" "}
-                      <span className="text-cream">{e.lifetime_seats}</span> lifetime
+                      {rupees(c.rate_per_ticket)}/seat
+                      {(c.rate_per_100_clicks ?? 0) > 0 && ` · ${rupees(c.rate_per_100_clicks!)}/100 clicks`} ·{" "}
+                      <span className="text-cream">{e.month_seats}</span> this month ·{" "}
+                      <span className="text-cream">{e.lifetime_seats}</span> lifetime ·{" "}
+                      <span className="text-cream">{e.clicks.toLocaleString("en-IN")}</span> clicks
                       {c.user_uid ? " · studio linked ✓" : ""}
                     </p>
                     <p className="mt-0.5 font-mono text-[11px]">
                       <span className="text-muted">earned </span>
                       <span className="text-cream">{rupees(e.earned)}</span>
+                      {e.click_earned > 0 && (
+                        <span className="text-muted">
+                          {" "}
+                          ({rupees(e.sales_earned)} sales + {rupees(e.click_earned)} clicks)
+                        </span>
+                      )}
                       <span className="text-muted"> · paid </span>
                       <span className="text-cream">{rupees(e.paid)}</span>
                       <span className="text-muted"> · owed </span>
@@ -902,6 +977,12 @@ export function CreatorsTab() {
                       className={btnClass}
                     >
                       {openPanel === `${c.handle}:payout` ? "close" : "payouts"}
+                    </button>
+                    <button
+                      onClick={() => setOpenPanel(openPanel === `${c.handle}:rates` ? null : `${c.handle}:rates`)}
+                      className={btnClass}
+                    >
+                      {openPanel === `${c.handle}:rates` ? "close" : "rates"}
                     </button>
                     <button
                       onClick={() => setOpenPanel(openPanel === `${c.handle}:page` ? null : `${c.handle}:page`)}
@@ -951,6 +1032,16 @@ export function CreatorsTab() {
                     )}
                   </div>
                 </div>
+
+                {openPanel === `${c.handle}:rates` && (
+                  <RatesPanel
+                    creator={c}
+                    onDone={() => {
+                      setOpenPanel(null);
+                      refetch();
+                    }}
+                  />
+                )}
 
                 {openPanel === `${c.handle}:draft` && (
                   <DraftPanel

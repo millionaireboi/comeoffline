@@ -35,6 +35,7 @@ interface CreatorMe {
   handle: string;
   name: string;
   rate_per_ticket: number;
+  rate_per_100_clicks: number;
   activation_sales: number;
   discount_code: string | null;
   payouts: { amount: number; date: string; note?: string }[];
@@ -46,6 +47,9 @@ interface CreatorMe {
     lifetime_seats: number;
     month_seats: number;
     activated: boolean;
+    clicks: number;
+    sales_earned: number;
+    click_earned: number;
     earned: number;
     paid: number;
     owed: number;
@@ -389,6 +393,12 @@ export function CreatorStudio({ onClose }: { onClose: () => void }) {
             <div className="grid grid-cols-2 gap-2">
               <Tile label="this month" value={`${me.earnings.month_seats} seats`} />
               <Tile label="lifetime" value={`${me.earnings.lifetime_seats} seats`} />
+              {me.rate_per_100_clicks > 0 && (
+                <>
+                  <Tile label="link clicks" value={me.earnings.clicks.toLocaleString("en-IN")} />
+                  <Tile label="from clicks" value={rupees(me.earnings.click_earned)} />
+                </>
+              )}
               <Tile label="earned" value={rupees(me.earnings.earned)} />
               <Tile label="owed to you" value={rupees(me.earnings.owed)} accent={me.earnings.owed > 0} />
             </div>
@@ -412,8 +422,9 @@ export function CreatorStudio({ onClose }: { onClose: () => void }) {
               </div>
             )}
             <p className="mt-2 px-1 font-mono text-[9px] text-muted">
-              {rupees(me.rate_per_ticket)} per confirmed seat · event campaigns can pay more · refunds don’t count ·
-              paid monthly by upi
+              {rupees(me.rate_per_ticket)} per confirmed seat
+              {me.rate_per_100_clicks > 0 && ` · ${rupees(me.rate_per_100_clicks)} per 100 clicks on your link`} · event
+              campaigns can pay more · refunds don’t count · paid monthly by upi
             </p>
           </section>
 

@@ -52,6 +52,9 @@ export interface Creator {
   name: string;
   active: boolean;
   rate_per_ticket: number;
+  /** ₹ per completed block of 100 clicks on their /l/ short links.
+   *  0 = incentive off. Gated by the same activation as sales (retroactive). */
+  rate_per_100_clicks: number;
   activation_sales: number;
   discount_code: string | null;
   /** Firebase uid of the creator's member account — unlocks their
@@ -71,6 +74,13 @@ export interface CreatorEarnings {
   lifetime_seats: number;
   month_seats: number; // current IST month
   activated: boolean;
+  /** Total clicks across every /l/ short link pointing at their /with page */
+  clicks: number;
+  /** Commission from ticket sales (post-activation) */
+  sales_earned: number;
+  /** floor(clicks/100) × rate_per_100_clicks (post-activation) */
+  click_earned: number;
+  /** sales_earned + click_earned */
   earned: number;
   paid: number;
   owed: number;
@@ -167,16 +177,42 @@ export async function getCampaignRates(): Promise<Map<string, number>> {
   return rates;
 }
 
+/** Every short link's destination + hit count — fetched once for a creators
+ *  list. A creator's clicks = Σ hits of links pointing at their /with page. */
+export async function getLinkClicks(): Promise<{ destination: string; hits: number }[]> {
+  const db = await getDb();
+  const snap = await db.collection("short_links").get();
+  return snap.docs.map((d) => {
+    const l = d.data() as { destination?: string; hits?: number };
+    return { destination: l.destination ?? "", hits: typeof l.hits === "number" ? l.hits : 0 };
+  });
+}
+
+function clicksFor(handle: string, links: { destination: string; hits: number }[]): number {
+  const needle = `/with/${handle}`;
+  return links
+    .filter((l) => l.destination.includes(needle))
+    .reduce((sum, l) => sum + l.hits, 0);
+}
+
 /**
  * Compute a creator's earnings from live tickets. Two equality queries
  * (auto-indexed single fields), merged and deduped by ticket id; status is
  * filtered in code so no composite index is needed. A sale's rate is the
  * event's campaign rate when one is active for its title, else the
- * creator's default rate.
+ * creator's default rate. Click money pays per completed block of 100
+ * short-link clicks, behind the same (retroactive) activation as sales.
  */
-export async function computeEarnings(creator: Creator, campaignRates?: Map<string, number>): Promise<CreatorEarnings> {
+export async function computeEarnings(
+  creator: Creator,
+  campaignRates?: Map<string, number>,
+  linkClicks?: { destination: string; hits: number }[]
+): Promise<CreatorEarnings> {
   const db = await getDb();
-  const rates = campaignRates ?? (await getCampaignRates());
+  const [rates, links] = await Promise.all([
+    campaignRates ?? getCampaignRates(),
+    linkClicks ?? getLinkClicks(),
+  ]);
 
   const [byLink, byCode] = await Promise.all([
     db.collection("tickets").where("attribution.utm_campaign", "==", creator.handle).get(),
@@ -246,13 +282,20 @@ export async function computeEarnings(creator: Creator, campaignRates?: Map<stri
     const seats = typeof t.data.quantity === "number" && t.data.quantity > 0 ? t.data.quantity : 1;
     return sum + seats * rateFor(t.data.event_id);
   }, 0);
-  const earned = activated ? totalCommission : 0;
+  const clicks = clicksFor(creator.handle, links);
+  const clickRate = creator.rate_per_100_clicks || 0;
+  const salesEarned = activated ? totalCommission : 0;
+  const clickEarned = activated ? Math.floor(clicks / 100) * clickRate : 0;
+  const earned = salesEarned + clickEarned;
   const paid = (creator.payouts ?? []).reduce((sum, p) => sum + (p.amount || 0), 0);
 
   return {
     lifetime_seats: lifetimeSeats,
     month_seats: seatsByMonth[istMonthKey(new Date().toISOString())] ?? 0,
     activated,
+    clicks,
+    sales_earned: salesEarned,
+    click_earned: clickEarned,
     earned,
     paid,
     owed: Math.max(0, earned - paid),
@@ -265,9 +308,13 @@ export async function computeEarnings(creator: Creator, campaignRates?: Map<stri
 
 export async function listCreators(): Promise<(Creator & { earnings: CreatorEarnings })[]> {
   const db = await getDb();
-  const [snap, rates] = await Promise.all([db.collection("creators").get(), getCampaignRates()]);
+  const [snap, rates, links] = await Promise.all([
+    db.collection("creators").get(),
+    getCampaignRates(),
+    getLinkClicks(),
+  ]);
   const creators = snap.docs.map((d) => d.data() as Creator);
-  return Promise.all(creators.map(async (c) => ({ ...c, earnings: await computeEarnings(c, rates) })));
+  return Promise.all(creators.map(async (c) => ({ ...c, earnings: await computeEarnings(c, rates, links) })));
 }
 
 export async function getCreatorByHandle(handle: string): Promise<Creator | null> {
@@ -288,6 +335,7 @@ export async function createCreator(input: {
   handle: string;
   name: string;
   rate_per_ticket: number;
+  rate_per_100_clicks?: number;
   activation_sales?: number;
   discount_code?: string | null;
   user_uid?: string | null;
@@ -313,6 +361,7 @@ export async function createCreator(input: {
     name: input.name || handle,
     active: true,
     rate_per_ticket: input.rate_per_ticket,
+    rate_per_100_clicks: input.rate_per_100_clicks && input.rate_per_100_clicks >= 0 ? input.rate_per_100_clicks : 0,
     activation_sales: input.activation_sales ?? 10,
     discount_code: input.discount_code ? input.discount_code.trim().toUpperCase() : handle.toUpperCase(),
     user_uid: input.user_uid ?? null,
@@ -327,7 +376,12 @@ export async function createCreator(input: {
 
 export async function updateCreator(
   handle: string,
-  updates: Partial<Pick<Creator, "name" | "active" | "rate_per_ticket" | "activation_sales" | "discount_code" | "user_uid" | "page">>
+  updates: Partial<
+    Pick<
+      Creator,
+      "name" | "active" | "rate_per_ticket" | "rate_per_100_clicks" | "activation_sales" | "discount_code" | "user_uid" | "page"
+    >
+  >
 ): Promise<CreateResult> {
   const db = await getDb();
   const ref = db.collection("creators").doc(normalizeHandle(handle));
@@ -339,6 +393,8 @@ export async function updateCreator(
   if (typeof updates.active === "boolean") clean.active = updates.active;
   if (typeof updates.rate_per_ticket === "number" && updates.rate_per_ticket >= 0)
     clean.rate_per_ticket = updates.rate_per_ticket;
+  if (typeof updates.rate_per_100_clicks === "number" && updates.rate_per_100_clicks >= 0)
+    clean.rate_per_100_clicks = updates.rate_per_100_clicks;
   if (typeof updates.activation_sales === "number" && updates.activation_sales >= 0)
     clean.activation_sales = updates.activation_sales;
   if (updates.discount_code !== undefined)

@@ -52,6 +52,7 @@ router.get("/me", requireAuth, async (req: AuthRequest, res) => {
         handle: creator.handle,
         name: creator.name,
         rate_per_ticket: creator.rate_per_ticket,
+        rate_per_100_clicks: creator.rate_per_100_clicks || 0,
         activation_sales: creator.activation_sales,
         discount_code: creator.discount_code,
         payouts: creator.payouts ?? [],

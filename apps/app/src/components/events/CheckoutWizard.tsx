@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from "react";
-import type { Event, TicketTier, CheckoutStep, CheckoutAddOn, TimeSlot, SeatingSection, Seat, SeatingConfig, AddonSeatingConfig, Spot, DiscountValidation, DiscountType } from "@comeoffline/types";
+import type { Event, TicketTier, CheckoutStep, CheckoutAddOn, TimeSlot, SeatingSection, Seat, SeatingConfig, AddonSeatingConfig, Spot, DiscountValidation, DiscountType, GroupDiscountSlab } from "@comeoffline/types";
 import { useAnalytics, trackFbEvent, CHECKOUT_STARTED, CHECKOUT_STEP_VIEWED, CHECKOUT_STEP_COMPLETED, TIER_SELECTED, CHECKOUT_COMPLETED, CHECKOUT_ABANDONED } from "@comeoffline/analytics";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppStore } from "@/store/useAppStore";
@@ -47,6 +47,42 @@ function discountAmountFor(discount: AppliedDiscount, subtotal: number): number 
   return Math.min(subtotal, Math.max(0, Math.round(raw)));
 }
 
+/** Guest on a multi-quantity order — buyer is head #1, so a qty-N order carries N-1 of these */
+interface GuestDraft {
+  name: string;
+  phone: string;
+  dob: string;
+}
+
+/** Mirrors the server's resolveGroupDiscount so the preview never drifts from the charge */
+function groupDiscountFor(
+  slabs: GroupDiscountSlab[] | undefined,
+  quantity: number,
+  tierSubtotal: number,
+): { percent: number; amount: number } {
+  if (!slabs?.length || quantity < 2 || tierSubtotal <= 0) return { percent: 0, amount: 0 };
+  let percent = 0;
+  for (const slab of slabs) {
+    const min = slab.min_qty ?? 2;
+    const max = slab.max_qty ?? Infinity;
+    if (quantity >= min && quantity <= max) {
+      percent = Math.max(percent, Math.min(100, Math.max(0, slab.percent)));
+    }
+  }
+  return { percent, amount: Math.round((tierSubtotal * percent) / 100) };
+}
+
+function isGuestValid(g: GuestDraft, minAge?: number): boolean {
+  if (!g.name.trim()) return false;
+  const digits = g.phone.replace(/\D/g, "");
+  if (digits.length < 10 || digits.length > 15) return false;
+  if (!g.dob) return false;
+  const age = ageFromDob(g.dob);
+  if (age == null || age < 0 || age > 120) return false;
+  if (minAge && age < minAge) return false;
+  return true;
+}
+
 interface CheckoutWizardProps {
   event: Event;
   onComplete: (
@@ -58,6 +94,8 @@ interface CheckoutWizardProps {
     sectionId?: string,
     spotSeatId?: string,
     discountCode?: string,
+    quantity?: number,
+    attendees?: Array<{ name: string; dob: string; phone: string }>,
   ) => void;
   onClose: () => void;
   loading?: boolean;
@@ -867,6 +905,13 @@ function SummaryStep({
   onApplyPromo,
   onRemovePromo,
   identity,
+  quantity,
+  maxQuantity,
+  onQuantityChange,
+  groupSlabs,
+  groupDiscount,
+  guests,
+  onGuestChange,
 }: {
   event: Event;
   selectedTier: TicketTier | undefined;
@@ -883,6 +928,13 @@ function SummaryStep({
   onApplyPromo: (code: string) => Promise<string | null>;
   onRemovePromo: () => void;
   identity: IdentityDraft;
+  quantity: number;
+  maxQuantity: number;
+  onQuantityChange: (qty: number) => void;
+  groupSlabs: GroupDiscountSlab[];
+  groupDiscount: { percent: number; amount: number };
+  guests: GuestDraft[];
+  onGuestChange: (index: number, patch: Partial<GuestDraft>) => void;
 }) {
   const [promoInput, setPromoInput] = useState("");
   const [promoError, setPromoError] = useState<string | null>(null);
@@ -902,7 +954,12 @@ function SummaryStep({
     setApplying(false);
   };
 
-  const tierPrice = selectedTier?.price || 0;
+  const tierPrice = (selectedTier?.price || 0) * quantity;
+
+  // The next slab the buyer could unlock by adding tickets — conversion nudge
+  const nextSlab = groupSlabs
+    .filter((s) => (s.min_qty ?? 2) > quantity && (s.min_qty ?? 2) <= maxQuantity && s.percent > groupDiscount.percent)
+    .sort((a, b) => (a.min_qty ?? 2) - (b.min_qty ?? 2))[0];
 
   // Compute add-on totals
   const addonItems: { name: string; qty: number; price: number; spotName?: string; seatLabel?: string }[] = [];
@@ -922,7 +979,7 @@ function SummaryStep({
   }
 
   const addonTotal = addonItems.reduce((s, a) => s + a.price * a.qty, 0);
-  const subtotal = tierPrice + addonTotal;
+  const subtotal = tierPrice - groupDiscount.amount + addonTotal;
   const discountAmount = appliedDiscount ? discountAmountFor(appliedDiscount, subtotal) : 0;
   const total = subtotal - discountAmount;
 
@@ -1001,11 +1058,60 @@ function SummaryStep({
           {selectedTier?.per_person && selectedTier.per_person > 1 && (
             <p className="font-mono text-[10px] text-muted">{selectedTier.per_person} people</p>
           )}
+          {quantity > 1 && selectedTier && (
+            <p className="font-mono text-[10px] text-muted">
+              {`\u20B9${selectedTier.price} \u00D7 ${quantity}`}
+            </p>
+          )}
         </div>
         <span className="font-sans text-[14px] font-medium text-near-black">
           {tierPrice === 0 ? "Free" : `\u20B9${tierPrice}`}
         </span>
       </div>
+
+      {/* Ticket quantity \u2014 solo tiers only; group tiers have a fixed headcount */}
+      {maxQuantity > 1 && (
+        <div className="flex items-center justify-between border-t border-sand/50 py-3">
+          <div>
+            <p className="font-sans text-[13px] text-near-black">how many tickets?</p>
+            <p className="font-mono text-[10px] text-muted">
+              {nextSlab
+                ? `${nextSlab.min_qty}+ tickets unlock ${nextSlab.percent}% off`
+                : groupDiscount.percent > 0
+                  ? `${groupDiscount.percent}% group discount applied`
+                  : `up to ${maxQuantity}`}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => onQuantityChange(Math.max(1, quantity - 1))}
+              disabled={quantity <= 1}
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-sand/50 font-sans text-base text-near-black transition-colors hover:bg-sand disabled:opacity-30"
+            >
+              -
+            </button>
+            <span className="min-w-[20px] text-center font-mono text-sm text-near-black">{quantity}</span>
+            <button
+              onClick={() => onQuantityChange(Math.min(maxQuantity, quantity + 1))}
+              disabled={quantity >= maxQuantity}
+              className="flex h-8 w-8 items-center justify-center rounded-full text-base text-cream transition-colors hover:opacity-80 disabled:opacity-30"
+              style={{ background: event.accent_dark || "#B8845A" }}
+            >
+              +
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Group discount slab */}
+      {groupDiscount.amount > 0 && (
+        <div className="flex items-center justify-between border-t border-sand/50 py-2.5">
+          <p className="font-sans text-[13px] text-near-black">
+            group discount <span className="font-mono text-[10px] text-muted">({groupDiscount.percent}% off)</span>
+          </p>
+          <span className="font-sans text-[13px] font-medium text-near-black">-₹{groupDiscount.amount}</span>
+        </div>
+      )}
 
       {/* Add-ons */}
       {addonItems.map((a, i) => (
@@ -1116,6 +1222,69 @@ function SummaryStep({
         </span>
       </div>
     </div>
+
+    {/* Guest details \u2014 one card per ticket beyond the buyer's. Each guest gets
+        a WhatsApp invite, so their number has to be real. */}
+    {guests.length > 0 && (
+      <div className="mt-3 rounded-[16px] border border-sand bg-white p-5">
+        <span className="mb-1 block font-mono text-[10px] uppercase tracking-[2px] text-muted">
+          who&apos;s coming with you?
+        </span>
+        <p className="mb-3 font-sans text-[12px] text-warm-brown">
+          we&apos;ll whatsapp each of them their invite
+        </p>
+        <div className="flex flex-col gap-3">
+          {guests.map((guest, i) => {
+            const valid = isGuestValid(guest, identity.minAge);
+            const guestAge = guest.dob ? ageFromDob(guest.dob) : null;
+            const guestUnderAge =
+              !!identity.minAge && !!guest.dob && (guestAge == null || guestAge < identity.minAge);
+            return (
+              <div key={i} className="rounded-xl border border-sand/60 bg-cream/40 p-3.5">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="font-mono text-[10px] uppercase tracking-[1px] text-muted">
+                    guest {i + 2}
+                  </span>
+                  {valid && <span className="font-mono text-[10px] text-near-black">\u2713</span>}
+                </div>
+                <input
+                  type="text"
+                  value={guest.name}
+                  onChange={(e) => onGuestChange(i, { name: e.target.value })}
+                  placeholder="their full name"
+                  autoComplete="off"
+                  maxLength={100}
+                  className="w-full rounded-xl border border-sand bg-white px-3 py-2.5 font-sans text-[14px] text-near-black placeholder:text-muted focus:border-near-black/30 focus:outline-none"
+                />
+                <input
+                  type="tel"
+                  value={guest.phone}
+                  onChange={(e) => onGuestChange(i, { phone: e.target.value.replace(/[^\d+\s]/g, "") })}
+                  placeholder="whatsapp number"
+                  inputMode="tel"
+                  maxLength={16}
+                  className="mt-2 w-full rounded-xl border border-sand bg-white px-3 py-2.5 font-sans text-[14px] text-near-black placeholder:text-muted focus:border-near-black/30 focus:outline-none"
+                />
+                <div className="mt-2">
+                  <label className="mb-1 block font-mono text-[10px] text-muted">date of birth</label>
+                  <input
+                    type="date"
+                    value={guest.dob}
+                    onChange={(e) => onGuestChange(i, { dob: e.target.value })}
+                    className="w-full rounded-xl border border-sand bg-white px-3 py-2.5 font-sans text-[14px] text-near-black focus:border-near-black/30 focus:outline-none"
+                  />
+                  {guestUnderAge && (
+                    <p className="mt-1 font-mono text-[10px] text-[#B85C4A]">
+                      this one&apos;s {identity.minAge}+ only
+                    </p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    )}
     </>
   );
 }
@@ -1182,6 +1351,11 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
   // the amount) so the deduction recomputes correctly if the user goes back
   // and changes add-ons. Server re-validates at purchase either way.
   const [appliedDiscount, setAppliedDiscount] = useState<AppliedDiscount | null>(null);
+  // Ticket quantity — only for solo tiers (group tiers carry a fixed
+  // per_person headcount) and only when the event allows more than one
+  const [ticketQty, setTicketQty] = useState(1);
+  // Guest details for multi-quantity orders (buyer is head #1)
+  const [guests, setGuests] = useState<GuestDraft[]>([]);
 
   // Acquisition attribution (source/utm from the handoff URL, e.g. a poster scan) —
   // spread onto every checkout event so PostHog funnels can break down by poster.
@@ -1209,16 +1383,46 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
   const step = steps[currentStep];
   const isLastStep = currentStep === steps.length - 1;
 
-  // Order subtotal (tier + add-ons) — what discount codes apply against
+  const isGroupTier = !!(selectedTier?.per_person && selectedTier.per_person > 1);
+  const maxTicketQty = useMemo(() => {
+    if (!selectedTier || isGroupTier) return 1;
+    const tierLeft = selectedTier.capacity - selectedTier.sold;
+    return Math.max(1, Math.min(event.ticketing?.max_per_user || 1, tierLeft));
+  }, [selectedTier, isGroupTier, event.ticketing?.max_per_user]);
+  const effectiveQty = Math.min(ticketQty, maxTicketQty);
+
+  // Group discount slab for the current quantity (solo tiers only)
+  const groupSlabs = useMemo(
+    () => (isGroupTier ? [] : event.ticketing?.group_discounts || []),
+    [isGroupTier, event.ticketing?.group_discounts],
+  );
+  const groupDiscount = useMemo(
+    () => groupDiscountFor(groupSlabs, effectiveQty, (selectedTier?.price || 0) * effectiveQty),
+    [groupSlabs, effectiveQty, selectedTier],
+  );
+
+  // Keep one guest form per ticket beyond the buyer's, preserving entries
+  // when the quantity moves up and down
+  useEffect(() => {
+    const needed = isGroupTier ? 0 : Math.max(0, effectiveQty - 1);
+    setGuests((prev) => {
+      if (prev.length === needed) return prev;
+      const next = prev.slice(0, needed);
+      while (next.length < needed) next.push({ name: "", phone: "", dob: "" });
+      return next;
+    });
+  }, [effectiveQty, isGroupTier]);
+
+  // Order subtotal (tier − group slab + add-ons) — what discount codes apply against
   const subtotal = useMemo(() => {
-    const tierPrice = selectedTier?.price || 0;
+    const tierPrice = (selectedTier?.price || 0) * effectiveQty;
     const addonTotal = Object.entries(addonSelections).reduce((total, [stepId, sels]) => {
       const cs = checkoutSteps.find((s) => s.id === stepId);
       if (!cs?.add_ons) return total;
       return total + cs.add_ons.reduce((s, a) => s + (sels[a.id] || 0) * a.price, 0);
     }, 0);
-    return tierPrice + addonTotal;
-  }, [selectedTier, addonSelections, checkoutSteps]);
+    return tierPrice - groupDiscount.amount + addonTotal;
+  }, [selectedTier, effectiveQty, groupDiscount, addonSelections, checkoutSteps]);
 
   // Validate a promo code against the server. Returns an error message, or null on success.
   const applyPromo = async (code: string): Promise<string | null> => {
@@ -1460,6 +1664,7 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
           const age = ticketDob ? ageFromDob(ticketDob) : null;
           if (age == null || age < event.min_age) return false;
         }
+        if (guests.some((g) => !isGuestValid(g, event.min_age))) return false;
         return true;
       }
       default:
@@ -1524,8 +1729,9 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
         event_id: event.id,
         tier_id: selectedTierId,
         tier_price: selectedTier?.price,
+        quantity: effectiveQty,
         total_steps: steps.length,
-        revenue: selectedTier?.price,
+        revenue: (selectedTier?.price || 0) * effectiveQty,
         currency: "INR",
         ...attribution,
       });
@@ -1533,7 +1739,7 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
         content_name: event.title,
         content_ids: [event.id],
         content_type: "product",
-        value: selectedTier?.price || 0,
+        value: (selectedTier?.price || 0) * effectiveQty,
         currency: "INR",
       });
 
@@ -1571,6 +1777,10 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
         selectedSectionId || undefined,
         selectedSpotSeatId || undefined,
         appliedDiscount?.code,
+        isGroupTier ? undefined : effectiveQty,
+        guests.length > 0
+          ? guests.map((g) => ({ name: g.name.trim(), dob: g.dob, phone: g.phone.replace(/\D/g, "") }))
+          : undefined,
       );
     } else {
       setCurrentStep((prev) => Math.min(prev + 1, steps.length - 1));
@@ -1761,6 +1971,15 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
               appliedDiscount={appliedDiscount}
               onApplyPromo={applyPromo}
               onRemovePromo={() => setAppliedDiscount(null)}
+              quantity={effectiveQty}
+              maxQuantity={maxTicketQty}
+              onQuantityChange={setTicketQty}
+              groupSlabs={groupSlabs}
+              groupDiscount={groupDiscount}
+              guests={guests}
+              onGuestChange={(index, patch) =>
+                setGuests((prev) => prev.map((g, i) => (i === index ? { ...g, ...patch } : g)))
+              }
               identity={{
                 needsName,
                 needsDob,

@@ -124,13 +124,23 @@ export interface TimeSlot {
   booked: number;
 }
 
+/** Quantity-based group discount — e.g. 2-3 tickets → 5% off, 4-6 → 10% off.
+ * Configured per event; the best matching slab wins. Applies only to solo-tier
+ * multi-quantity orders (per_person tiers already price the whole pass). */
+export interface GroupDiscountSlab {
+  min_qty: number; // inclusive, >= 2
+  max_qty?: number | null; // inclusive; null/undefined = open-ended
+  percent: number; // 1-100, off the tier subtotal
+}
+
 export interface TicketingConfig {
   enabled: boolean; // false = free RSVP, true = ticketed
   tiers: TicketTier[];
   time_slots_enabled: boolean; // if true, user picks a time slot during purchase
   time_slots?: TimeSlot[];
-  max_per_user: number; // usually 1, but could be 2 for +1 events
+  max_per_user: number; // max heads per user across their orders; >1 shows the ticket-quantity stepper at checkout
   refund_policy?: string; // shown to user at checkout
+  group_discounts?: GroupDiscountSlab[];
 }
 
 // ── Checkout Add-ons ──────────────────────────────
@@ -362,6 +372,14 @@ export type TicketStatus =
   | "partially_checked_in"
   | "no_show";
 
+/** Guest on a multi-quantity ticket (everyone beyond the buyer). Captured at
+ * checkout so each guest gets a WhatsApp invite and can onboard on the app. */
+export interface TicketAttendee {
+  name: string;
+  dob: string; // ISO date — validated against event.min_age when set
+  phone: string; // E.164 without "+", e.g. "919663241658"
+}
+
 export interface TicketAddOn {
   addon_id: string;
   name: string;
@@ -398,6 +416,9 @@ export interface Ticket {
   discount_code?: string | null; // discount code applied at purchase
   discount_amount?: number; // rupees knocked off by the code
   original_price?: number; // price before discount (price = original_price - discount_amount)
+  group_discount_percent?: number | null; // slab applied for multi-quantity orders
+  group_discount_amount?: number; // rupees knocked off by the group slab (already inside original_price)
+  attendees?: TicketAttendee[] | null; // guests beyond the buyer on multi-quantity orders
   attribution?: Record<string, string> | null; // acquisition context from the handoff URL (source, utm_*) — ties the sale to a poster/campaign
   purchased_at: string;
   checked_in_at?: string;

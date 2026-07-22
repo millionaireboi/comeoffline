@@ -32,6 +32,99 @@ interface CreateTicketResult {
   error?: string;
 }
 
+/** Headcount + tier subtotal for one order. Group tiers (per_person > 1) carry
+ * a fixed headcount and a full-pass price, ignoring the requested quantity —
+ * and keep their legacy slack against max_per_user (a couples pass on a
+ * max_per_user=1 event must still work). Solo tiers multiply price and
+ * headcount by the requested quantity, with strict caps against the per-user
+ * limit and tier capacity. Pure — pinned by ticket.quantity.test.ts. */
+export function resolveOrderQuantity(
+  tier: { per_person?: number; price?: number; sold?: number; capacity?: number } | null | undefined,
+  requestedQuantity: number | undefined,
+  existingCount: number,
+  maxPerUser: number,
+): { quantity: number; tierSubtotal: number; error?: string } {
+  const perPerson = tier?.per_person || 1;
+  const quantity = perPerson > 1 ? perPerson : Math.max(1, Math.floor(requestedQuantity || 1));
+  const tierSubtotal = (tier?.price || 0) * (perPerson > 1 ? 1 : quantity);
+  if (perPerson === 1 && quantity > 1) {
+    if (existingCount + quantity > maxPerUser) {
+      const remaining = maxPerUser - existingCount;
+      return { quantity, tierSubtotal, error: `Only ${remaining} ticket${remaining === 1 ? "" : "s"} allowed for your account on this event` };
+    }
+    if (tier && (tier.sold || 0) + quantity > (tier.capacity || 0)) {
+      const left = (tier.capacity || 0) - (tier.sold || 0);
+      return { quantity, tierSubtotal, error: `Only ${left} ticket${left === 1 ? "" : "s"} left in this tier` };
+    }
+  }
+  return { quantity, tierSubtotal };
+}
+
+/** Quantity-based group discount: the best matching slab wins. Only applies to
+ * multi-quantity solo-tier orders — per_person passes already price the whole
+ * group, so the caller must not pass their quantity here. Pure — pinned by
+ * ticket.quantity.test.ts. */
+export function resolveGroupDiscount(
+  slabs: Array<{ min_qty?: number; max_qty?: number | null; percent?: number }> | undefined | null,
+  quantity: number,
+  tierSubtotal: number,
+): { percent: number; amount: number } {
+  if (!slabs?.length || quantity < 2 || tierSubtotal <= 0) return { percent: 0, amount: 0 };
+  let percent = 0;
+  for (const slab of slabs) {
+    if (!slab || typeof slab.percent !== "number") continue;
+    const min = slab.min_qty ?? 2;
+    const max = slab.max_qty ?? Infinity;
+    if (quantity >= min && quantity <= max) {
+      percent = Math.max(percent, Math.min(100, Math.max(0, slab.percent)));
+    }
+  }
+  return { percent, amount: Math.round((tierSubtotal * percent) / 100) };
+}
+
+/** Validate + normalize the guest list on a multi-quantity order. The buyer is
+ * head #1 (details come from their profile), so a quantity-N order carries
+ * N-1 guests, each with name, DOB, and a WhatsApp-able phone. 10-digit numbers
+ * are assumed Indian and prefixed with 91. Pure — pinned by
+ * ticket.quantity.test.ts. */
+export function validateAttendees(
+  raw: unknown,
+  quantity: number,
+  minAge?: number,
+): { attendees: Array<{ name: string; dob: string; phone: string }>; error?: string } {
+  const expected = quantity - 1;
+  if (expected <= 0) return { attendees: [] };
+  if (!Array.isArray(raw) || raw.length !== expected) {
+    return { attendees: [], error: `Please add details for all ${expected} guest${expected === 1 ? "" : "s"}` };
+  }
+  const attendees: Array<{ name: string; dob: string; phone: string }> = [];
+  for (let i = 0; i < raw.length; i++) {
+    const guestNo = i + 2; // buyer is head #1
+    const entry = raw[i] as { name?: unknown; dob?: unknown; phone?: unknown } | null;
+    const name = typeof entry?.name === "string" ? entry.name.trim() : "";
+    if (!name || name.length > 100) {
+      return { attendees: [], error: `Guest ${guestNo}: enter their name` };
+    }
+    const phoneDigits = typeof entry?.phone === "string" ? entry.phone.replace(/[^\d]/g, "") : "";
+    const phone = phoneDigits.length === 10 ? `91${phoneDigits}` : phoneDigits;
+    if (phone.length < 11 || phone.length > 15) {
+      return { attendees: [], error: `Guest ${guestNo}: enter a valid phone number` };
+    }
+    const dobStr = typeof entry?.dob === "string" ? entry.dob : "";
+    const dob = dobStr ? new Date(dobStr) : null;
+    const ageMs = dob && !isNaN(dob.getTime()) ? Date.now() - dob.getTime() : -1;
+    const age = ageMs >= 0 ? Math.floor(ageMs / (365.25 * 24 * 60 * 60 * 1000)) : -1;
+    if (age < 0 || age > 120) {
+      return { attendees: [], error: `Guest ${guestNo}: enter a valid date of birth` };
+    }
+    if (minAge && age < minAge) {
+      return { attendees: [], error: `Guest ${guestNo}: this event is ${minAge}+` };
+    }
+    attendees.push({ name, dob: dobStr, phone });
+  }
+  return { attendees };
+}
+
 /** Age gate shared by ticket purchases and free RSVPs. Reads the user inside
  * the caller's transaction; returns an error message when blocked, else null. */
 export async function checkAgeGate(
@@ -70,6 +163,8 @@ export async function createTicket(
   spotSeatId?: string,
   discountCode?: string,
   attribution?: Record<string, string>,
+  requestedQuantity?: number,
+  rawAttendees?: unknown,
 ): Promise<CreateTicketResult> {
   const db = await getDb();
   return db.runTransaction(async (tx) => {
@@ -180,6 +275,26 @@ export async function createTicket(
       }
     }
 
+    const order = resolveOrderQuantity(selectedTier, requestedQuantity, existingCount, ticketing.max_per_user || 1);
+    if (order.error) {
+      return { success: false, error: order.error };
+    }
+    const quantity = order.quantity;
+    const perPerson = selectedTier?.per_person || 1;
+
+    // Multi-quantity solo orders: slab discount + mandatory guest details.
+    // per_person passes keep legacy behavior (whole-pass price, no guest forms).
+    let groupDiscount = { percent: 0, amount: 0 };
+    let attendees: Array<{ name: string; dob: string; phone: string }> = [];
+    if (perPerson === 1 && quantity > 1) {
+      groupDiscount = resolveGroupDiscount(ticketing.group_discounts, quantity, order.tierSubtotal);
+      const guestCheck = validateAttendees(rawAttendees, quantity, event.min_age);
+      if (guestCheck.error) {
+        return { success: false, error: guestCheck.error };
+      }
+      attendees = guestCheck.attendees;
+    }
+
     // Check time slot availability
     let selectedTimeSlot = null;
     if (ticketing.time_slots_enabled && ticketing.time_slots?.length) {
@@ -192,6 +307,10 @@ export async function createTicket(
       }
       if (selectedTimeSlot.booked >= selectedTimeSlot.capacity) {
         return { success: false, error: "This time slot is full" };
+      }
+      if (perPerson === 1 && quantity > 1 && selectedTimeSlot.booked + quantity > selectedTimeSlot.capacity) {
+        const left = selectedTimeSlot.capacity - selectedTimeSlot.booked;
+        return { success: false, error: `Only ${left} spot${left === 1 ? "" : "s"} left in this time slot` };
       }
     }
 
@@ -370,8 +489,13 @@ export async function createTicket(
     }
 
     // Check overall capacity (include held spots from pending payments)
-    if ((event.spots_taken + (event.spots_held || 0)) >= event.total_spots) {
+    const spotsCommitted = event.spots_taken + (event.spots_held || 0);
+    if (spotsCommitted >= event.total_spots) {
       return { success: false, error: "Event is full" };
+    }
+    if (perPerson === 1 && quantity > 1 && spotsCommitted + quantity > event.total_spots) {
+      const left = event.total_spots - spotsCommitted;
+      return { success: false, error: `Only ${left} spot${left === 1 ? "" : "s"} left for this event` };
     }
 
     // Assign pickup point
@@ -380,9 +504,9 @@ export async function createTicket(
     // Calculate add-on total
     const addOnTotal = (addOns || []).reduce((sum, a) => sum + a.price * a.quantity, 0);
 
-    // Determine price and status
-    const tierPrice = selectedTier?.price || 0;
-    const subtotal = tierPrice + addOnTotal;
+    // Determine price and status — the group slab comes off the tier subtotal
+    // before promo codes evaluate
+    const subtotal = order.tierSubtotal - groupDiscount.amount + addOnTotal;
 
     // Apply discount code — validated against the transactional snapshot so a
     // code can never exceed max_uses under concurrent purchases. The use is
@@ -425,7 +549,6 @@ export async function createTicket(
       }
     }
 
-    const quantity = selectedTier?.per_person || 1;
     const isFree = price === 0 || event.is_free || !ticketing.enabled;
     const status = isFree ? "confirmed" : "pending_payment";
 
@@ -450,6 +573,9 @@ export async function createTicket(
       discount_code: discountApplied ? appliedCode : null,
       discount_amount: discountAmount,
       original_price: subtotal,
+      group_discount_percent: groupDiscount.percent || null,
+      group_discount_amount: groupDiscount.amount,
+      attendees: attendees.length > 0 ? attendees : null,
       quantity,
       status,
       qr_code: qrCode,
@@ -1226,6 +1352,7 @@ export async function notifyTicketConfirmed(ticketId: string): Promise<void> {
       qr_code?: string;
       price?: number;
       tier_id?: string;
+      attendees?: Array<{ name: string; phone: string }> | null;
     };
     if (ticket.status !== "confirmed") return;
 
@@ -1312,7 +1439,54 @@ export async function notifyTicketConfirmed(ticketId: string): Promise<void> {
       return;
     }
     await recordScenarioFired(scenarioKey, null);
+
+    // Group orders: invite each guest — they're on the ticket but not in the
+    // app yet, so this message is their onboarding hook.
+    if (ticket.attendees?.length) {
+      await notifyGroupGuests(ticketId, ticket.attendees, firstName, event.title, eventDateStr, eventUrl);
+    }
   } catch (err) {
     console.error(`[notifyTicketConfirmed] unexpected error for ${ticketId}:`, err);
   }
+}
+
+/** Send each guest on a group ticket a WhatsApp invite (buyer added you to
+ * {event} — see details + get the app). Fire-and-forget per guest so one bad
+ * number never blocks the rest. */
+async function notifyGroupGuests(
+  ticketId: string,
+  attendees: Array<{ name: string; phone: string }>,
+  buyerFirstName: string,
+  eventTitle: string,
+  eventDateStr: string,
+  eventUrl: string,
+): Promise<void> {
+  const scenarioKey = "group_guest_added";
+  if (!(await isScenarioEnabled(scenarioKey))) {
+    console.log(`[notifyGroupGuests] scenario "${scenarioKey}" is disabled — skipping ${ticketId}`);
+    return;
+  }
+  const templateName = await getMappedTemplate(scenarioKey);
+  if (!templateName) {
+    console.warn(`[notifyGroupGuests] no template mapped for "${scenarioKey}" — skipping ${ticketId}`);
+    return;
+  }
+
+  let anySent = false;
+  for (const guest of attendees) {
+    if (!guest?.phone) continue;
+    const guestFirstName = (guest.name || "there").split(/\s+/)[0];
+    const result = await sendTemplate({
+      to: guest.phone,
+      templateName,
+      languageCode: "en_US",
+      bodyParams: [guestFirstName, buyerFirstName, eventTitle, eventDateStr, eventUrl],
+    });
+    if (result.ok) {
+      anySent = true;
+    } else {
+      console.error(`[notifyGroupGuests] send failed for ${ticketId} → ${guest.phone}:`, result.error);
+    }
+  }
+  if (anySent) await recordScenarioFired(scenarioKey, null);
 }

@@ -21,7 +21,7 @@ const router = Router();
 /** POST /api/tickets/create — Purchase a ticket */
 router.post("/create", requireAuth, strictLimiter, async (req: AuthRequest, res) => {
   try {
-    const { event_id, tier_id, pickup_point, time_slot_id, add_ons, seat_id, section_id, spot_seat_id, discount_code, attribution } = req.body;
+    const { event_id, tier_id, pickup_point, time_slot_id, add_ons, seat_id, section_id, spot_seat_id, discount_code, attribution, quantity, attendees } = req.body;
 
     // Input validation
     if (!event_id || typeof event_id !== "string") {
@@ -35,6 +35,32 @@ router.post("/create", requireAuth, strictLimiter, async (req: AuthRequest, res)
     if (discount_code !== undefined && typeof discount_code !== "string") {
       res.status(400).json({ success: false, error: "Invalid discount_code" });
       return;
+    }
+    if (
+      quantity !== undefined &&
+      (typeof quantity !== "number" || !Number.isInteger(quantity) || quantity < 1 || quantity > 20)
+    ) {
+      res.status(400).json({ success: false, error: "Invalid quantity" });
+      return;
+    }
+    // Guest details for multi-quantity orders — shape check here, semantic
+    // validation (count vs quantity, phone/DOB/age) inside createTicket
+    if (attendees !== undefined && attendees !== null) {
+      if (!Array.isArray(attendees) || attendees.length > 19) {
+        res.status(400).json({ success: false, error: "Invalid attendees" });
+        return;
+      }
+      for (const a of attendees) {
+        if (
+          !a || typeof a !== "object" || Array.isArray(a) ||
+          typeof a.name !== "string" || a.name.length > 200 ||
+          typeof a.phone !== "string" || a.phone.length > 30 ||
+          typeof a.dob !== "string" || a.dob.length > 20
+        ) {
+          res.status(400).json({ success: false, error: "Each guest needs a name, phone, and date of birth" });
+          return;
+        }
+      }
     }
     // Attribution is client-supplied analytics context (poster/utm) — whitelist
     // keys and clamp values so arbitrary junk can't land on the ticket doc.
@@ -64,7 +90,7 @@ router.post("/create", requireAuth, strictLimiter, async (req: AuthRequest, res)
       }
     }
 
-    const result = await createTicket(req.uid!, event_id, tier_id, pickup_point, time_slot_id, add_ons, seat_id, section_id, spot_seat_id, discount_code, cleanAttribution);
+    const result = await createTicket(req.uid!, event_id, tier_id, pickup_point, time_slot_id, add_ons, seat_id, section_id, spot_seat_id, discount_code, cleanAttribution, quantity, attendees);
 
     if (!result.success) {
       res.status(400).json({ success: false, error: result.error });

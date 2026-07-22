@@ -30,6 +30,8 @@ interface EventDetailProps {
     sectionId?: string,
     spotSeatId?: string,
     discountCode?: string,
+    quantity?: number,
+    attendees?: Array<{ name: string; dob: string; phone: string }>,
   ) => void;
   onJoinWaitlist?: (spotsWanted: number) => void;
   onLeaveWaitlist?: (entryId: string) => void;
@@ -401,9 +403,9 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
             // still fire from inside the wizard.
             setShowWizard(false);
           }}
-          onComplete={(tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId, discountCode) => {
+          onComplete={(tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId, discountCode, quantity, attendees) => {
             setShowWizard(false);
-            onTicketPurchase?.(tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId, discountCode);
+            onTicketPurchase?.(tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId, discountCode, quantity, attendees);
           }}
           loading={loading}
         />

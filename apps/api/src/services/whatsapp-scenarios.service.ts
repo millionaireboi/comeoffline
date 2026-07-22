@@ -144,6 +144,21 @@ export const SCENARIOS: ScenarioDefinition[] = [
     ],
   },
   {
+    key: "group_guest_added",
+    label: "Added to a group booking",
+    description: "Fires to each guest when a group purchase confirms — invites them to see the event and get on the app.",
+    trigger: "auto",
+    defaultTemplate: "group_guest_added",
+    paramNames: ["Guest first name", "Buyer first name", "Event name", "Date/time", "Event URL"],
+    sampleParams: [
+      "Aanya",
+      "Rohan",
+      "Picnic",
+      "Sun, 2 Aug · 8:00 AM",
+      "https://app.comeoffline.com/events/sample",
+    ],
+  },
+  {
     key: "add_to_home_screen",
     label: "Add to home screen",
     description: "Cron-fired ~24h after first ticket confirmation, only for users who haven't installed the PWA yet.",

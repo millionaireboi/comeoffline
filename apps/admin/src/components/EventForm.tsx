@@ -1893,6 +1893,30 @@ function EventFormInner({ event, seed, draftKey, onSave, onCancel, serifClassNam
   );
   const [maxPerUser, setMaxPerUser] = useState((seed?.ticketing?.max_per_user || 1).toString());
   const [refundPolicy, setRefundPolicy] = useState(seed?.ticketing?.refund_policy || "");
+  // Quantity-based group discounts — e.g. 2-3 tickets → 5%, 4-6 → 10%
+  const [groupSlabs, setGroupSlabs] = useState<Array<{ min: string; max: string; percent: string }>>(
+    seed?.ticketing?.group_discounts?.map((s) => ({
+      min: String(s.min_qty),
+      max: s.max_qty != null ? String(s.max_qty) : "",
+      percent: String(s.percent),
+    })) || [],
+  );
+  const buildGroupDiscounts = () => {
+    const slabs = groupSlabs
+      .map((s) => ({
+        min_qty: Number(s.min) || 0,
+        max_qty: s.max.trim() === "" ? null : Number(s.max) || 0,
+        percent: Number(s.percent) || 0,
+      }))
+      .filter(
+        (s) =>
+          s.min_qty >= 2 &&
+          s.percent > 0 &&
+          s.percent <= 100 &&
+          (s.max_qty == null || s.max_qty >= s.min_qty),
+      );
+    return slabs.length > 0 ? slabs : undefined;
+  };
   const [checkoutEnabled, setCheckoutEnabled] = useState(seed?.checkout?.enabled || false);
   const [checkoutSteps, setCheckoutSteps] = useState<CheckoutStep[]>(seed?.checkout?.steps || []);
   const [postBookingSections, setPostBookingSections] = useState<PostBookingSection[]>(
@@ -2075,6 +2099,7 @@ function EventFormInner({ event, seed, draftKey, onSave, onCancel, serifClassNam
         time_slots_enabled: false,
         max_per_user: Number(maxPerUser) || 1,
         refund_policy: refundPolicy.trim() || undefined,
+        group_discounts: buildGroupDiscounts(),
       } : { enabled: false, tiers: [], time_slots_enabled: false, max_per_user: 1 },
       is_free: !ticketingEnabled || tiers.every((t) => Number(t.price) === 0),
       checkout: checkoutEnabled && checkoutSteps.length > 0 ? {
@@ -2222,6 +2247,7 @@ function EventFormInner({ event, seed, draftKey, onSave, onCancel, serifClassNam
         time_slots_enabled: false,
         max_per_user: Number(maxPerUser) || 1,
         refund_policy: refundPolicy.trim() || undefined,
+        group_discounts: buildGroupDiscounts(),
       } : { enabled: false, tiers: [], time_slots_enabled: false, max_per_user: 1 },
       is_free: !ticketingEnabled || tiers.every((t) => Number(t.price) === 0),
       checkout: checkoutEnabled && checkoutSteps.length > 0 ? {
@@ -2689,6 +2715,66 @@ function EventFormInner({ event, seed, draftKey, onSave, onCancel, serifClassNam
                     className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-sans text-xs text-cream placeholder:text-muted/30 focus:border-caramel/50 focus:outline-none"
                   />
                 </div>
+              </div>
+
+              {/* Group discount slabs */}
+              <div>
+                <span className="mb-1 block font-mono text-[9px] text-muted">group discount slabs</span>
+                <p className="mb-2 text-[10px] text-muted/60">
+                  % off when one buyer takes multiple tickets — e.g. 2–3 → 5%, 4–6 → 10%. needs max tickets per user above 1.
+                </p>
+                {groupSlabs.map((slab, i) => (
+                  <div key={i} className="mb-2 flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="2"
+                      placeholder="2"
+                      value={slab.min}
+                      onChange={(e) =>
+                        setGroupSlabs(groupSlabs.map((s, idx) => (idx === i ? { ...s, min: e.target.value } : s)))
+                      }
+                      className="w-16 rounded-lg border border-white/10 bg-white/5 px-2 py-2 text-center font-mono text-xs text-cream placeholder:text-muted/30 focus:border-caramel/50 focus:outline-none"
+                    />
+                    <span className="font-mono text-[10px] text-muted">to</span>
+                    <input
+                      type="number"
+                      min="2"
+                      placeholder="∞"
+                      value={slab.max}
+                      onChange={(e) =>
+                        setGroupSlabs(groupSlabs.map((s, idx) => (idx === i ? { ...s, max: e.target.value } : s)))
+                      }
+                      className="w-16 rounded-lg border border-white/10 bg-white/5 px-2 py-2 text-center font-mono text-xs text-cream placeholder:text-muted/30 focus:border-caramel/50 focus:outline-none"
+                    />
+                    <span className="font-mono text-[10px] text-muted">tickets →</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      placeholder="5"
+                      value={slab.percent}
+                      onChange={(e) =>
+                        setGroupSlabs(groupSlabs.map((s, idx) => (idx === i ? { ...s, percent: e.target.value } : s)))
+                      }
+                      className="w-16 rounded-lg border border-white/10 bg-white/5 px-2 py-2 text-center font-mono text-xs text-cream placeholder:text-muted/30 focus:border-caramel/50 focus:outline-none"
+                    />
+                    <span className="font-mono text-[10px] text-muted">% off</span>
+                    <button
+                      type="button"
+                      onClick={() => setGroupSlabs(groupSlabs.filter((_, idx) => idx !== i))}
+                      className="ml-auto rounded-lg px-2 py-1 font-mono text-xs text-muted transition-colors hover:text-cream"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setGroupSlabs([...groupSlabs, { min: "", max: "", percent: "" }])}
+                  className="rounded-lg border border-dashed border-white/15 px-3 py-1.5 font-mono text-[10px] text-muted transition-colors hover:border-caramel/40 hover:text-cream"
+                >
+                  + add slab
+                </button>
               </div>
             </div>
           )}

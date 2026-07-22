@@ -183,6 +183,8 @@ export function EventFeed() {
       sectionId?: string,
       spotSeatId?: string,
       discountCode?: string,
+      quantity?: number,
+      attendees?: Array<{ name: string; dob: string; phone: string }>,
     ) => {
       if (actionLockRef.current) return;
       actionLockRef.current = true;
@@ -207,6 +209,8 @@ export function EventFeed() {
             spot_seat_id: spotSeatId || undefined,
             discount_code: discountCode || undefined,
             attribution: attribution || undefined,
+            quantity: quantity && quantity > 1 ? quantity : undefined,
+            attendees: attendees && attendees.length > 0 ? attendees : undefined,
           }),
         });
         if (data.data) {
@@ -263,8 +267,10 @@ export function EventFeed() {
       sectionId?: string,
       spotSeatId?: string,
       discountCode?: string,
+      quantity?: number,
+      attendees?: Array<{ name: string; dob: string; phone: string }>,
     ) => {
-      await executePurchase(event, tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId, discountCode);
+      await executePurchase(event, tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId, discountCode, quantity, attendees);
     },
     [executePurchase],
   );
@@ -526,8 +532,8 @@ export function EventFeed() {
           initialTierId={detailInitialTierId}
           onClose={() => { setDetailEvent(null); setDetailInitialTierId(null); }}
           onRsvp={() => handleRsvp(detailEvent)}
-          onTicketPurchase={(tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId, discountCode) =>
-            handleTicketPurchase(detailEvent, tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId, discountCode)
+          onTicketPurchase={(tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId, discountCode, quantity, attendees) =>
+            handleTicketPurchase(detailEvent, tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId, discountCode, quantity, attendees)
           }
           onJoinWaitlist={(spotsWanted) => handleJoinWaitlist(detailEvent, spotsWanted)}
           onLeaveWaitlist={(entryId) => handleLeaveWaitlist(detailEvent, entryId)}

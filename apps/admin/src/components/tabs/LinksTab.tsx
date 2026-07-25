@@ -2,18 +2,23 @@
 
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
+import { formatDate } from "@comeoffline/ui";
 import { useApi } from "@/hooks/useApi";
 import { apiClient } from "@/lib/apiClient";
 import { toast } from "@/lib/toast";
 import { TableRowSkeleton } from "@/components/Skeleton";
 import { LANDING_URL } from "@/lib/constants";
-import { GUERRILLA_PAGES, type TrackableLink } from "@comeoffline/types";
+import { GUERRILLA_PAGES, type Event, type TrackableLink } from "@comeoffline/types";
 
 const shortUrl = (code: string) => `${LANDING_URL}/l/${code}`;
 
-/** Friendly name when a destination is one of our guerrilla pages. */
-function pageLabel(destination: string): string | null {
-  const match = GUERRILLA_PAGES.find(
+// Statuses the public event endpoint serves — draft/completed/cancelled
+// event pages 404 on landing, so don't offer them as destinations.
+const LINKABLE_EVENT_STATUSES = new Set(["announced", "upcoming", "listed", "sold_out", "live"]);
+
+/** Friendly name when a destination is one of our known pages. */
+function pageLabel(destination: string, pages: { path: string; label: string }[]): string | null {
+  const match = pages.find(
     (p) => destination === p.path || destination.startsWith(`${p.path}?`) || destination.startsWith(`${p.path}/`),
   );
   return match?.label ?? null;
@@ -108,6 +113,17 @@ export function LinksTab() {
   const { data: links, loading, refetch } = useApi<TrackableLink[]>("/api/admin/links", {
     dedupingInterval: 30 * 1000,
   });
+  const { data: events } = useApi<Event[]>("/api/admin/events", {
+    dedupingInterval: 2 * 60 * 1000,
+    cacheTime: 10 * 60 * 1000,
+  });
+  const eventPages = (events ?? [])
+    .filter((ev) => LINKABLE_EVENT_STATUSES.has(ev.status))
+    .map((ev) => ({
+      path: `/events/${ev.id}`,
+      label: `${ev.emoji} ${ev.title} · ${formatDate(ev.date)}`,
+    }));
+  const knownPages = [...GUERRILLA_PAGES, ...eventPages];
 
   // Create form
   const [showForm, setShowForm] = useState(false);
@@ -243,11 +259,22 @@ export function LinksTab() {
             <div>
               <label className={labelClass}>points to</label>
               <select value={page} onChange={(e) => setPage(e.target.value)} className={inputClass}>
-                {GUERRILLA_PAGES.map((p) => (
-                  <option key={p.path} value={p.path}>
-                    {p.label}
-                  </option>
-                ))}
+                <optgroup label="pages">
+                  {GUERRILLA_PAGES.map((p) => (
+                    <option key={p.path} value={p.path}>
+                      {p.label}
+                    </option>
+                  ))}
+                </optgroup>
+                {eventPages.length > 0 && (
+                  <optgroup label="events">
+                    {eventPages.map((p) => (
+                      <option key={p.path} value={p.path}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
                 <option value="custom">custom url…</option>
               </select>
               {page === "custom" ? (
@@ -336,8 +363,10 @@ export function LinksTab() {
                         ` · last ${new Date(link.last_hit_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}`}
                     </p>
                     <p className="mt-0.5 truncate font-mono text-[10px] text-muted/60">
-                      scan opens {pageLabel(link.destination) ?? link.destination}
-                      {pageLabel(link.destination) && <span className="text-muted/40"> · {link.destination}</span>}
+                      scan opens {pageLabel(link.destination, knownPages) ?? link.destination}
+                      {pageLabel(link.destination, knownPages) && (
+                        <span className="text-muted/40"> · {link.destination}</span>
+                      )}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">

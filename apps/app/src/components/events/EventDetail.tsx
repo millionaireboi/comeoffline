@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { apiFetch } from "@/lib/api";
 import { posthog, FUNNEL_EVENT_DETAIL_OPENED_IN_APP, FUNNEL_TIER_SELECTED_IN_APP, FUNNEL_CHECKOUT_OPENED } from "@comeoffline/analytics";
 import { CheckoutWizard } from "@/components/events/CheckoutWizard";
+import { tierAvailable } from "@/lib/tiers";
 import { formatEventDateShort } from "@comeoffline/ui";
 import { ageFromDob, identityNeeds } from "@/lib/identity";
 import { CollapsibleHeader } from "./event-detail/CollapsibleHeader";
@@ -41,9 +42,12 @@ interface EventDetailProps {
   siblings?: Event[];
   /** Called when the user taps another date — parent swaps the open event */
   onSwitchEvent?: (e: Event) => void;
+  /** Visitor already committed to buying (landing buy link / pre-sign-in buy
+   *  tap) — open the checkout wizard immediately instead of re-pitching */
+  autoCheckout?: boolean;
 }
 
-export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPurchase, onJoinWaitlist, onLeaveWaitlist, loading, siblings, onSwitchEvent }: EventDetailProps) {
+export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPurchase, onJoinWaitlist, onLeaveWaitlist, loading, siblings, onSwitchEvent, autoCheckout }: EventDetailProps) {
   const user = useAppStore((s) => s.user);
   const setUser = useAppStore((s) => s.setUser);
   const showToast = useAppStore((s) => s.showToast);
@@ -110,9 +114,9 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
 
   // Auto-select the cheapest available tier on open. Deep-link tier wins if
   // still available; otherwise we pick the lowest-priced tier with capacity.
-  const initialTierStillAvailable = !!initialTierId && tiers.some((t) => t.id === initialTierId && t.sold < t.capacity);
+  const initialTierStillAvailable = !!initialTierId && tiers.some((t) => t.id === initialTierId && tierAvailable(t));
   const cheapestAvailableTier = useMemo(() => {
-    const available = tiers.filter((t) => t.sold < t.capacity);
+    const available = tiers.filter(tierAvailable);
     if (available.length === 0) return null;
     return available.reduce((min, t) => (t.price < min.price ? t : min), available[0]);
   }, [tiers]);
@@ -127,6 +131,15 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
     event.pickup_points?.length === 1 ? event.pickup_points[0].name : null,
   );
   const [showWizard, setShowWizard] = useState(false);
+
+  // Committed buyer (landing buy link / post-sign-in buy tap) — skip the
+  // re-pitch and drop them straight into the checkout wizard.
+  useEffect(() => {
+    if (autoCheckout && user && isTicketed && selectedTierId) {
+      setShowWizard(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const scrollRef = useRef<HTMLDivElement>(null);
   const ticketsRef = useRef<HTMLDivElement>(null);
 
@@ -199,7 +212,7 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
 
   const cheapestPrice = useMemo(() => {
     if (!isTicketed || tiers.length === 0) return null;
-    const available = tiers.filter((t) => t.sold < t.capacity);
+    const available = tiers.filter(tierAvailable);
     if (available.length === 0) return null;
     return Math.min(...available.map((t) => t.price));
   }, [isTicketed, tiers]);
@@ -214,9 +227,11 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
     // a number. Intent is captured so after entry the feed reopens this event
     // with the tier preselected.
     if (!user) {
-      const { setPendingPurchaseEventId, setPendingDeepLinkTierId, setSignInPromptOpen } = useAppStore.getState();
+      const { setPendingPurchaseEventId, setPendingDeepLinkTierId, setSignInPromptOpen, setPendingCheckout } = useAppStore.getState();
       setPendingPurchaseEventId(event.id);
       if (selectedTierId) setPendingDeepLinkTierId(selectedTierId);
+      // They tapped buy — after entry, reopen this event straight into checkout.
+      setPendingCheckout(true);
       setSignInPromptOpen(true);
       return;
     }

@@ -104,6 +104,11 @@ interface AppState {
   signInPromptOpen: boolean;
   setSignInPromptOpen: (open: boolean) => void;
 
+  // The visitor already committed to buying (landing buy button or in-app buy
+  // tap) — after entry, skip the detail re-pitch and open checkout directly.
+  pendingCheckout: boolean;
+  setPendingCheckout: (pending: boolean) => void;
+
   // Toast notifications
   toast: { message: string; type: "error" | "success" | "info" } | null;
   showToast: (message: string, type?: "error" | "success" | "info") => void;
@@ -170,6 +175,9 @@ export const useAppStore = create<AppState>()(
   signInPromptOpen: false,
   setSignInPromptOpen: (open) => set({ signInPromptOpen: open }),
 
+  pendingCheckout: false,
+  setPendingCheckout: (pending) => set({ pendingCheckout: pending }),
+
   attribution: null,
   setAttribution: (attribution) => set({ attribution, attributionAt: attribution ? Date.now() : null }),
   attributionAt: null,
@@ -197,6 +205,7 @@ export const useAppStore = create<AppState>()(
       partialize: (state) => ({
         pendingPurchaseEventId: state.pendingPurchaseEventId,
         pendingDeepLinkTierId: state.pendingDeepLinkTierId,
+        pendingCheckout: state.pendingCheckout,
         pendingIntentAt: state.pendingIntentAt,
         attribution: state.attribution,
         attributionAt: state.attributionAt,
@@ -206,6 +215,7 @@ export const useAppStore = create<AppState>()(
         if (state?.pendingPurchaseEventId && (!state.pendingIntentAt || Date.now() - state.pendingIntentAt > INTENT_TTL_MS)) {
           state.setPendingPurchaseEventId(null);
           state.setPendingDeepLinkTierId(null);
+          state.setPendingCheckout(false);
         }
         // Attribution gets a longer window — a creator's link keeps credit for
         // 30 days ("i'll book on payday" is a real purchase path at ₹700+)

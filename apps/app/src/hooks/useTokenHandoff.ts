@@ -43,9 +43,14 @@ export function useTokenHandoff() {
     const deepLinkEventId = params.get("event");
     const deepLinkTierId = params.get("tier");
     if (deepLinkEventId) {
-      const { setPendingPurchaseEventId, setPendingDeepLinkTierId } = useAppStore.getState();
+      const { setPendingPurchaseEventId, setPendingDeepLinkTierId, setPendingCheckout } = useAppStore.getState();
       setPendingPurchaseEventId(deepLinkEventId);
-      if (deepLinkTierId) setPendingDeepLinkTierId(deepLinkTierId);
+      if (deepLinkTierId) {
+        setPendingDeepLinkTierId(deepLinkTierId);
+        // A tiered link means they tapped BUY on the landing page — they've seen
+        // the pitch, so go straight to checkout instead of re-pitching in-app.
+        setPendingCheckout(true);
+      }
     }
 
     // Landing forwards ?source= + utm_* on EVERY handoff URL — including the

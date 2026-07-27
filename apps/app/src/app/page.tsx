@@ -61,6 +61,7 @@ export default function Home() {
   const eventDetailOpen = useAppStore((s) => s.eventDetailOpen);
   const signInPromptOpen = useAppStore((s) => s.signInPromptOpen);
   const setSignInPromptOpen = useAppStore((s) => s.setSignInPromptOpen);
+  const pendingCheckout = useAppStore((s) => s.pendingCheckout);
   const [chatOpen, setChatOpen] = useState(false);
   const [quizActive, setQuizActive] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
@@ -442,9 +443,13 @@ export default function Home() {
   switch (stage) {
     case "gate":
       // BookMyShow-style: logged-out visitors browse the feed freely; the
-      // sign-in screen appears only when they tap buy (or ask to sign in).
-      screen = signInPromptOpen
-        ? <SignInScreen onBack={() => setSignInPromptOpen(false)} />
+      // sign-in screen appears only when they commit — a buy tap in-app, a
+      // landing-page buy link (pendingCheckout), or "member? sign in".
+      screen = signInPromptOpen || pendingCheckout
+        ? <SignInScreen onBack={() => {
+            setSignInPromptOpen(false);
+            useAppStore.getState().setPendingCheckout(false);
+          }} />
         : <EventFeed />;
       break;
     case "accepted":

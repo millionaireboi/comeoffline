@@ -103,6 +103,9 @@ export function EventFeed() {
   // landed on feed. Reopen the same event's detail so they can pick up where they left off.
   // Also handles landing-page deep-links (?event=<id>&tier=<id>) — drops ad clickers
   // straight onto the right event detail with the right tier preselected.
+  // When the visitor already committed to buying (landing buy link or the buy
+  // tap that triggered sign-in), the reopened detail goes straight to checkout.
+  const [detailAutoCheckout, setDetailAutoCheckout] = useState(false);
   useEffect(() => {
     if (!pendingPurchaseEventId || events.length === 0) return;
     const target = events.find((e) => e.id === pendingPurchaseEventId);
@@ -113,9 +116,14 @@ export function EventFeed() {
         setDetailInitialTierId(pendingDeepLinkTierId);
         setPendingDeepLinkTierId(null);
       }
+      const { pendingCheckout, setPendingCheckout } = useAppStore.getState();
+      if (pendingCheckout && user) {
+        setDetailAutoCheckout(true);
+        setPendingCheckout(false);
+      }
     }
     setPendingPurchaseEventId(null);
-  }, [pendingPurchaseEventId, events, setPendingPurchaseEventId, setCurrentEvent, pendingDeepLinkTierId, setPendingDeepLinkTierId]);
+  }, [pendingPurchaseEventId, events, setPendingPurchaseEventId, setCurrentEvent, pendingDeepLinkTierId, setPendingDeepLinkTierId, user]);
 
   // Legacy RSVP flow for free events
   const handleRsvp = useCallback(
@@ -539,9 +547,10 @@ export function EventFeed() {
           key={detailEvent.id}
           event={detailEvent}
           siblings={seriesSiblings(detailEvent, events)}
-          onSwitchEvent={(e) => { setDetailEvent(e); setDetailInitialTierId(null); }}
+          onSwitchEvent={(e) => { setDetailEvent(e); setDetailInitialTierId(null); setDetailAutoCheckout(false); }}
           initialTierId={detailInitialTierId}
-          onClose={() => { setDetailEvent(null); setDetailInitialTierId(null); }}
+          autoCheckout={detailAutoCheckout}
+          onClose={() => { setDetailEvent(null); setDetailInitialTierId(null); setDetailAutoCheckout(false); }}
           onRsvp={() => handleRsvp(detailEvent)}
           onTicketPurchase={(tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId, discountCode, quantity, attendees) =>
             handleTicketPurchase(detailEvent, tierId, pickupPoint, timeSlotId, addOns, seatId, sectionId, spotSeatId, discountCode, quantity, attendees)

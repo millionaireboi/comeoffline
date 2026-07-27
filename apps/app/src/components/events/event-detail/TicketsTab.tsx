@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { GroupDiscountSlab, TicketTier } from "@comeoffline/types";
+import { tierAvailable, tierSoldOut, tierRemaining, type PublicishTier } from "@/lib/tiers";
 import { GhostWatermark } from "./GhostWatermark";
 
 interface TicketsTabProps {
@@ -107,12 +108,13 @@ function TierCard({
   accentDark: string;
   slabs?: GroupDiscountSlab[];
 }) {
-  const soldOut = tier.sold >= tier.capacity;
-  const remaining = tier.capacity - tier.sold;
+  const soldOut = tierSoldOut(tier);
+  // null when the public payload strips raw counts — stock UI hides itself
+  const remaining = tierRemaining(tier);
   const closed = tier.deadline ? new Date(tier.deadline) < new Date() : false;
   const notYetOpen = tier.opens_at ? new Date(tier.opens_at) > new Date() : false;
   const unavailable = soldOut || closed || notYetOpen;
-  const fillPct = ((tier.capacity - remaining) / tier.capacity) * 100;
+  const fillPct = remaining !== null && tier.capacity > 0 ? ((tier.capacity - remaining) / tier.capacity) * 100 : null;
 
   return (
     <button
@@ -199,12 +201,17 @@ function TierCard({
           </div>
         )}
         <div className="text-right">
-          {!unavailable && remaining <= 15 && (
+          {!unavailable && remaining !== null && remaining <= 15 && (
             <p
               className="mb-0.5 font-mono text-[11px]"
               style={{ color: remaining <= 5 ? "#C44A26" : accentDark }}
             >
               only {remaining} left
+            </p>
+          )}
+          {!unavailable && remaining === null && (tier as PublicishTier).low_stock && (
+            <p className="mb-0.5 font-mono text-[11px]" style={{ color: accentDark }}>
+              selling fast
             </p>
           )}
           {closed && !soldOut && (
@@ -226,7 +233,7 @@ function TierCard({
       </div>
 
       {/* Progress bar */}
-      {!unavailable && (
+      {!unavailable && fillPct !== null && (
         <div className="mt-2.5 h-[3px] overflow-hidden rounded-sm bg-sand/40">
           <div
             className="h-full rounded-sm transition-all duration-700"
@@ -262,7 +269,7 @@ export function TicketsTab({
     (t) =>
       (!t.per_person || t.per_person <= 1) &&
       t.price > 0 &&
-      t.sold < t.capacity &&
+      tierAvailable(t) &&
       (!t.deadline || new Date(t.deadline) >= now) &&
       (!t.opens_at || new Date(t.opens_at) <= now),
   );

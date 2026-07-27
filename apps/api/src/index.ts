@@ -52,13 +52,21 @@ app.set("trust proxy", 1);
 // Middleware
 app.use(helmet());
 app.use(cors({ origin: env.allowedOrigins, credentials: true }));
-app.use(express.json({
+const jsonParser = express.json({
   // 16mb: WhatsApp video template headers arrive as base64 data URIs (~10MB binary + 37% overhead)
   limit: "16mb",
   verify: (req: any, _res, buf) => {
     req.rawBody = buf.toString();
   },
-}));
+});
+// Media uploads exceed the global limit — the upload route mounts its own
+// 60mb parser, which only takes effect if the global one hasn't consumed
+// the stream first. Cloud Run caps requests at 32MB regardless.
+app.use((req, res, next) =>
+  req.method === "POST" && req.path === "/api/admin/upload"
+    ? next()
+    : jsonParser(req, res, next),
+);
 
 // Public read-only endpoints — exempt from rate limiting (high traffic, no auth)
 app.use("/api/events/public", publicEventsRouter);

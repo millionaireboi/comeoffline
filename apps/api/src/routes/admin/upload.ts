@@ -16,7 +16,9 @@ const router = Router();
 const largeJsonParser = express.json({ limit: "60mb" });
 
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
-const MAX_VIDEO_SIZE = 30 * 1024 * 1024; // 30MB
+// Cloud Run rejects requests over 32MB; base64 inflates ~37%, so ~20MB raw
+// video is the largest upload that reliably fits through the front door.
+const MAX_VIDEO_SIZE = 20 * 1024 * 1024; // 20MB
 const MAX_BATCH_SIZE = 10;
 const ALLOWED_IMAGE_TYPES = ["png", "jpeg", "jpg", "gif", "webp"];
 const ALLOWED_VIDEO_TYPES = ["mp4", "webm", "quicktime", "mov"];
@@ -244,7 +246,12 @@ router.delete(
       return;
     }
 
-    await bucket.file(pathMatch[1]).delete();
+    try {
+      await bucket.file(pathMatch[1]).delete();
+    } catch (err) {
+      // Already gone = deleted. Anything else is a real failure.
+      if ((err as { code?: number }).code !== 404) throw err;
+    }
     res.json({ success: true });
   })
 );

@@ -102,8 +102,8 @@ export function MediaUpload({
       setError("Image must be under 5MB (will be compressed)");
     }
 
-    if (isVideo && file.size > 30 * 1024 * 1024) {
-      setError("Video must be under 30MB");
+    if (isVideo && file.size > 20 * 1024 * 1024) {
+      setError("Video must be under 20MB — trim or compress it first (it gets re-compressed to ~2MB on upload anyway)");
       return;
     }
 
@@ -302,7 +302,7 @@ export function MediaUpload({
                 </svg>
                 <p className="font-mono text-[11px] text-muted">upload cover image or video</p>
                 <p className="mt-1 font-mono text-[9px] text-muted/50">
-                  click or drag & drop — images (5MB) or video (30MB max)
+                  click or drag & drop — images (5MB) or video (20MB max)
                 </p>
               </>
             )}

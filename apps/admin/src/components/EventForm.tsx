@@ -2503,7 +2503,7 @@ function EventFormInner({ event, seed, draftKey, onSave, onCancel, serifClassNam
             onFocusChange={coverType === "image" ? setCoverFocus : undefined}
           />
           <p className="mt-1.5 font-mono text-[9px] text-muted/40">
-            shown at the top of the event card and detail page. recommended: 1200 x 800px, max 5MB for images, 30MB for video. videos are auto-compressed to a light 720p loop + poster frame.
+            shown at the top of the event card and detail page. recommended: 1200 x 800px, max 5MB for images, 20MB for video. videos are auto-compressed to a light 720p loop + poster frame.
           </p>
         </div>
 

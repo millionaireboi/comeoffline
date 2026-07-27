@@ -48,6 +48,14 @@ export function EventCard({ event, index, onOpen, connectionsGoing, dateCount = 
         <div className="relative">
           {event.cover_type === "video" ? (
             <video
+              // React omits the muted ATTRIBUTE from SSR HTML (facebook/react#10389),
+              // so browsers block autoplay as "unmuted". Force it + kick playback.
+              ref={(el) => {
+                if (el) {
+                  el.muted = true;
+                  el.play().catch(() => {});
+                }
+              }}
               src={event.cover_url}
               poster={event.cover_poster_url}
               className="h-48 w-full object-cover"

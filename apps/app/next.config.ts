@@ -59,6 +59,9 @@ const nextConfig: NextConfig = {
               `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""} https://apis.google.com https://us-assets.i.posthog.com https://vercel.live https://*.vercel-scripts.com https://www.gstatic.com https://www.google.com https://connect.facebook.net`,
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob: https://storage.googleapis.com https://*.firebasestorage.googleapis.com https://purecatamphetamine.github.io https://www.facebook.com https://www.google.com https://www.gstatic.com",
+              // video covers stream from Firebase Storage — without media-src they
+              // fall back to default-src 'self' and get blocked entirely
+              "media-src 'self' blob: https://storage.googleapis.com https://*.firebasestorage.googleapis.com",
               "font-src 'self' data:",
               isDev
                 ? "connect-src *"

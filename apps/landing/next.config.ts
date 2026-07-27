@@ -60,6 +60,9 @@ const nextConfig: NextConfig = {
               `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""} https://us-assets.i.posthog.com https://connect.facebook.net`,
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob: https://storage.googleapis.com https://*.firebasestorage.googleapis.com https://www.facebook.com",
+              // video covers stream from Firebase Storage — without media-src they
+              // fall back to default-src 'self' and get blocked entirely
+              "media-src 'self' blob: https://storage.googleapis.com https://*.firebasestorage.googleapis.com",
               "font-src 'self' data:",
               `connect-src 'self' ${apiUrl}${isDev ? " ws://localhost:*" : ""} https://www.facebook.com https://connect.facebook.net`,
               "frame-src 'none'",

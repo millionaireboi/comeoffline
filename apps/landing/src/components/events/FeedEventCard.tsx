@@ -117,6 +117,14 @@ export function FeedEventCard({ event, index, onOpen, dateCount = 1 }: FeedEvent
         <div style={{ position: "relative", height: 180, overflow: "hidden" }}>
           {event.cover_type === "video" ? (
             <video
+              // React omits the muted ATTRIBUTE from SSR HTML (facebook/react#10389),
+              // so browsers block autoplay as "unmuted". Force it + kick playback.
+              ref={(el) => {
+                if (el) {
+                  el.muted = true;
+                  el.play().catch(() => {});
+                }
+              }}
               src={event.cover_url}
               poster={event.cover_poster_url}
               style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: event.cover_focus || "center", display: "block" }}

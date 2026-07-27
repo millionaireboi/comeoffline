@@ -154,6 +154,15 @@ function CoverMedia({ event }: { event: any }) {
     return (
       <div style={{ position: "relative", width: "100%", height: 170, overflow: "hidden", flexShrink: 0 }}>
         <video
+          // React omits the muted ATTRIBUTE from SSR HTML (facebook/react#10389),
+          // so browsers treat the video as unmuted and block autoplay. Force the
+          // property and kick playback on mount.
+          ref={(el) => {
+            if (el) {
+              el.muted = true;
+              el.play().catch(() => {});
+            }
+          }}
           src={event.cover_url}
           poster={event.cover_poster_url}
           style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: event.cover_focus || "center", display: "block" }}

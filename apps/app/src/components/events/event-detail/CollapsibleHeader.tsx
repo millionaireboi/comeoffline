@@ -65,6 +65,14 @@ export function CollapsibleHeader({ event, onClose }: CollapsibleHeaderProps) {
         <div className="relative overflow-hidden" style={{ height: HERO_HEIGHT }}>
           {isVideo ? (
             <video
+              // React omits the muted ATTRIBUTE from SSR HTML (facebook/react#10389),
+              // so browsers block autoplay as "unmuted". Force it + kick playback.
+              ref={(el) => {
+                if (el) {
+                  el.muted = true;
+                  el.play().catch(() => {});
+                }
+              }}
               src={event.cover_url}
               poster={event.cover_poster_url}
               className="h-full w-full object-cover"

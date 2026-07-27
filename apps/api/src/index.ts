@@ -53,8 +53,9 @@ app.set("trust proxy", 1);
 app.use(helmet());
 app.use(cors({ origin: env.allowedOrigins, credentials: true }));
 const jsonParser = express.json({
-  // 16mb: WhatsApp video template headers arrive as base64 data URIs (~10MB binary + 37% overhead)
-  limit: "16mb",
+  // 24mb: WhatsApp video template headers arrive as base64 data URIs — Meta caps
+  // the video at 16MB binary, +37% base64 overhead ≈ 22MB (Cloud Run caps at 32MB)
+  limit: "24mb",
   verify: (req: any, _res, buf) => {
     req.rawBody = buf.toString();
   },

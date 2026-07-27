@@ -300,10 +300,10 @@ router.post("/whatsapp/upload-media", strictLimiter, requireAdmin, async (req: A
     const mimeType = match[1];
     const buffer = Buffer.from(match[2], "base64");
     const isVideo = mimeType.startsWith("video/");
-    // Meta caps template header video at 16MB, but our JSON body limit means ~10MB binary max.
-    const maxBytes = (isVideo ? 10 : 5) * 1024 * 1024;
+    // 16MB video = Meta's template-header cap; the 24mb JSON limit covers its base64 envelope.
+    const maxBytes = (isVideo ? 16 : 5) * 1024 * 1024;
     if (buffer.length > maxBytes) {
-      res.status(400).json({ success: false, error: `${isVideo ? "Video" : "Image"} must be under ${isVideo ? 10 : 5}MB` });
+      res.status(400).json({ success: false, error: `${isVideo ? "Video" : "Image"} must be under ${isVideo ? 16 : 5}MB` });
       return;
     }
     const result = await uploadMedia({ buffer, mimeType, filename: `header.${mimeType.split("/")[1]}` });

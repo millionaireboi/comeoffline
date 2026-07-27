@@ -355,20 +355,33 @@ function CampaignComposer({
   function pickMedia(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    const mb = (file.size / 1024 / 1024).toFixed(1);
     const wantsVideo = template?.hasVideoHeader === true;
+    const reject = (why: string) => {
+      // Clear the native input so a rejected file's name doesn't linger and
+      // look successfully attached.
+      e.target.value = "";
+      setMediaDataUri(null);
+      setMediaFilename(null);
+      setMessage(why);
+    };
     if (wantsVideo) {
-      if (!/^video\/(mp4|3gpp)$/.test(file.type) || file.size > 10 * 1024 * 1024) {
-        setMessage("Header video must be MP4 under 10MB");
+      if (!/^video\/(mp4|3gpp)$/.test(file.type)) {
+        reject(`"${file.name}" is ${file.type || "an unknown type"} — WhatsApp needs MP4 (H.264 + AAC)`);
+        return;
+      }
+      if (file.size > 16 * 1024 * 1024) {
+        reject(`"${file.name}" is ${mb}MB — WhatsApp caps header videos at 16MB. Compress it and retry.`);
         return;
       }
     } else if (!/^image\/(png|jpeg|jpg)$/.test(file.type) || file.size > 5 * 1024 * 1024) {
-      setMessage("Header image must be PNG/JPEG under 5MB");
+      reject(`Header image must be PNG/JPEG under 5MB ("${file.name}" is ${mb}MB)`);
       return;
     }
     const reader = new FileReader();
     reader.onload = () => {
       setMediaDataUri(String(reader.result));
-      setMediaFilename(file.name);
+      setMediaFilename(`${file.name} (${mb}MB)`);
       setMessage("");
     };
     reader.readAsDataURL(file);
@@ -491,7 +504,7 @@ function CampaignComposer({
             <label className="block">
               <span className="mb-1 block font-mono text-[10px] uppercase tracking-[1.5px] text-muted">
                 {template.hasVideoHeader
-                  ? "header video (MP4, <10MB)"
+                  ? "header video (MP4, <16MB)"
                   : "header image (PNG/JPEG, <5MB)"}
               </span>
               <input

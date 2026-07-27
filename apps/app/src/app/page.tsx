@@ -13,6 +13,7 @@ import { apiFetch } from "@/lib/api";
 import { isFullProfileComplete } from "@/lib/profile-completion";
 import type { Ticket, Event } from "@comeoffline/types";
 import { PWAInstallPrompt } from "@/components/shared/PWAInstallPrompt";
+import { PinNudge } from "@/components/shared/PinNudge";
 import { AcceptanceScreen } from "@/components/gates/AcceptanceScreen";
 import { EventFeed } from "@/components/events/EventFeed";
 import { CountdownScreen } from "@/components/events/CountdownScreen";
@@ -506,6 +507,7 @@ export default function Home() {
       {showNav && <BottomNav onChatOpen={() => setChatOpen(true)} />}
       {chatOpen && <InAppChat onClose={() => setChatOpen(false)} />}
       <PWAInstallPrompt />
+      {showNav && <PinNudge />}
       <Toast />
       {resumeTicket && !paymentUx && (
         <ResumePaymentSheet

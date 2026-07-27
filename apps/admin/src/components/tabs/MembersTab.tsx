@@ -96,6 +96,7 @@ export function MembersTab() {
   const [addingNote, setAddingNote] = useState(false);
   const [statusUpdating, setStatusUpdating] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [rescueLoading, setRescueLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
@@ -205,6 +206,32 @@ export function MembersTab() {
       setAddingNote(false);
     }
   }, [drawerMemberId, newNote, getIdToken]);
+
+  // One-time sign-in link for locked-out members (no PIN + WhatsApp OTPs down).
+  const handleRescueLink = useCallback(async () => {
+    if (!drawerMemberId) return;
+    setRescueLoading(true);
+    try {
+      const token = await getIdToken();
+      if (!token) return;
+      const res = await fetch(`${API_URL}/api/admin/members/${drawerMemberId}/rescue-link`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.success && data.data?.url) {
+        await navigator.clipboard.writeText(data.data.url);
+        toast.success("sign-in link copied — single use, valid 15 min");
+      } else {
+        toast.error(data.error || "couldn't create the link");
+      }
+    } catch (err) {
+      console.error("Failed to create rescue link:", err);
+      toast.error("couldn't create the link — try again");
+    } finally {
+      setRescueLoading(false);
+    }
+  }, [drawerMemberId, getIdToken]);
 
   const handleDelete = useCallback(async () => {
     if (!drawerMemberId) return;
@@ -611,6 +638,20 @@ export function MembersTab() {
                           ))}
                         </div>
                       )}
+                    </div>
+
+                    {/* One-time sign-in link — for members locked out while whatsapp OTPs are down */}
+                    <div className="mt-4">
+                      <button
+                        onClick={handleRescueLink}
+                        disabled={rescueLoading || profile.user.status === "inactive"}
+                        className="w-full rounded-lg border border-caramel/25 bg-caramel/10 px-3 py-2.5 font-mono text-[11px] text-caramel transition-colors hover:bg-caramel/15 disabled:opacity-40"
+                      >
+                        {rescueLoading ? "creating link..." : "copy one-time sign-in link"}
+                      </button>
+                      <p className="mt-1.5 font-mono text-[9px] leading-relaxed text-muted/60">
+                        signs them straight in — send it only to this member, on a channel you trust. single use, expires in 15 min.
+                      </p>
                     </div>
 
                     {/* Delete member */}

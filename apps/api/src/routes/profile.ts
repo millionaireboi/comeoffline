@@ -316,6 +316,22 @@ router.post("/me/pin", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
+/** GET /api/users/me/pin-status — whether a PIN is set (pin_hash never leaves the server) */
+router.get("/me/pin-status", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const db = await getDb();
+    const doc = await db.collection("users").doc(req.uid!).get();
+    if (!doc.exists) {
+      res.status(404).json({ success: false, error: "User not found" });
+      return;
+    }
+    res.json({ success: true, data: { has_pin: !!doc.data()?.pin_hash } });
+  } catch (err) {
+    console.error("[profile] pin-status error:", err);
+    res.status(500).json({ success: false, error: "Failed to fetch PIN status" });
+  }
+});
+
 /** GET /api/users/me/connections — Get enriched mutual connections */
 router.get("/me/connections", requireAuth, async (req: AuthRequest, res) => {
   try {

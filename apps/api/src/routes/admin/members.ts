@@ -3,8 +3,10 @@ import { requireAdmin, type AuthRequest } from "../../middleware/auth";
 import { asyncHandler } from "../../middleware/errorHandler";
 import { getUsers } from "../../services/applications.service";
 import { getUserProfile, deleteUser } from "../../services/profile.service";
+import { generateHandoffToken } from "../../services/auth.service";
 import { getDb, getAuthService } from "../../config/firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
+import { env } from "../../config/env";
 
 const router = Router();
 
@@ -29,6 +31,45 @@ router.get("/", requireAdmin, async (_req: AuthRequest, res) => {
     }
 
     res.status(500).json({ success: false, error: "Failed to fetch members" });
+  }
+});
+
+/**
+ * POST /api/admin/members/:id/rescue-link
+ * Mints a one-time sign-in link (15-min handoff token) for a member who is locked
+ * out — e.g. slim-onboarding members with no PIN while WhatsApp OTPs are down.
+ * The admin sends the link over any channel; opening it signs the member in.
+ */
+router.post("/:id/rescue-link", requireAdmin, async (req: AuthRequest, res) => {
+  try {
+    const userId = String(req.params.id);
+    const db = await getDb();
+    const doc = await db.collection("users").doc(userId).get();
+    if (!doc.exists) {
+      res.status(404).json({ success: false, error: "Member not found" });
+      return;
+    }
+    const data = doc.data()!;
+    if (data.status === "inactive") {
+      res.status(403).json({ success: false, error: "Account is no longer active" });
+      return;
+    }
+
+    const status = data.status === "provisional" ? "provisional" as const : "active" as const;
+    const token = await generateHandoffToken(userId, "landing", status);
+    console.log(`[admin/members] rescue link minted for ${userId} by ${req.uid}`);
+
+    res.json({
+      success: true,
+      data: {
+        url: `${env.appUrl}/?token=${token}`,
+        expires_in_minutes: 15,
+        single_use: true,
+      },
+    });
+  } catch (err) {
+    console.error("[admin/members] rescue-link error:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
   }
 });
 

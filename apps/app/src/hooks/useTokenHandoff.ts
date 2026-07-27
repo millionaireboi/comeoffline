@@ -47,8 +47,9 @@ export function useTokenHandoff() {
       setPendingPurchaseEventId(deepLinkEventId);
       if (deepLinkTierId) {
         setPendingDeepLinkTierId(deepLinkTierId);
-        // A tiered link means they tapped BUY on the landing page — they've seen
-        // the pitch, so go straight to checkout instead of re-pitching in-app.
+        // A tiered link means they tapped BUY on the landing page — they've
+        // seen the pitch, so the event opens with the checkout wizard already
+        // up (works logged-out; account is created at the pay tap).
         setPendingCheckout(true);
       }
     }

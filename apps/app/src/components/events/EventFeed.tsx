@@ -117,13 +117,13 @@ export function EventFeed() {
         setPendingDeepLinkTierId(null);
       }
       const { pendingCheckout, setPendingCheckout } = useAppStore.getState();
-      if (pendingCheckout && user) {
+      if (pendingCheckout) {
         setDetailAutoCheckout(true);
         setPendingCheckout(false);
       }
     }
     setPendingPurchaseEventId(null);
-  }, [pendingPurchaseEventId, events, setPendingPurchaseEventId, setCurrentEvent, pendingDeepLinkTierId, setPendingDeepLinkTierId, user]);
+  }, [pendingPurchaseEventId, events, setPendingPurchaseEventId, setCurrentEvent, pendingDeepLinkTierId, setPendingDeepLinkTierId]);
 
   // Legacy RSVP flow for free events
   const handleRsvp = useCallback(
@@ -250,6 +250,9 @@ export function EventFeed() {
         console.error("Ticket purchase failed:", err);
         showToast("couldn't complete purchase. try again.", "error");
       } finally {
+        // Redirect path never reaches here (page unloads); on completion or
+        // failure, release the stage machine.
+        useAppStore.getState().setCheckoutInFlight(false);
         actionLockRef.current = false;
         setActionLoading(false);
       }

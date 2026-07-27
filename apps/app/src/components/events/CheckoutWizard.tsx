@@ -7,6 +7,10 @@ import { useAuth } from "@/hooks/useAuth";
 import { useAppStore } from "@/store/useAppStore";
 import { apiFetch } from "@/lib/api";
 import { ageFromDob, identityNeeds } from "@/lib/identity";
+import { tierAvailable, tierSoldOut, tierRemaining } from "@/lib/tiers";
+import PhoneInput, { isValidPhoneNumber } from "react-phone-number-input";
+import "react-phone-number-input/style.css";
+import type { User } from "@comeoffline/types";
 
 interface SelectedAddon {
   addon_id: string;
@@ -30,11 +34,15 @@ interface AppliedDiscount {
 interface IdentityDraft {
   needsName: boolean;
   needsDob: boolean;
+  /** Anonymous buyer (no account yet) — phone collected here, account created at pay tap */
+  needsPhone: boolean;
   minAge?: number;
   name: string;
   dob: string;
+  phone: string;
   onNameChange: (v: string) => void;
   onDobChange: (v: string) => void;
+  onPhoneChange: (v: string) => void;
   /** DOB already on file fails the event's age gate — purchase is blocked */
   ageBlocked: boolean;
   error: string | null;
@@ -128,7 +136,7 @@ function TierStep({
     (t) =>
       (!t.per_person || t.per_person <= 1) &&
       t.price > 0 &&
-      t.sold < t.capacity &&
+      tierAvailable(t) &&
       (!t.deadline || new Date(t.deadline) >= now) &&
       (!t.opens_at || new Date(t.opens_at) <= now),
   );
@@ -165,11 +173,12 @@ function TierStep({
         </div>
       )}
       {tiers.map((tier) => {
-        const soldOut = tier.sold >= tier.capacity;
+        const soldOut = tierSoldOut(tier);
         const closed = tier.deadline ? new Date(tier.deadline) < new Date() : false;
         const notYetOpen = tier.opens_at ? new Date(tier.opens_at) > new Date() : false;
         const unavailable = soldOut || closed || notYetOpen;
-        const remaining = tier.capacity - tier.sold;
+        // null when the public payload strips raw counts — count UI hides itself
+        const remaining = tierRemaining(tier);
 
         return (
           <button
@@ -196,7 +205,7 @@ function TierStep({
               </span>
             </div>
             <div className="flex items-center gap-3">
-              {!unavailable && (
+              {!unavailable && remaining !== null && (
                 <div className="flex items-center gap-1.5">
                   <div
                     className="h-1.5 w-1.5 rounded-full"
@@ -1037,7 +1046,7 @@ function SummaryStep({
 
   return (
     <>
-      {(identity.needsName || identity.needsDob || identity.ageBlocked) && (
+      {(identity.needsName || identity.needsDob || identity.needsPhone || identity.ageBlocked) && (
         <div className="mb-3 rounded-[16px] border border-sand bg-white p-5">
           <span className="mb-3 block font-mono text-[10px] uppercase tracking-[2px] text-muted">
             your details
@@ -1079,6 +1088,29 @@ function SummaryStep({
                   this event is {identity.minAge}+ &mdash; saved to your profile, we won&apos;t ask again
                 </p>
               )}
+            </div>
+          )}
+          {identity.needsPhone && (
+            <div className={identity.needsName || identity.needsDob ? "mt-3" : ""}>
+              <label className="mb-1.5 block font-sans text-[13px] text-warm-brown">
+                phone number
+              </label>
+              <div className="phone-input-wrapper rounded-xl border border-sand bg-cream/50 px-3 py-2.5">
+                <PhoneInput
+                  international
+                  defaultCountry="IN"
+                  value={identity.phone}
+                  onChange={(v) => identity.onPhoneChange(v || "")}
+                  numberInputProps={{
+                    className: "bg-transparent font-sans text-[14px] text-near-black outline-none w-full",
+                    inputMode: "tel" as const,
+                    autoComplete: "tel",
+                  }}
+                />
+              </div>
+              <p className="mt-1.5 font-mono text-[10px] text-muted">
+                your ticket lives on this number — no OTP, no spam.
+              </p>
             </div>
           )}
           {identity.ageBlocked && (
@@ -1352,7 +1384,7 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
     // available tier. It's auto-selected, and the user already saw the price
     // on the event detail; making them "choose" the only option twice is
     // pure friction. (The summary step still shows the tier + price.)
-    const singleAvailableTier = tiers.length === 1 && tiers[0].sold < tiers[0].capacity;
+    const singleAvailableTier = tiers.length === 1 && tierAvailable(tiers[0]);
     if (!singleAvailableTier) s.push({ type: "tier" });
     // Time slots after tier
     if (timeSlotsEnabled) s.push({ type: "timeslot" });
@@ -1375,10 +1407,10 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [selectedTierId, setSelectedTierId] = useState<string | null>(() => {
     // Prefer the tier picked on the event detail (if still available)
-    if (initialTierId && tiers.some((t) => t.id === initialTierId && t.sold < t.capacity)) {
+    if (initialTierId && tiers.some((t) => t.id === initialTierId && tierAvailable(t))) {
       return initialTierId;
     }
-    return tiers.length === 1 && tiers[0].sold < tiers[0].capacity ? tiers[0].id : null;
+    return tiers.length === 1 && tierAvailable(tiers[0]) ? tiers[0].id : null;
   });
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<string | null>(null);
   const [selectedPickup, setSelectedPickup] = useState<string | null>(
@@ -1412,13 +1444,17 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
   const user = useAppStore((s) => s.user);
   const setUser = useAppStore((s) => s.setUser);
   const { needsName, needsDob, ageBlocked } = identityNeeds(user, event.min_age);
+  // Anonymous buyer — the wizard collects the phone and the account is created
+  // invisibly at the pay tap (BookMyShow-style; no pre-checkout sign-in screen).
+  const needsPhone = !user;
   const [ticketName, setTicketName] = useState("");
   const [ticketDob, setTicketDob] = useState("");
+  const [ticketPhone, setTicketPhone] = useState("");
   const [identityError, setIdentityError] = useState<string | null>(null);
   const [savingIdentity, setSavingIdentity] = useState(false);
 
   // Live seating polling
-  const { getIdToken } = useAuth();
+  const { getIdToken, loginWithToken } = useAuth();
   const [liveSeating, setLiveSeating] = useState<SeatingConfig | null>(null);
   const [liveAddonSeating, setLiveAddonSeating] = useState<Record<string, AddonSeatingConfig> | null>(null);
   const [seatConflictToast, setSeatConflictToast] = useState<string | null>(null);
@@ -1432,7 +1468,8 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
   const isGroupTier = !!(selectedTier?.per_person && selectedTier.per_person > 1);
   const maxTicketQty = useMemo(() => {
     if (!selectedTier || isGroupTier) return 1;
-    const tierLeft = selectedTier.capacity - selectedTier.sold;
+    // Public payload strips raw counts — treat missing counts as no tier cap
+    const tierLeft = tierRemaining(selectedTier) ?? Number.MAX_SAFE_INTEGER;
     return Math.max(1, Math.min(event.ticketing?.max_per_user || 1, tierLeft));
   }, [selectedTier, isGroupTier, event.ticketing?.max_per_user]);
   const effectiveQty = Math.min(ticketQty, maxTicketQty);
@@ -1706,6 +1743,7 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
       case "summary": {
         if (ageBlocked) return false;
         if (needsName && !ticketName.trim()) return false;
+        if (needsPhone && (!ticketPhone || !isValidPhoneNumber(ticketPhone))) return false;
         if (event.min_age && needsDob) {
           const age = ticketDob ? ageFromDob(ticketDob) : null;
           if (age == null || age < event.min_age) return false;
@@ -1719,6 +1757,38 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
   };
 
   const handleNext = async () => {
+    // Anonymous buyer at the pay tap — create their account from the typed
+    // phone (no OTP while WhatsApp is restricted), sign in silently, then
+    // continue into the normal purchase path. checkoutInFlight keeps useStage
+    // from yanking the screen to onboarding while this runs.
+    if (isLastStep && needsPhone) {
+      setSavingIdentity(true);
+      setIdentityError(null);
+      useAppStore.getState().setCheckoutInFlight(true);
+      try {
+        const res = await apiFetch<{
+          success: boolean;
+          data: { token: string; user: Record<string, unknown> };
+        }>("/api/auth/continue/phone/express", {
+          method: "POST",
+          body: JSON.stringify({ phone: ticketPhone }),
+        });
+        if (res.data.user) setUser(res.data.user as unknown as User);
+        await loginWithToken(res.data.token);
+      } catch (err) {
+        useAppStore.getState().setCheckoutInFlight(false);
+        const msg = err instanceof Error ? err.message : "";
+        setIdentityError(
+          msg.toLowerCase().includes("already has an account")
+            ? "this number already has an account — close checkout and sign in with your handle & PIN first."
+            : "couldn't set up your ticket account. check the number and try again.",
+        );
+        setSavingIdentity(false);
+        return;
+      }
+      setSavingIdentity(false);
+    }
+
     // Name/DOB collected on the summary step are profile fields, not ticket
     // fields — persist them before purchase so the payment link, admin lists,
     // and the server-side age gate all see them.
@@ -1731,15 +1801,17 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
         const body: Record<string, string> = {};
         if (needsName) body.name = ticketName.trim();
         if (needsDob) body.date_of_birth = ticketDob;
-        await apiFetch("/api/profile/me", { method: "PUT", token, body: JSON.stringify(body) });
-        if (user) {
+        await apiFetch("/api/users/me", { method: "PUT", token, body: JSON.stringify(body) });
+        const freshUser = useAppStore.getState().user;
+        if (freshUser) {
           setUser({
-            ...user,
+            ...freshUser,
             ...(needsName ? { name: ticketName.trim() } : {}),
             ...(needsDob ? { date_of_birth: ticketDob } : {}),
           });
         }
       } catch (err) {
+        useAppStore.getState().setCheckoutInFlight(false);
         setIdentityError(
           err instanceof Error && err.message ? err.message.toLowerCase() : "couldn't save your details. try again.",
         );
@@ -2031,11 +2103,14 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
               identity={{
                 needsName,
                 needsDob,
+                needsPhone,
                 minAge: event.min_age,
                 name: ticketName,
                 dob: ticketDob,
+                phone: ticketPhone,
                 onNameChange: setTicketName,
                 onDobChange: setTicketDob,
+                onPhoneChange: setTicketPhone,
                 ageBlocked,
                 error: identityError,
               }}

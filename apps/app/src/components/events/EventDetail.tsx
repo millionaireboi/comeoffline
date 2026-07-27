@@ -132,10 +132,11 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
   );
   const [showWizard, setShowWizard] = useState(false);
 
-  // Committed buyer (landing buy link / post-sign-in buy tap) — skip the
-  // re-pitch and drop them straight into the checkout wizard.
+  // Committed buyer (landing buy link) — skip the re-pitch and drop them
+  // straight into the checkout wizard. Works logged-out: the wizard collects
+  // the phone and creates the account at the pay tap.
   useEffect(() => {
-    if (autoCheckout && user && isTicketed && selectedTierId) {
+    if (autoCheckout && isTicketed && selectedTierId) {
       setShowWizard(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -169,7 +170,7 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
       const body: Record<string, string> = {};
       if (needsName) body.name = idName.trim();
       if (needsDob) body.date_of_birth = idDob;
-      await apiFetch("/api/profile/me", { method: "PUT", token, body: JSON.stringify(body) });
+      await apiFetch("/api/users/me", { method: "PUT", token, body: JSON.stringify(body) });
       if (user) {
         setUser({
           ...user,
@@ -223,15 +224,13 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
       handleViewTicket();
       return;
     }
-    // Logged-out visitor committing to buy — this is the one moment we ask for
-    // a number. Intent is captured so after entry the feed reopens this event
-    // with the tier preselected.
-    if (!user) {
-      const { setPendingPurchaseEventId, setPendingDeepLinkTierId, setSignInPromptOpen, setPendingCheckout } = useAppStore.getState();
+    // Ticketed purchases run fully anonymous — the wizard collects name/phone
+    // and creates the account at the pay tap. Only the free-RSVP path (which
+    // needs an account up front) sends logged-out visitors to sign-in.
+    if (!user && !(isTicketed && onTicketPurchase)) {
+      const { setPendingPurchaseEventId, setPendingDeepLinkTierId, setSignInPromptOpen } = useAppStore.getState();
       setPendingPurchaseEventId(event.id);
       if (selectedTierId) setPendingDeepLinkTierId(selectedTierId);
-      // They tapped buy — after entry, reopen this event straight into checkout.
-      setPendingCheckout(true);
       setSignInPromptOpen(true);
       return;
     }

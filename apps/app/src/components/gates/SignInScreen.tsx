@@ -427,9 +427,11 @@ export function SignInScreen({ onBack }: { onBack?: () => void } = {}) {
               />
             </div>
             <p className="mt-2 font-mono text-[10px] text-muted/50">
-              {phoneVerifyOff
-                ? "new here? just your number gets you in — no code needed. already a member? use your handle & PIN."
-                : "we'll send a 6-digit code on whatsapp. new here? this signs you up too."}
+              {useAppStore.getState().pendingCheckout
+                ? "almost there — your number is the last step before checkout. no code needed."
+                : phoneVerifyOff
+                  ? "new here? just your number gets you in — no code needed. already a member? use your handle & PIN."
+                  : "we'll send a 6-digit code on whatsapp. new here? this signs you up too."}
             </p>
           </div>
 

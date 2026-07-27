@@ -18,6 +18,15 @@ export function useStage() {
       // Dev preview mode: leave stage alone so a `?devStage=...` URL stays sticky.
       if (getDevStageOverride()) return;
 
+      // Pay tap in flight (anonymous buyer: express account → ticket → Razorpay
+      // redirect). The account appearing mid-purchase must not yank the screen
+      // to onboarding — the redirect is seconds away. Timestamped so a failed
+      // flow can't freeze stage transitions forever.
+      const { checkoutInFlight, checkoutInFlightAt } = useAppStore.getState();
+      if (checkoutInFlight && checkoutInFlightAt && Date.now() - checkoutInFlightAt < 2 * 60 * 1000) {
+        return;
+      }
+
       if (!user) {
         setStage("gate");
         return;

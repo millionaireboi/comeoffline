@@ -109,6 +109,12 @@ interface AppState {
   pendingCheckout: boolean;
   setPendingCheckout: (pending: boolean) => void;
 
+  // True while the pay tap is running (express account creation → ticket →
+  // Razorpay redirect). useStage must not yank the screen away mid-flight.
+  checkoutInFlight: boolean;
+  checkoutInFlightAt: number | null;
+  setCheckoutInFlight: (inFlight: boolean) => void;
+
   // Toast notifications
   toast: { message: string; type: "error" | "success" | "info" } | null;
   showToast: (message: string, type?: "error" | "success" | "info") => void;
@@ -177,6 +183,11 @@ export const useAppStore = create<AppState>()(
 
   pendingCheckout: false,
   setPendingCheckout: (pending) => set({ pendingCheckout: pending }),
+
+  checkoutInFlight: false,
+  checkoutInFlightAt: null,
+  setCheckoutInFlight: (inFlight) =>
+    set({ checkoutInFlight: inFlight, checkoutInFlightAt: inFlight ? Date.now() : null }),
 
   attribution: null,
   setAttribution: (attribution) => set({ attribution, attributionAt: attribution ? Date.now() : null }),

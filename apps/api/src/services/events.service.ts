@@ -1,4 +1,5 @@
 import { getDb } from "../config/firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 import type { Event, PastPhoto } from "@comeoffline/types";
 
 /** Only allow http/https URLs; reject javascript:, data:, etc. */
@@ -316,6 +317,14 @@ export async function updateEvent(
   // Keep the age gate numeric — 0 clears it
   if ("min_age" in safeData) {
     safeData.min_age = Number(safeData.min_age) > 0 ? Number(safeData.min_age) : 0;
+  }
+
+  // A cover change without a poster (image cover, or a video whose transcode
+  // failed) must CLEAR any stored poster — `undefined` is dropped by JSON so
+  // it never reaches Firestore, and a stale poster would render over the new
+  // cover and leak into og:image.
+  if (("cover_url" in safeData || "cover_type" in safeData) && !safeData.cover_poster_url) {
+    safeData.cover_poster_url = FieldValue.delete();
   }
 
   // Sanitize pickup_points capacity if present

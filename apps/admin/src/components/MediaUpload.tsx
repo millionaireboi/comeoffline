@@ -149,19 +149,28 @@ export function MediaUpload({
     try {
       const token = await getIdToken();
       if (!token) return;
+      const headers = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      };
       await fetch(`${API_URL}/api/admin/upload`, {
         method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers,
         body: JSON.stringify({ url: value }),
       });
+      // Transcoded videos have a sibling poster frame — best-effort cleanup
+      if (mediaType === "video" && value.endsWith(".mp4")) {
+        fetch(`${API_URL}/api/admin/upload`, {
+          method: "DELETE",
+          headers,
+          body: JSON.stringify({ url: value.replace(/\.mp4$/, "-poster.jpg") }),
+        }).catch(() => {});
+      }
       onClear();
     } catch (err) {
       console.error("Delete failed:", err);
     }
-  }, [getIdToken, value, onClear]);
+  }, [getIdToken, value, mediaType, onClear]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();

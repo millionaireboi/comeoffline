@@ -175,16 +175,23 @@ export function usePWAInstall(): PWAInstallState {
   // On iOS, only Safari supports Add to Home Screen
   const canInstallDirectly = isIOS ? browser === "safari" : true;
 
+  // Ambient (visit-2+) install prompting is HIDDEN for now, not removed —
+  // nothing competes with buying a ticket. Flip to true to restore it.
+  // The post-booking trigger stays on either way: the sale is already done
+  // and the prompt keeps their ticket a tap away.
+  const AMBIENT_INSTALL_PROMPT = false;
+
   // Progressive prompting logic:
   // - Never show if standalone (already installed)
   // - Never show if dismissed recently (7-day cooldown)
   // - Visit 1: no prompt
-  // - Visit 2+: eligible for prompt
+  // - Visit 2+: eligible for prompt (only while AMBIENT_INSTALL_PROMPT is on)
   // - Force-triggered (after booking): always show
   const shouldShowPrompt = (() => {
     if (isStandalone) return false;
     if (wasInstalled()) return false;
     if (isTriggered) return true;
+    if (!AMBIENT_INSTALL_PROMPT) return false;
     if (dismissed) return false;
     return visitCount >= 2;
   })();

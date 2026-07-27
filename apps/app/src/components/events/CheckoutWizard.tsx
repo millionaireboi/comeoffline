@@ -110,14 +110,46 @@ function TierStep({
   selected,
   onSelect,
   accent,
+  groupSlabs,
 }: {
   tiers: TicketTier[];
   selected: string | null;
   onSelect: (id: string) => void;
   accent: string;
+  groupSlabs?: GroupDiscountSlab[];
 }) {
+  // Pitch the group discount before a tier/quantity is even picked — slabs
+  // only apply to solo tiers, so hide when there's no solo tier to buy.
+  const hasSoloTier = tiers.some((t) => (!t.per_person || t.per_person <= 1) && t.price > 0);
+  const slabs = hasSoloTier ? (groupSlabs || []).slice().sort((a, b) => a.min_qty - b.min_qty) : [];
+
   return (
     <div className="flex flex-col gap-2.5">
+      {slabs.length > 0 && (
+        <div
+          className="flex items-center gap-2.5 rounded-[14px] px-3.5 py-2.5"
+          style={{ background: accent + "0C", border: `1px dashed ${accent}55` }}
+        >
+          <span className="shrink-0 text-[15px]">👯</span>
+          <p className="font-sans text-xs leading-relaxed text-warm-brown">
+            <span className="font-medium text-near-black">cheaper with friends — </span>
+            {slabs.map((s, i) => (
+              <span key={s.min_qty}>
+                {i > 0 && <span className="opacity-50"> · </span>}
+                {s.max_qty == null
+                  ? `${s.min_qty}+`
+                  : s.max_qty === s.min_qty
+                    ? `${s.min_qty}`
+                    : `${s.min_qty}–${s.max_qty}`}{" "}
+                tickets{" "}
+                <span className="font-medium" style={{ color: accent }}>
+                  {s.percent}% off
+                </span>
+              </span>
+            ))}
+          </p>
+        </div>
+      )}
       {tiers.map((tier) => {
         const soldOut = tier.sold >= tier.capacity;
         const closed = tier.deadline ? new Date(tier.deadline) < new Date() : false;
@@ -1900,6 +1932,7 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
               selected={selectedTierId}
               onSelect={setSelectedTierId}
               accent={event.accent_dark}
+              groupSlabs={event.ticketing?.group_discounts}
             />
           )}
 

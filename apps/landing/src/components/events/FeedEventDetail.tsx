@@ -235,6 +235,25 @@ export function FeedEventDetail({ event, onClose, siblings, onSwitchEvent, inlin
     ).id;
   });
   const isFree = tiers.length === 0 || (cheapestPrice !== null && cheapestPrice === 0);
+
+  // Group-discount slabs — surfaced up-front as a "bring friends" pitch.
+  // Slabs only apply to solo-tier multi-quantity orders (per_person tiers
+  // already price the whole pass), so hide when no solo tier is available.
+  const groupSlabs = ((event.ticketing?.group_discounts || []) as Array<{
+    min_qty: number;
+    max_qty?: number | null;
+    percent: number;
+  }>)
+    .slice()
+    .sort((a, b) => a.min_qty - b.min_qty);
+  const hasSoloTier = availableTiers.some((t) => !t.per_person || t.per_person <= 1);
+  const showGroupSlabs = !isFree && hasSoloTier && groupSlabs.length > 0;
+  const slabRange = (s: { min_qty: number; max_qty?: number | null }) =>
+    s.max_qty == null
+      ? `${s.min_qty}+`
+      : s.max_qty === s.min_qty
+        ? `${s.min_qty}`
+        : `${s.min_qty}–${s.max_qty}`;
   const fillPct = event.total_spots > 0 ? (event.spots_taken / event.total_spots) * 100 : 0;
   const fillingFast = !isFree && fillPct >= 70 && spotsLeft > 0;
 
@@ -739,6 +758,39 @@ export function FeedEventDetail({ event, onClose, siblings, onSwitchEvent, inlin
                       );
                     })}
                   </div>
+                  {showGroupSlabs && (
+                    <div
+                      style={{
+                        marginTop: 10,
+                        background: accent + "0C",
+                        border: `1px dashed ${accent}45`,
+                        borderRadius: 12,
+                        padding: "10px 14px",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                      }}
+                    >
+                      <span style={{ fontSize: 15, flexShrink: 0 }}>👯</span>
+                      <span
+                        className="font-sans text-[12px]"
+                        style={{ color: P.warmBrown, lineHeight: 1.45 }}
+                      >
+                        <span style={{ fontWeight: 600, color: P.nearBlack }}>
+                          cheaper with friends —{" "}
+                        </span>
+                        {groupSlabs.map((s, i) => (
+                          <span key={s.min_qty}>
+                            {i > 0 && <span style={{ opacity: 0.5 }}> · </span>}
+                            {slabRange(s)} tickets{" "}
+                            <span style={{ color: accentDark, fontWeight: 600 }}>
+                              {s.percent}% off
+                            </span>
+                          </span>
+                        ))}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -802,6 +854,99 @@ export function FeedEventDetail({ event, onClose, siblings, onSwitchEvent, inlin
                         )}
                       </figure>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Venue — the public API only sends venue_name/venue_photos once
+                  venue_reveal_date has passed, so presence of venue_name IS the
+                  reveal check. Address + directions never reach this endpoint;
+                  they stay in the app for people who've booked. */}
+              {event.venue_name && (
+                <div style={{ marginBottom: 20 }}>
+                  <span
+                    className="font-mono text-[10px] uppercase tracking-[2px]"
+                    style={{ color: P.muted, display: "block", marginBottom: 10 }}
+                  >
+                    the venue
+                  </span>
+                  <div
+                    style={{
+                      background: "#FFFFFF",
+                      border: `1px solid ${accent}20`,
+                      borderRadius: 14,
+                      padding: "14px 16px",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                      <div
+                        style={{
+                          width: 40,
+                          height: 40,
+                          flex: "0 0 auto",
+                          borderRadius: 12,
+                          background: accent + "15",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: 18,
+                        }}
+                      >
+                        📍
+                      </div>
+                      <div>
+                        <span
+                          className="font-serif text-[17px]"
+                          style={{ color: P.nearBlack, display: "block" }}
+                        >
+                          {event.venue_name}
+                        </span>
+                        {event.venue_area && (
+                          <span
+                            className="font-sans text-[12px]"
+                            style={{ color: P.warmBrown, display: "block", marginTop: 2 }}
+                          >
+                            {event.venue_area}
+                          </span>
+                        )}
+                        <span
+                          className="font-sans text-[11px]"
+                          style={{ color: P.muted, display: "block", marginTop: 3 }}
+                        >
+                          exact address lands in the app once you grab a spot
+                        </span>
+                      </div>
+                    </div>
+                    {Array.isArray(event.venue_photos) && event.venue_photos.length > 0 && (
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 8,
+                          overflowX: "auto",
+                          WebkitOverflowScrolling: "touch",
+                          margin: "12px -16px -14px",
+                          padding: "0 16px 14px",
+                        }}
+                      >
+                        {event.venue_photos.map((url: string, idx: number) => (
+                          <img
+                            key={url}
+                            src={url}
+                            alt={`${event.venue_name} — photo ${idx + 1}`}
+                            loading="lazy"
+                            style={{
+                              width: 160,
+                              height: 120,
+                              flex: "0 0 auto",
+                              objectFit: "cover",
+                              borderRadius: 10,
+                              display: "block",
+                              border: `1px solid ${accent}15`,
+                            }}
+                          />
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

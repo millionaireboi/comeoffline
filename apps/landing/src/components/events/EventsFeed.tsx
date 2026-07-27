@@ -22,6 +22,9 @@ interface PublicEvent {
   dress_code: string;
   includes: string[];
   venue_reveal_date?: string;
+  venue_name?: string;
+  venue_area?: string;
+  venue_photos?: string[];
   status: string;
 }
 

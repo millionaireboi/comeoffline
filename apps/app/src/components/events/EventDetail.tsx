@@ -333,6 +333,7 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
                 onSelectTier={handleSelectTier}
                 maxPerUser={event.ticketing?.max_per_user}
                 refundPolicy={event.ticketing?.refund_policy}
+                groupDiscounts={event.ticketing?.group_discounts}
                 accent={event.accent || "#D4A574"}
                 accentDark={event.accent_dark || "#B8845A"}
               />

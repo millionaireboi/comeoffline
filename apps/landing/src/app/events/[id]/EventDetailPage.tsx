@@ -32,6 +32,9 @@ interface PublicEvent {
   dress_code: string;
   includes: string[];
   venue_reveal_date?: string;
+  venue_name?: string;
+  venue_area?: string;
+  venue_photos?: string[];
   status: string;
   cover_url?: string;
   cover_type?: "image" | "video";
@@ -41,6 +44,7 @@ interface PublicEvent {
     enabled: boolean;
     tiers: PublicEventTier[];
     max_per_user?: number;
+    group_discounts?: { min_qty: number; max_qty?: number | null; percent: number }[];
   };
 }
 

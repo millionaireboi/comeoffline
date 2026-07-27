@@ -90,6 +90,7 @@ function sanitizeTicketingPublic(t: Event["ticketing"]): {
     low_stock: boolean;
   }>;
   max_per_user?: number;
+  group_discounts?: Array<{ min_qty: number; max_qty?: number | null; percent: number }>;
 } | undefined {
   if (!t || !t.enabled) return undefined;
   const now = Date.now();
@@ -121,6 +122,15 @@ function sanitizeTicketingPublic(t: Event["ticketing"]): {
     enabled: t.enabled,
     tiers,
     ...(t.max_per_user && { max_per_user: t.max_per_user }),
+    // Slabs are a sales lever, not a secret — cold traffic should see
+    // "bring friends, save x%" before ever picking a quantity.
+    ...(Array.isArray(t.group_discounts) && t.group_discounts.length > 0 && {
+      group_discounts: t.group_discounts.map((s) => ({
+        min_qty: s.min_qty,
+        ...(s.max_qty != null && { max_qty: s.max_qty }),
+        percent: s.percent,
+      })),
+    }),
   };
 }
 

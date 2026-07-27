@@ -5,8 +5,8 @@ interface TicketsTabProps {
   tiers: TicketTier[];
   selectedTierId: string | null;
   onSelectTier: (id: string) => void;
-  /** unused — refund policy is rendered once in the overview block */
   maxPerUser?: number;
+  /** unused — refund policy is rendered once in the overview block */
   refundPolicy?: string;
   groupDiscounts?: GroupDiscountSlab[];
   accent: string;
@@ -160,17 +160,28 @@ export function TicketsTab({
   tiers,
   selectedTierId,
   onSelectTier,
+  maxPerUser,
   groupDiscounts,
   accent,
   accentDark,
 }: TicketsTabProps) {
   // Slabs only apply to solo-tier multi-quantity orders — per_person tiers
-  // already price the whole pass. Pitch the discount before quantity is picked.
+  // already price the whole pass. Pitch the discount before quantity is picked,
+  // but never advertise a slab the max_per_user cap makes unreachable.
+  const now = new Date();
   const hasSoloTier = tiers.some(
-    (t) => (!t.per_person || t.per_person <= 1) && t.price > 0,
+    (t) =>
+      (!t.per_person || t.per_person <= 1) &&
+      t.price > 0 &&
+      t.sold < t.capacity &&
+      (!t.deadline || new Date(t.deadline) >= now) &&
+      (!t.opens_at || new Date(t.opens_at) <= now),
   );
+  const maxQty = maxPerUser || 1;
   const slabs = hasSoloTier
-    ? (groupDiscounts || []).slice().sort((a, b) => a.min_qty - b.min_qty)
+    ? (groupDiscounts || [])
+        .filter((s) => s.min_qty <= maxQty)
+        .sort((a, b) => a.min_qty - b.min_qty)
     : [];
 
   return (

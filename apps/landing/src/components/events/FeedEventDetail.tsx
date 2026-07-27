@@ -238,13 +238,15 @@ export function FeedEventDetail({ event, onClose, siblings, onSwitchEvent, inlin
 
   // Group-discount slabs — surfaced up-front as a "bring friends" pitch.
   // Slabs only apply to solo-tier multi-quantity orders (per_person tiers
-  // already price the whole pass), so hide when no solo tier is available.
+  // already price the whole pass), so hide when no solo tier is available,
+  // and never advertise a slab the max_per_user cap makes unreachable.
+  const maxTicketQty = event.ticketing?.max_per_user || 1;
   const groupSlabs = ((event.ticketing?.group_discounts || []) as Array<{
     min_qty: number;
     max_qty?: number | null;
     percent: number;
   }>)
-    .slice()
+    .filter((s) => s.min_qty <= maxTicketQty)
     .sort((a, b) => a.min_qty - b.min_qty);
   const hasSoloTier = availableTiers.some((t) => !t.per_person || t.per_person <= 1);
   const showGroupSlabs = !isFree && hasSoloTier && groupSlabs.length > 0;

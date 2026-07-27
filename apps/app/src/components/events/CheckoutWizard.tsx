@@ -111,17 +111,31 @@ function TierStep({
   onSelect,
   accent,
   groupSlabs,
+  maxPerUser,
 }: {
   tiers: TicketTier[];
   selected: string | null;
   onSelect: (id: string) => void;
   accent: string;
   groupSlabs?: GroupDiscountSlab[];
+  maxPerUser?: number;
 }) {
   // Pitch the group discount before a tier/quantity is even picked — slabs
-  // only apply to solo tiers, so hide when there's no solo tier to buy.
-  const hasSoloTier = tiers.some((t) => (!t.per_person || t.per_person <= 1) && t.price > 0);
-  const slabs = hasSoloTier ? (groupSlabs || []).slice().sort((a, b) => a.min_qty - b.min_qty) : [];
+  // only apply to solo tiers, so hide when there's no solo tier to buy and
+  // never advertise a slab the max_per_user cap makes unreachable.
+  const now = new Date();
+  const hasSoloTier = tiers.some(
+    (t) =>
+      (!t.per_person || t.per_person <= 1) &&
+      t.price > 0 &&
+      t.sold < t.capacity &&
+      (!t.deadline || new Date(t.deadline) >= now) &&
+      (!t.opens_at || new Date(t.opens_at) <= now),
+  );
+  const maxQty = maxPerUser || 1;
+  const slabs = hasSoloTier
+    ? (groupSlabs || []).filter((s) => s.min_qty <= maxQty).sort((a, b) => a.min_qty - b.min_qty)
+    : [];
 
   return (
     <div className="flex flex-col gap-2.5">
@@ -1933,6 +1947,7 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
               onSelect={setSelectedTierId}
               accent={event.accent_dark}
               groupSlabs={event.ticketing?.group_discounts}
+              maxPerUser={event.ticketing?.max_per_user}
             />
           )}
 

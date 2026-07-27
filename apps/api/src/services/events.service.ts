@@ -145,7 +145,9 @@ export async function getPublicEvents(): Promise<Partial<Event>[]> {
     .map((doc) => ({ id: doc.id, ...doc.data() }) as Event)
     .filter((e) => validStatuses.has(e.status) && !isPastEvent(e))
     .map((e) => {
-      const venueRevealed = !!e.venue_reveal_date && new Date(e.venue_reveal_date) <= now;
+      // "TBD" is the admin placeholder for an unset venue — treat as unrevealed
+      const venueRevealed =
+        !!e.venue_reveal_date && new Date(e.venue_reveal_date) <= now && e.venue_name !== "TBD";
       const ticketing = sanitizeTicketingPublic(e.ticketing);
       return {
         id: e.id,
@@ -190,7 +192,9 @@ export async function getPublicEvent(eventId: string): Promise<Partial<Event> | 
   const validStatuses = new Set(["announced", "upcoming", "listed", "sold_out", "live"]);
   if (!validStatuses.has(e.status)) return null;
 
-  const venueRevealed = !!e.venue_reveal_date && new Date(e.venue_reveal_date) <= new Date();
+  // "TBD" is the admin placeholder for an unset venue — treat as unrevealed
+  const venueRevealed =
+    !!e.venue_reveal_date && new Date(e.venue_reveal_date) <= new Date() && e.venue_name !== "TBD";
   const ticketing = sanitizeTicketingPublic(e.ticketing);
   return {
     id: e.id,

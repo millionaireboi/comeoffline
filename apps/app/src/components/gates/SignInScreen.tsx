@@ -6,6 +6,7 @@ import "react-phone-number-input/style.css";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppStore } from "@/store/useAppStore";
 import { apiFetch } from "@/lib/api";
+import { phoneVerifyOff } from "@/lib/phone-verify";
 import { Noise } from "@/components/shared/Noise";
 import type { User } from "@comeoffline/types";
 
@@ -166,11 +167,58 @@ export function SignInScreen({ onBack }: { onBack?: () => void } = {}) {
     }
   }
 
+  // No-OTP entry while the WhatsApp sender is restricted: new numbers get an
+  // account straight away; numbers that already belong to a member are pointed
+  // to handle+PIN (no code can prove ownership right now).
+  async function handleExpressContinue() {
+    setError("");
+    setLoading(true);
+    try {
+      const res = await apiFetch<{
+        success: boolean;
+        data: { token: string; user: Record<string, unknown>; is_new?: boolean };
+      }>("/api/auth/continue/phone/express", {
+        method: "POST",
+        body: JSON.stringify({ phone }),
+      });
+
+      if (res.data.user) {
+        const { setUser, setOnboardingSource } = useAppStore.getState();
+        setUser(res.data.user as unknown as User);
+        setOnboardingSource("direct_pwa");
+        try { localStorage.setItem("co_onboarding_source", "direct_pwa"); } catch { /* ignore */ }
+      }
+      await loginWithToken(res.data.token);
+
+      if (typeof window !== "undefined" && window.location.pathname === "/sign-in") {
+        window.location.href = "/";
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.toLowerCase().includes("already has an account")) {
+        setError("you're already a member — sign in with your handle & PIN instead.");
+      } else if (msg.toLowerCase().includes("too many")) {
+        setError("too many attempts. try again in a few minutes.");
+      } else if (msg.includes("Failed to fetch") || msg.includes("NetworkError")) {
+        setError("can't reach the server. check your connection.");
+      } else {
+        setError("couldn't get you in. try again.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleSendPhoneOtp(e?: React.FormEvent) {
     if (e) e.preventDefault();
     if (loading || phoneCooldown > 0) return;
     if (!phone || !isValidPhoneNumber(phone)) {
       setError("enter a valid phone number with country code");
+      return;
+    }
+
+    if (phoneVerifyOff) {
+      await handleExpressContinue();
       return;
     }
 
@@ -355,7 +403,7 @@ export function SignInScreen({ onBack }: { onBack?: () => void } = {}) {
             className="w-full border-none bg-transparent py-3 font-mono text-[11px] uppercase tracking-[3px] text-caramel transition-opacity hover:opacity-70"
             style={{ cursor: "pointer" }}
           >
-            continue with whatsapp instead →
+            {phoneVerifyOff ? "new here? continue with your number →" : "continue with whatsapp instead →"}
           </button>
         </form>
       )}
@@ -379,7 +427,9 @@ export function SignInScreen({ onBack }: { onBack?: () => void } = {}) {
               />
             </div>
             <p className="mt-2 font-mono text-[10px] text-muted/50">
-              we&apos;ll send a 6-digit code on whatsapp. new here? this signs you up too.
+              {phoneVerifyOff
+                ? "new here? just your number gets you in — no code needed. already a member? use your handle & PIN."
+                : "we'll send a 6-digit code on whatsapp. new here? this signs you up too."}
             </p>
           </div>
 
@@ -396,7 +446,9 @@ export function SignInScreen({ onBack }: { onBack?: () => void } = {}) {
               opacity: loading ? 0.5 : 1,
             }}
           >
-            {loading ? "sending..." : "continue with whatsapp \u2192"}
+            {loading
+              ? (phoneVerifyOff ? "getting you in..." : "sending...")
+              : (phoneVerifyOff ? "continue \u2192" : "continue with whatsapp \u2192")}
           </button>
 
           <button

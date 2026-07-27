@@ -449,6 +449,23 @@ export async function continueByPhoneOtp(
     return { valid: false, error: verifyResult.error };
   }
 
+  const created = await createOpenEntryUser(phone);
+  if (!created.valid) return created;
+
+  // Retire the signup-scoped OTP doc
+  await db.collection("phone_otps").doc(signupOtpKey(phone)).delete().catch(() => {});
+
+  return created;
+}
+
+/** Create a fresh open-entry account for a phone number and mint its custom token. */
+async function createOpenEntryUser(
+  phone: string,
+  phoneVerifiedVia?: string,
+): Promise<HandoffTokenResult & { is_new?: boolean }> {
+  const db = await getDb();
+  const auth = await getAuthService();
+
   // Unique placeholder handle — the post-purchase profile flow collects the real name
   let handle = `@offline_${crypto.randomBytes(3).toString("hex")}`;
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -473,6 +490,7 @@ export async function continueByPhoneOtp(
     entry_path: "open",
     phone_number: phone,
     phone_verified_at: nowIso, // they just proved it — core onboarding skips straight through
+    ...(phoneVerifiedVia ? { phone_verified_via: phoneVerifiedVia } : {}),
     vibe_check_answers: [],
     badges: [],
     status: "active",
@@ -480,9 +498,6 @@ export async function continueByPhoneOtp(
     created_at: FieldValue.serverTimestamp(),
   };
   await db.collection("users").doc(firebaseUser.uid).set(userData);
-
-  // Retire the signup-scoped OTP doc
-  await db.collection("phone_otps").doc(signupOtpKey(phone)).delete().catch(() => {});
 
   const firebaseToken = await auth.createCustomToken(firebaseUser.uid);
   return {
@@ -492,4 +507,28 @@ export async function continueByPhoneOtp(
     has_seen_welcome: false,
     is_new: true,
   };
+}
+
+/**
+ * Express open entry — BookMyShow-style, no OTP. Only for NEW numbers: the typed
+ * phone is stored unverified (`phone_verified_via: "express_signup"`) and payment
+ * is the proof-of-human. Numbers that already belong to a member are refused so
+ * nobody can walk into an existing account by typing its phone number.
+ */
+export async function expressContinueByPhone(
+  phone: string,
+): Promise<HandoffTokenResult & { is_new?: boolean }> {
+  const db = await getDb();
+
+  const phoneSnap = await db
+    .collection("users")
+    .where("phone_number", "==", phone)
+    .limit(1)
+    .get();
+
+  if (!phoneSnap.empty) {
+    return { valid: false, error: "This number already has an account. Sign in with your handle and PIN." };
+  }
+
+  return createOpenEntryUser(phone, "express_signup");
 }

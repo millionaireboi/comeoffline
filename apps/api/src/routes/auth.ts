@@ -1,7 +1,7 @@
 import { Router } from "express";
 import crypto from "crypto";
 import { isValidPhoneNumber } from "libphonenumber-js";
-import { validateHandoffToken, chatbotEntry, signInByHandle, generateHandoffToken, sendSignInOtp, signInByPhoneOtp, sendContinueOtp, continueByPhoneOtp } from "../services/auth.service";
+import { validateHandoffToken, chatbotEntry, signInByHandle, generateHandoffToken, sendSignInOtp, signInByPhoneOtp, sendContinueOtp, continueByPhoneOtp, expressContinueByPhone } from "../services/auth.service";
 import { strictLimiter, signInLimiter } from "../middleware/rateLimit";
 import { isValidPin, verifyPin, hashPin } from "../services/pin.service";
 import { sendPinResetEmail } from "../services/email.service";
@@ -452,6 +452,100 @@ router.post("/continue/phone/verify", signInLimiter, async (req, res) => {
     });
   } catch (err) {
     console.error("[auth] continue/phone/verify error:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+});
+
+// ── No-OTP fallback (WhatsApp sender restricted by Meta, Jul 2026) ─────────────
+// While ALLOW_UNVERIFIED_PHONE=true, new buyers enter with a typed, unverified
+// phone number (BookMyShow-style — payment is the proof). Existing accounts are
+// never reachable this way; members sign in with handle + PIN.
+
+const unverifiedPhoneAllowed = () => process.env.ALLOW_UNVERIFIED_PHONE === "true";
+
+/**
+ * POST /api/auth/continue/phone/express — create an account for a NEW phone
+ * number without OTP verification. Refuses numbers that already have an account.
+ */
+router.post("/continue/phone/express", signInLimiter, async (req, res) => {
+  try {
+    if (!unverifiedPhoneAllowed()) {
+      res.status(503).json({ success: false, error: "Express entry is disabled" });
+      return;
+    }
+    const { phone, source } = req.body as { phone?: string; source?: string };
+    if (!phone || typeof phone !== "string" || !isValidPhoneNumber(phone)) {
+      res.status(400).json({ success: false, error: "Invalid phone number. Please use international format (e.g. +919876543210)" });
+      return;
+    }
+
+    const result = await expressContinueByPhone(phone);
+    if (!result.valid) {
+      const status = (result.error || "").includes("already has an account") ? 409 : 500;
+      res.status(status).json({ success: false, error: result.error });
+      return;
+    }
+
+    const userData = result.user as Record<string, unknown>;
+    const userId = userData.id as string | undefined;
+    let handoffToken: string | undefined;
+    if (source === "landing" && userId) {
+      handoffToken = await generateHandoffToken(userId, "landing", "active");
+    }
+
+    res.json({
+      success: true,
+      data: {
+        token: result.token,
+        ...(handoffToken && { handoff_token: handoffToken }),
+        user: userData,
+        has_seen_welcome: result.has_seen_welcome,
+        is_new: true,
+      },
+    });
+  } catch (err) {
+    console.error("[auth] continue/phone/express error:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+});
+
+/**
+ * POST /api/auth/phone/claim — save the signed-in user's phone number without OTP.
+ * Same uniqueness guard as the OTP path; stamps phone_verified_via so these
+ * accounts can be re-verified once WhatsApp sends are restored.
+ */
+router.post("/phone/claim", requireAuth, strictLimiter, async (req: AuthRequest, res) => {
+  try {
+    if (!unverifiedPhoneAllowed()) {
+      res.status(503).json({ success: false, error: "Phone claim is disabled" });
+      return;
+    }
+    const { phone } = req.body as { phone?: string };
+    if (!phone || typeof phone !== "string" || !isValidPhoneNumber(phone)) {
+      res.status(400).json({ success: false, error: "Invalid phone number" });
+      return;
+    }
+
+    const db = await getDb();
+    const existingPhone = await db.collection("users")
+      .where("phone_number", "==", phone)
+      .limit(1)
+      .get();
+    if (!existingPhone.empty && existingPhone.docs[0].id !== req.uid) {
+      res.status(409).json({ success: false, error: "This phone number is already linked to another account" });
+      return;
+    }
+
+    const verifiedAt = new Date().toISOString();
+    await db.collection("users").doc(req.uid!).update({
+      phone_number: phone,
+      phone_verified_at: verifiedAt,
+      phone_verified_via: "express_claim",
+    });
+
+    res.json({ success: true, data: { phone_number: phone, phone_verified_at: verifiedAt } });
+  } catch (err) {
+    console.error("[auth] phone/claim error:", err);
     res.status(500).json({ success: false, error: "Internal server error" });
   }
 });

@@ -5,6 +5,7 @@ import { Noise } from "@/components/shared/Noise";
 import { useAppStore } from "@/store/useAppStore";
 import { useAuth } from "@/hooks/useAuth";
 import { apiFetch } from "@/lib/api";
+import { phoneVerifyOff } from "@/lib/phone-verify";
 import type { User } from "@comeoffline/types";
 import { CURATED_INTERESTS } from "@comeoffline/types";
 import AvatarCropModal from "@/components/shared/AvatarCropModal";
@@ -443,7 +444,48 @@ function PhoneNumberCard({
     return () => clearTimeout(t);
   }, [cooldown]);
 
+  // No-OTP path while the WhatsApp sender is restricted: save the typed number
+  // directly (server still enforces uniqueness) and treat it as confirmed.
+  const claimPhone = async () => {
+    if (!valid || phase === "sending") return;
+    setError("");
+    setPhase("sending");
+    try {
+      const token = await getIdToken();
+      if (!token) {
+        setError("session expired. close and reopen the app.");
+        setPhase("idle");
+        return;
+      }
+      const res = await apiFetch<{ success: boolean; data?: { phone_verified_at: string } }>(
+        "/api/auth/phone/claim",
+        { method: "POST", token, body: JSON.stringify({ phone: value }) },
+      );
+      if (res.data?.phone_verified_at) {
+        verifiedPhoneRef.current = value;
+        onVerified(res.data.phone_verified_at);
+        setPhase("idle");
+      } else {
+        setError("couldn't save the number. try again.");
+        setPhase("idle");
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.toLowerCase().includes("already linked")) {
+        setError("this number is already linked to another account.");
+      } else {
+        setError(msg || "couldn't save the number. check your connection and try again.");
+        console.error("[PhoneNumberCard] claimPhone failed:", err);
+      }
+      setPhase("idle");
+    }
+  };
+
   const sendCode = async () => {
+    if (phoneVerifyOff) {
+      await claimPhone();
+      return;
+    }
     if (!valid || phase === "sending" || cooldown > 0) return;
     setError("");
     setPhase("sending");
@@ -550,7 +592,9 @@ function PhoneNumberCard({
     <CardShell animKey="phone">
       <h2 className="mb-2 font-serif text-[28px] font-normal text-cream">your phone number</h2>
       <p className="mb-6 font-sans text-[13px] leading-relaxed text-muted">
-        we&apos;ll send you a one-time code on whatsapp to confirm it&apos;s really you.
+        {phoneVerifyOff
+          ? "we'll use this number for your tickets and event updates."
+          : "we'll send you a one-time code on whatsapp to confirm it's really you."}
       </p>
 
       <div className="phone-input-wrapper">
@@ -590,12 +634,14 @@ function PhoneNumberCard({
             cursor: cooldown > 0 ? "default" : "pointer",
           }}
         >
-          {cooldown > 0 ? `resend in ${cooldown}s` : "send code on whatsapp →"}
+          {phoneVerifyOff
+            ? "confirm this number →"
+            : cooldown > 0 ? `resend in ${cooldown}s` : "send code on whatsapp →"}
         </button>
       )}
 
       {phase === "sending" && (
-        <p className="animate-fadeIn mt-3 text-center font-mono text-[11px] text-muted">sending code...</p>
+        <p className="animate-fadeIn mt-3 text-center font-mono text-[11px] text-muted">{phoneVerifyOff ? "saving..." : "sending code..."}</p>
       )}
 
       {/* OTP input — shown after code is sent */}
@@ -660,7 +706,7 @@ function PhoneNumberCard({
 
       {isVerified && (
         <p className="animate-fadeIn mt-3 text-center font-mono text-[11px] tracking-[2px] text-sage">
-          ✓ phone verified
+          {phoneVerifyOff ? "✓ number saved" : "✓ phone verified"}
         </p>
       )}
 

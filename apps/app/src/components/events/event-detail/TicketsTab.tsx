@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import type { GroupDiscountSlab, TicketTier } from "@comeoffline/types";
 import { GhostWatermark } from "./GhostWatermark";
 
@@ -18,18 +19,93 @@ function slabRange(s: GroupDiscountSlab): string {
   return s.max_qty === s.min_qty ? `${s.min_qty}` : `${s.min_qty}–${s.max_qty}`;
 }
 
+/* Animated slab price — eases the per-ticket price down through the slab
+   ladder ("1 ticket ₹1,999 → 2–3 tickets ₹1,899 → …") on a slow loop.
+   Display-only; per-ticket math mirrors the server's rounding and checkout
+   does the real math. Static for reduced-motion users. */
+function SlabPriceTicker({
+  price,
+  slabs,
+  color,
+  accentDark,
+}: {
+  price: number;
+  slabs: GroupDiscountSlab[];
+  color: string;
+  accentDark: string;
+}) {
+  const steps = [
+    { label: "1 ticket", price },
+    ...slabs.map((s) => {
+      const total = price * s.min_qty;
+      const perTicket = Math.round(
+        (total - Math.round((total * s.percent) / 100)) / s.min_qty,
+      );
+      return { label: `${slabRange(s)} tickets · ${s.percent}% off`, price: perTicket };
+    }),
+  ];
+  const [idx, setIdx] = useState(0);
+  const [shown, setShown] = useState(price);
+  const shownRef = useRef(price);
+
+  useEffect(() => {
+    if (steps.length < 2) return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const t = setInterval(() => setIdx((i) => (i + 1) % steps.length), 2400);
+    return () => clearInterval(t);
+  }, [steps.length]);
+
+  const target = steps[idx % steps.length].price;
+  useEffect(() => {
+    const from = shownRef.current;
+    if (from === target) return;
+    const start = performance.now();
+    let raf = 0;
+    const tick = (t: number) => {
+      const p = Math.min(1, (t - start) / 550);
+      const eased = 1 - Math.pow(1 - p, 3);
+      const next = Math.round(from + (target - from) * eased);
+      shownRef.current = next;
+      setShown(next);
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target]);
+
+  const step = steps[idx % steps.length];
+  return (
+    <div>
+      <div>
+        <span className="font-mono text-2xl font-medium" style={{ color }}>
+          ₹{shown.toLocaleString("en-IN")}
+        </span>
+        <span className="ml-1 font-sans text-xs text-muted">/ person</span>
+      </div>
+      <p
+        className="mt-0.5 font-mono text-[10px]"
+        style={{ color: idx === 0 ? "#9B8E82" : accentDark, transition: "color 0.3s ease" }}
+      >
+        {step.label}
+      </p>
+    </div>
+  );
+}
+
 function TierCard({
   tier,
   selected,
   onSelect,
   accent,
   accentDark,
+  slabs,
 }: {
   tier: TicketTier;
   selected: boolean;
   onSelect: () => void;
   accent: string;
   accentDark: string;
+  slabs?: GroupDiscountSlab[];
 }) {
   const soldOut = tier.sold >= tier.capacity;
   const remaining = tier.capacity - tier.sold;
@@ -98,17 +174,30 @@ function TierCard({
 
       {/* Price + availability */}
       <div className="mt-3 flex items-end justify-between">
-        <div>
-          <span
-            className="font-mono text-2xl font-medium"
-            style={{ color: unavailable ? "#9B8E82" : accentDark }}
-          >
-            {tier.price === 0 ? "Free" : `₹${tier.price}`}
-          </span>
-          {tier.price > 0 && (
-            <span className="ml-1 font-sans text-xs text-muted">/ person</span>
-          )}
-        </div>
+        {!unavailable &&
+        tier.price > 0 &&
+        (!tier.per_person || tier.per_person <= 1) &&
+        slabs &&
+        slabs.length > 0 ? (
+          <SlabPriceTicker
+            price={tier.price}
+            slabs={slabs}
+            color={accentDark}
+            accentDark={accentDark}
+          />
+        ) : (
+          <div>
+            <span
+              className="font-mono text-2xl font-medium"
+              style={{ color: unavailable ? "#9B8E82" : accentDark }}
+            >
+              {tier.price === 0 ? "Free" : `₹${tier.price}`}
+            </span>
+            {tier.price > 0 && (
+              <span className="ml-1 font-sans text-xs text-muted">/ person</span>
+            )}
+          </div>
+        )}
         <div className="text-right">
           {!unavailable && remaining <= 15 && (
             <p
@@ -206,6 +295,7 @@ export function TicketsTab({
             onSelect={() => onSelectTier(tier.id)}
             accent={accent}
             accentDark={accentDark}
+            slabs={slabs}
           />
         ))}
       </div>

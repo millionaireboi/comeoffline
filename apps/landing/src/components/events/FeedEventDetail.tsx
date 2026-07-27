@@ -28,6 +28,90 @@ interface FeedEventDetailProps {
 
 type GateStage = "idle" | "confirmed";
 
+/* ── Animated slab price ─────────────────────────────
+   Dramatizes the group discount: the tier price eases down through the slab
+   ladder ("1 ticket ₹1,999 → 2–3 tickets ₹1,899 → …") on a slow loop.
+   Display-only flair — per-ticket math mirrors the server's rounding, and
+   checkout still does the real math. Static for reduced-motion users. */
+function SlabPriceTicker({
+  price,
+  slabs,
+  color,
+  labelColor,
+}: {
+  price: number;
+  slabs: Array<{ min_qty: number; max_qty?: number | null; percent: number }>;
+  color: string;
+  labelColor: string;
+}) {
+  const steps = [
+    { label: "1 ticket", price },
+    ...slabs.map((s) => {
+      const total = price * s.min_qty;
+      const perTicket = Math.round(
+        (total - Math.round((total * s.percent) / 100)) / s.min_qty,
+      );
+      const range =
+        s.max_qty == null
+          ? `${s.min_qty}+`
+          : s.max_qty === s.min_qty
+            ? `${s.min_qty}`
+            : `${s.min_qty}–${s.max_qty}`;
+      return { label: `${range} tickets · ${s.percent}% off`, price: perTicket };
+    }),
+  ];
+  const [idx, setIdx] = useState(0);
+  const [shown, setShown] = useState(price);
+  const shownRef = useRef(price);
+
+  useEffect(() => {
+    if (steps.length < 2) return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const t = setInterval(() => setIdx((i) => (i + 1) % steps.length), 2400);
+    return () => clearInterval(t);
+  }, [steps.length]);
+
+  const target = steps[idx % steps.length].price;
+  useEffect(() => {
+    const from = shownRef.current;
+    if (from === target) return;
+    const start = performance.now();
+    let raf = 0;
+    const tick = (t: number) => {
+      const p = Math.min(1, (t - start) / 550);
+      const eased = 1 - Math.pow(1 - p, 3);
+      const next = Math.round(from + (target - from) * eased);
+      shownRef.current = next;
+      setShown(next);
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target]);
+
+  const step = steps[idx % steps.length];
+  return (
+    <>
+      <span
+        className="font-mono text-[18px] font-medium"
+        style={{ color, display: "block" }}
+      >
+        ₹{shown.toLocaleString("en-IN")}
+      </span>
+      <span
+        className="font-mono text-[9px]"
+        style={{
+          color: idx === 0 ? labelColor : color,
+          display: "block",
+          transition: "color 0.3s ease",
+        }}
+      >
+        {step.label}
+      </span>
+    </>
+  );
+}
+
 // Generic fallback FAQ — only answers true for EVERY event. Per-event
 // specifics come from event.faq (authored in admin). Mirrors the app's
 // FAQSection fallback so both surfaces stay consistent.
@@ -733,12 +817,24 @@ export function FeedEventDetail({ event, onClose, siblings, onSwitchEvent, inlin
                             )}
                           </div>
                           <div style={{ textAlign: "right", flexShrink: 0 }}>
-                            <span
-                              className="font-mono text-[18px] font-medium"
-                              style={{ color: isSoldOut ? P.muted : accentDark, display: "block" }}
-                            >
-                              {tier.price === 0 ? "free" : `₹${tier.price.toLocaleString("en-IN")}`}
-                            </span>
+                            {showGroupSlabs &&
+                            !isSoldOut &&
+                            tier.price > 0 &&
+                            (!tier.per_person || tier.per_person <= 1) ? (
+                              <SlabPriceTicker
+                                price={tier.price}
+                                slabs={groupSlabs}
+                                color={accentDark}
+                                labelColor={P.muted}
+                              />
+                            ) : (
+                              <span
+                                className="font-mono text-[18px] font-medium"
+                                style={{ color: isSoldOut ? P.muted : accentDark, display: "block" }}
+                              >
+                                {tier.price === 0 ? "free" : `₹${tier.price.toLocaleString("en-IN")}`}
+                              </span>
+                            )}
                             {isSoldOut && (
                               <span
                                 className="font-mono text-[9px] uppercase tracking-[1px]"

@@ -3,13 +3,13 @@ import { SectionLabel } from "./SectionLabel";
 import { GhostWatermark } from "./GhostWatermark";
 
 interface ZonesSectionProps {
-  zones: Zone[];
+  zones?: Zone[];
   accent: string;
   accentDark: string;
 }
 
 export function ZonesSection({ zones, accent, accentDark }: ZonesSectionProps) {
-  if (zones.length === 0) return null;
+  if (!zones || zones.length === 0) return null;
 
   return (
     <div className="relative -mx-6 mb-7 overflow-hidden bg-near-black px-6 py-7">

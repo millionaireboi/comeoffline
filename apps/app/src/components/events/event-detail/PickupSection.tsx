@@ -2,13 +2,13 @@ import type { PickupPoint } from "@comeoffline/types";
 import { SectionLabel } from "./SectionLabel";
 
 interface PickupSectionProps {
-  pickupPoints: PickupPoint[];
+  pickupPoints?: PickupPoint[];
   accent: string;
   accentDark: string;
 }
 
 export function PickupSection({ pickupPoints, accent, accentDark }: PickupSectionProps) {
-  if (pickupPoints.length === 0) return null;
+  if (!pickupPoints || pickupPoints.length === 0) return null;
 
   return (
     <div className="mb-7">

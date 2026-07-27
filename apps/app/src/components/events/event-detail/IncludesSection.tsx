@@ -1,13 +1,13 @@
 import { SectionLabel } from "./SectionLabel";
 
 interface IncludesSectionProps {
-  includes: string[];
+  includes?: string[];
   accent: string;
   accentDark: string;
 }
 
 export function IncludesSection({ includes, accent, accentDark }: IncludesSectionProps) {
-  if (includes.length === 0) return null;
+  if (!includes || includes.length === 0) return null;
 
   return (
     <div className="mb-7">

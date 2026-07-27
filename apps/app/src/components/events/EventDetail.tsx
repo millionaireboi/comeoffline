@@ -364,8 +364,9 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
           {/* About / includes / schedule / venue / FAQ — everything that used to live on OVERVIEW */}
           <OverviewTab event={event} />
 
-          {/* Attendees — at the bottom, no longer a tab */}
-          {!isAnnounced && (
+          {/* Attendees — at the bottom, no longer a tab. Members only: the
+              attendee wall is an authed endpoint, so logged-out browsers skip it. */}
+          {!isAnnounced && user && (
             <div className="mt-6">
               <AttendeeList eventId={event.id} />
             </div>

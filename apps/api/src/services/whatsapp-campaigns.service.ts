@@ -15,6 +15,14 @@
 
 import { getDb } from "../config/firebase-admin";
 import { sendTemplate, normalizeRecipient } from "./whatsapp.service";
+import { listOptedOutPhones } from "./whatsapp-inbox.service";
+
+/** Manual-audience entry — name comes from the admin's uploaded sheet and wins
+ *  over any member-record match when personalizing {first_name}. */
+export interface ManualContact {
+  phone: string;
+  name?: string | null;
+}
 
 export type CampaignAudience =
   | { type: "all" }
@@ -22,7 +30,9 @@ export type CampaignAudience =
   | { type: "event"; event_id: string }
   | { type: "purchasers" }
   | { type: "never_purchased" }
-  | { type: "manual"; phones: string[] };
+  // `contacts` (phone + optional name) is canonical; `phones` kept for campaigns
+  // created before sheet upload existed.
+  | { type: "manual"; phones?: string[]; contacts?: ManualContact[] };
 
 export type CampaignStatus = "draft" | "sending" | "sent" | "cancelled";
 
@@ -31,6 +41,7 @@ export interface CampaignTotals {
   sent: number;
   failed: number;
   skipped_no_phone: number;
+  skipped_opted_out?: number;
 }
 
 export interface Campaign {
@@ -41,6 +52,7 @@ export interface Campaign {
   /** Values for {{1}}..{{n}} — may contain {first_name} / {name} personalization tokens */
   body_params: string[];
   header_image_id: string | null;
+  header_video_id?: string | null;
   audience: CampaignAudience;
   status: CampaignStatus;
   totals: CampaignTotals;
@@ -62,6 +74,7 @@ export interface ResolvedRecipient {
 export interface AudiencePreview {
   eligible: number;
   skipped_no_phone: number;
+  skipped_opted_out: number;
   sample: Array<{ display_name: string; phone_preview: string }>;
 }
 
@@ -102,8 +115,11 @@ function toRecipient(userId: string | null, phone: string, name?: string): Resol
  */
 export async function resolveAudience(
   audience: CampaignAudience,
-): Promise<{ recipients: ResolvedRecipient[]; skippedNoPhone: number }> {
+): Promise<{ recipients: ResolvedRecipient[]; skippedNoPhone: number; skippedOptedOut: number }> {
   const db = await getDb();
+
+  // People who replied STOP — excluded from every audience type.
+  const optedOut = await listOptedOutPhones();
 
   // Phone → user map, used by every audience type (manual lists resolve names through it too).
   const usersSnap = await db.collection("users").get();
@@ -120,8 +136,9 @@ export async function resolveAudience(
   const recipients: ResolvedRecipient[] = [];
   const seenPhones = new Set<string>();
   let skippedNoPhone = 0;
+  let skippedOptedOut = 0;
 
-  const push = (userId: string | null, u: UserLite | null, rawPhone?: string) => {
+  const push = (userId: string | null, u: UserLite | null, rawPhone?: string, sheetName?: string | null) => {
     const phone = rawPhone ?? u?.phone_number;
     if (!phone) {
       skippedNoPhone++;
@@ -130,7 +147,11 @@ export async function resolveAudience(
     const normalized = normalizeRecipient(phone);
     if (!normalized || seenPhones.has(normalized)) return;
     seenPhones.add(normalized);
-    recipients.push(toRecipient(userId, normalized, u?.name));
+    if (optedOut.has(normalized)) {
+      skippedOptedOut++;
+      return;
+    }
+    recipients.push(toRecipient(userId, normalized, sheetName?.trim() || u?.name));
   };
 
   switch (audience.type) {
@@ -189,27 +210,30 @@ export async function resolveAudience(
       break;
     }
     case "manual": {
-      for (const raw of audience.phones) {
-        const normalized = normalizeManualPhone(raw);
+      const entries: ManualContact[] =
+        audience.contacts ?? (audience.phones ?? []).map((phone) => ({ phone }));
+      for (const entry of entries) {
+        const normalized = normalizeManualPhone(entry.phone);
         if (!normalized) {
           skippedNoPhone++;
           continue;
         }
         const match = usersByPhone.get(normalized);
-        push(match?.id ?? null, match?.data ?? null, normalized);
+        push(match?.id ?? null, match?.data ?? null, normalized, entry.name ?? null);
       }
       break;
     }
   }
 
-  return { recipients, skippedNoPhone };
+  return { recipients, skippedNoPhone, skippedOptedOut };
 }
 
 export async function previewAudience(audience: CampaignAudience): Promise<AudiencePreview> {
-  const { recipients, skippedNoPhone } = await resolveAudience(audience);
+  const { recipients, skippedNoPhone, skippedOptedOut } = await resolveAudience(audience);
   return {
     eligible: recipients.length,
     skipped_no_phone: skippedNoPhone,
+    skipped_opted_out: skippedOptedOut,
     sample: recipients.slice(0, 3).map((r) => ({
       display_name: r.display_name,
       phone_preview: maskPhone(r.phone),
@@ -230,6 +254,14 @@ export function personalizeParams(params: string[], r: ResolvedRecipient): strin
 
 const LOCK_TTL_MS = 90 * 1000;
 const BATCH_SIZE = 20;
+
+/** Randomized pause between individual sends (~1.5–2.5 msg/sec with network time).
+ *  Well under Meta's STANDARD 80 msg/sec — this is load-smoothing, not a Meta requirement. */
+const SEND_GAP_MS: [number, number] = [300, 800];
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export interface SendProgress {
   done: boolean;
@@ -287,7 +319,7 @@ export async function processCampaignSend(
     // send set is frozen at send time and every recipient's outcome is auditable.
     const existing = await recipientsCol.limit(1).get();
     if (existing.empty) {
-      const { recipients, skippedNoPhone } = await resolveAudience(campaign.audience);
+      const { recipients, skippedNoPhone, skippedOptedOut } = await resolveAudience(campaign.audience);
       if (recipients.length === 0) {
         // Revert to draft so the campaign isn't stranded in "sending" with nothing to send.
         await campaignRef.update({ status: "draft", lock_until: 0 });
@@ -316,6 +348,7 @@ export async function processCampaignSend(
       await campaignRef.update({
         "totals.eligible": recipients.length,
         "totals.skipped_no_phone": skippedNoPhone,
+        "totals.skipped_opted_out": skippedOptedOut,
       });
     }
 
@@ -349,6 +382,7 @@ export async function processCampaignSend(
           languageCode: campaign.language_code,
           bodyParams: personalizeParams(campaign.body_params, r),
           headerImageId: campaign.header_image_id ?? undefined,
+          headerVideoId: campaign.header_video_id ?? undefined,
         });
 
         if (result.ok) {
@@ -377,6 +411,8 @@ export async function processCampaignSend(
             sent_at: nowIso,
           });
         }
+
+        await sleep(SEND_GAP_MS[0] + Math.random() * (SEND_GAP_MS[1] - SEND_GAP_MS[0]));
       }
 
       if (Date.now() - startedAt > timeBudgetMs) break;

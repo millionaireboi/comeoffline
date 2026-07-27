@@ -13,15 +13,22 @@ interface ApiTemplate {
   bodyText: string;
   bodyVarCount: number;
   hasImageHeader: boolean;
+  hasVideoHeader: boolean;
 }
 
 type AudienceType = "all" | "status" | "event" | "purchasers" | "never_purchased" | "manual";
+
+interface ManualContact {
+  phone: string;
+  name?: string | null;
+}
 
 interface Audience {
   type: AudienceType;
   status?: "active" | "provisional";
   event_id?: string;
   phones?: string[];
+  contacts?: ManualContact[];
 }
 
 interface CampaignTotals {
@@ -29,6 +36,7 @@ interface CampaignTotals {
   sent: number;
   failed: number;
   skipped_no_phone: number;
+  skipped_opted_out?: number;
 }
 
 interface Campaign {
@@ -77,7 +85,9 @@ function describeAudience(a: Audience): string {
     case "event":
       return `event ${a.event_id}`;
     case "manual":
-      return `${a.phones?.length ?? 0} pasted numbers`;
+      return a.contacts?.length
+        ? `${a.contacts.length} contacts from sheet`
+        : `${a.phones?.length ?? 0} pasted numbers`;
     default:
       return AUDIENCE_LABELS[a.type];
   }
@@ -196,6 +206,33 @@ export function MarketingPanel() {
 // Composer
 // ────────────────────────────────────────────────────────────────────────────────
 
+/** Parsed spreadsheet, pre column-mapping. Cells arrive as strings via sheet_to_json. */
+interface ParsedSheet {
+  fileName: string;
+  rows: string[][];
+  columnCount: number;
+}
+
+/** Does a cell look like a phone number? Used to auto-guess the phone column. */
+function isPhoneLike(cell: string): boolean {
+  const digits = cell.replace(/[^\d]/g, "");
+  return digits.length >= 10 && digits.length <= 15 && /^[\d\s\-+()./]+$/.test(cell.trim());
+}
+
+/** Column with the highest share of phone-looking cells wins. */
+function guessPhoneColumn(rows: string[][], columnCount: number): number {
+  let best = 0;
+  let bestScore = -1;
+  for (let col = 0; col < columnCount; col++) {
+    const score = rows.reduce((n, r) => n + (isPhoneLike(r[col] ?? "") ? 1 : 0), 0);
+    if (score > bestScore) {
+      bestScore = score;
+      best = col;
+    }
+  }
+  return best;
+}
+
 function CampaignComposer({
   templates,
   authedFetch,
@@ -208,15 +245,20 @@ function CampaignComposer({
   const [name, setName] = useState("");
   const [templateName, setTemplateName] = useState("");
   const [bodyParams, setBodyParams] = useState<string[]>([]);
-  const [imageDataUri, setImageDataUri] = useState<string | null>(null);
-  const [imageFilename, setImageFilename] = useState<string | null>(null);
+  const [mediaDataUri, setMediaDataUri] = useState<string | null>(null);
+  const [mediaFilename, setMediaFilename] = useState<string | null>(null);
   const [audienceType, setAudienceType] = useState<AudienceType>("all");
   const [statusValue, setStatusValue] = useState<"active" | "provisional">("active");
   const [eventId, setEventId] = useState("");
   const [manualPhones, setManualPhones] = useState("");
+  const [sheet, setSheet] = useState<ParsedSheet | null>(null);
+  const [phoneCol, setPhoneCol] = useState(0);
+  const [nameCol, setNameCol] = useState<number | "">("");
+  const [skipHeaderRow, setSkipHeaderRow] = useState(true);
   const [preview, setPreview] = useState<{
     eligible: number;
     skipped_no_phone: number;
+    skipped_opted_out?: number;
     sample: Array<{ display_name: string; phone_preview: string }>;
   } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -228,6 +270,64 @@ function CampaignComposer({
     setTemplateName(nameValue);
     const t = templates.find((x) => x.name === nameValue);
     setBodyParams(new Array(t?.bodyVarCount ?? 0).fill(""));
+    setMediaDataUri(null);
+    setMediaFilename(null);
+  }
+
+  async function pickSheet(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setMessage("");
+    try {
+      const XLSX = await import("xlsx");
+      const workbook = XLSX.read(await file.arrayBuffer());
+      const ws = workbook.Sheets[workbook.SheetNames[0]];
+      // raw:true — formatted text renders 12-digit phones in scientific notation
+      // ("9.19876E+11"); raw numbers stringify to their exact digits.
+      const rows = (
+        XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: "" }) as unknown[][]
+      ).map((r) => r.map((c) => String(c ?? "").trim()));
+      const nonEmpty = rows.filter((r) => r.some(Boolean));
+      if (nonEmpty.length === 0) {
+        setMessage("That sheet looks empty.");
+        return;
+      }
+      const columnCount = Math.max(...nonEmpty.map((r) => r.length));
+      const guessedPhone = guessPhoneColumn(nonEmpty.slice(0, 200), columnCount);
+      // Header row heuristic: first row's phone cell isn't phone-shaped.
+      const hasHeader = !isPhoneLike(nonEmpty[0][guessedPhone] ?? "");
+      // Name column: a header literally containing "name", else first other column.
+      let guessedName: number | "" = "";
+      if (hasHeader) {
+        const idx = nonEmpty[0].findIndex(
+          (h, i) => i !== guessedPhone && /name/i.test(h),
+        );
+        if (idx >= 0) guessedName = idx;
+      }
+      if (guessedName === "" && columnCount > 1) {
+        guessedName = guessedPhone === 0 ? 1 : 0;
+      }
+      setSheet({ fileName: file.name, rows: nonEmpty, columnCount });
+      setPhoneCol(guessedPhone);
+      setNameCol(guessedName);
+      setSkipHeaderRow(hasHeader);
+      setPreview(null);
+    } catch (err) {
+      setMessage(`Couldn't read that file: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      e.target.value = ""; // allow re-picking the same file
+    }
+  }
+
+  function sheetContacts(): ManualContact[] {
+    if (!sheet) return [];
+    const dataRows = skipHeaderRow ? sheet.rows.slice(1) : sheet.rows;
+    return dataRows
+      .map((r) => ({
+        phone: (r[phoneCol] ?? "").trim(),
+        name: nameCol === "" ? null : (r[nameCol] ?? "").trim() || null,
+      }))
+      .filter((c) => c.phone.replace(/[^\d]/g, "").length >= 10);
   }
 
   function buildAudience(): Audience | null {
@@ -237,6 +337,10 @@ function CampaignComposer({
       case "event":
         return eventId ? { type: "event", event_id: eventId } : null;
       case "manual": {
+        if (sheet) {
+          const contacts = sheetContacts();
+          return contacts.length > 0 ? { type: "manual", contacts } : null;
+        }
         const phones = manualPhones
           .split(/[\n,;]+/)
           .map((p) => p.trim())
@@ -248,17 +352,23 @@ function CampaignComposer({
     }
   }
 
-  function pickImage(e: React.ChangeEvent<HTMLInputElement>) {
+  function pickMedia(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!/^image\/(png|jpeg|jpg)$/.test(file.type) || file.size > 5 * 1024 * 1024) {
+    const wantsVideo = template?.hasVideoHeader === true;
+    if (wantsVideo) {
+      if (!/^video\/(mp4|3gpp)$/.test(file.type) || file.size > 10 * 1024 * 1024) {
+        setMessage("Header video must be MP4 under 10MB");
+        return;
+      }
+    } else if (!/^image\/(png|jpeg|jpg)$/.test(file.type) || file.size > 5 * 1024 * 1024) {
       setMessage("Header image must be PNG/JPEG under 5MB");
       return;
     }
     const reader = new FileReader();
     reader.onload = () => {
-      setImageDataUri(String(reader.result));
-      setImageFilename(file.name);
+      setMediaDataUri(String(reader.result));
+      setMediaFilename(file.name);
       setMessage("");
     };
     reader.readAsDataURL(file);
@@ -296,17 +406,21 @@ function CampaignComposer({
     setMessage("");
     try {
       let headerImageId: string | undefined;
-      if (template?.hasImageHeader) {
-        if (!imageDataUri) {
-          setMessage("This template has an image header — upload an image first.");
+      let headerVideoId: string | undefined;
+      if (template?.hasImageHeader || template?.hasVideoHeader) {
+        if (!mediaDataUri) {
+          setMessage(
+            `This template has a ${template.hasVideoHeader ? "video" : "image"} header — upload one first.`,
+          );
           return;
         }
         const upData = await authedFetch("/api/admin/whatsapp/upload-media", {
           method: "POST",
-          body: JSON.stringify({ dataUri: imageDataUri }),
+          body: JSON.stringify({ dataUri: mediaDataUri }),
         });
-        if (!upData.success) throw new Error(`Image upload failed: ${upData.error}`);
-        headerImageId = upData.data.mediaId;
+        if (!upData.success) throw new Error(`Media upload failed: ${upData.error}`);
+        if (template.hasVideoHeader) headerVideoId = upData.data.mediaId;
+        else headerImageId = upData.data.mediaId;
       }
       const data = await authedFetch("/api/admin/whatsapp/campaigns", {
         method: "POST",
@@ -315,6 +429,7 @@ function CampaignComposer({
           template_name: templateName,
           body_params: bodyParams,
           header_image_id: headerImageId,
+          header_video_id: headerVideoId,
           audience,
         }),
       });
@@ -372,19 +487,21 @@ function CampaignComposer({
               placeholder="{first_name}"
             />
           ))}
-          {template.hasImageHeader && (
+          {(template.hasImageHeader || template.hasVideoHeader) && (
             <label className="block">
               <span className="mb-1 block font-mono text-[10px] uppercase tracking-[1.5px] text-muted">
-                header image (PNG/JPEG, &lt;5MB)
+                {template.hasVideoHeader
+                  ? "header video (MP4, <10MB)"
+                  : "header image (PNG/JPEG, <5MB)"}
               </span>
               <input
                 type="file"
-                accept="image/png,image/jpeg"
-                onChange={pickImage}
+                accept={template.hasVideoHeader ? "video/mp4,video/3gpp" : "image/png,image/jpeg"}
+                onChange={pickMedia}
                 className="block w-full font-mono text-[11px] text-sand file:mr-3 file:rounded-md file:border-0 file:bg-white/5 file:px-3 file:py-1.5 file:font-mono file:text-[10px] file:text-cream"
               />
-              {imageFilename && (
-                <span className="mt-1 block font-mono text-[10px] text-sage">picked: {imageFilename}</span>
+              {mediaFilename && (
+                <span className="mt-1 block font-mono text-[10px] text-sage">picked: {mediaFilename}</span>
               )}
             </label>
           )}
@@ -432,13 +549,105 @@ function CampaignComposer({
         )}
 
         {audienceType === "manual" && (
-          <textarea
-            value={manualPhones}
-            onChange={(e) => setManualPhones(e.target.value)}
-            rows={4}
-            placeholder={"one number per line\n+919663241658\n9812345678 (10 digits assumes +91)"}
-            className="w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 font-mono text-[11px] text-sand"
-          />
+          <div className="space-y-3">
+            <label className="block">
+              <span className="mb-1 block font-mono text-[10px] uppercase tracking-[1.5px] text-muted">
+                upload sheet (xlsx / csv) — names feed {"{first_name}"}
+              </span>
+              <input
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                onChange={pickSheet}
+                className="block w-full font-mono text-[11px] text-sand file:mr-3 file:rounded-md file:border-0 file:bg-white/5 file:px-3 file:py-1.5 file:font-mono file:text-[10px] file:text-cream"
+              />
+            </label>
+
+            {sheet && (
+              <div className="space-y-2 rounded-md border border-white/10 bg-black/40 p-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-[10px] text-sage">{sheet.fileName}</span>
+                  <button
+                    onClick={() => {
+                      setSheet(null);
+                      setPreview(null);
+                    }}
+                    className="font-mono text-[10px] uppercase tracking-[1.5px] text-muted hover:text-coral"
+                  >
+                    remove
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="block">
+                    <span className="mb-1 block font-mono text-[9px] uppercase tracking-[1.5px] text-muted">
+                      phone column
+                    </span>
+                    <select
+                      value={phoneCol}
+                      onChange={(e) => {
+                        setPhoneCol(Number(e.target.value));
+                        setPreview(null);
+                      }}
+                      className="w-full rounded-md border border-white/10 bg-black/30 px-2 py-1.5 font-mono text-[11px] text-sand"
+                    >
+                      {Array.from({ length: sheet.columnCount }, (_, i) => (
+                        <option key={i} value={i}>
+                          {String.fromCharCode(65 + i)} — {sheet.rows[0]?.[i] || "(empty)"}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block font-mono text-[9px] uppercase tracking-[1.5px] text-muted">
+                      name column
+                    </span>
+                    <select
+                      value={nameCol}
+                      onChange={(e) => {
+                        setNameCol(e.target.value === "" ? "" : Number(e.target.value));
+                        setPreview(null);
+                      }}
+                      className="w-full rounded-md border border-white/10 bg-black/30 px-2 py-1.5 font-mono text-[11px] text-sand"
+                    >
+                      <option value="">— none —</option>
+                      {Array.from({ length: sheet.columnCount }, (_, i) => (
+                        <option key={i} value={i}>
+                          {String.fromCharCode(65 + i)} — {sheet.rows[0]?.[i] || "(empty)"}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <label className="flex items-center gap-2 font-mono text-[10px] text-muted">
+                  <input
+                    type="checkbox"
+                    checked={skipHeaderRow}
+                    onChange={(e) => {
+                      setSkipHeaderRow(e.target.checked);
+                      setPreview(null);
+                    }}
+                  />
+                  first row is a header (skip it)
+                </label>
+                <p className="font-mono text-[10px] text-sand">
+                  <span className="text-sage">{sheetContacts().length}</span> contacts parsed
+                  {sheetContacts()
+                    .slice(0, 2)
+                    .map((c) => ` · ${c.name || "no name"} ${c.phone}`)
+                    .join("")}
+                </p>
+              </div>
+            )}
+
+            {!sheet && (
+              <textarea
+                value={manualPhones}
+                onChange={(e) => setManualPhones(e.target.value)}
+                rows={4}
+                placeholder={"...or paste numbers, one per line\n+919663241658\n9812345678 (10 digits assumes +91)"}
+                className="w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 font-mono text-[11px] text-sand"
+              />
+            )}
+          </div>
         )}
 
         <div className="flex items-center gap-3">
@@ -453,6 +662,9 @@ function CampaignComposer({
             <span className="font-mono text-[11px] text-sand">
               <span className="text-sage">{preview.eligible}</span> eligible ·{" "}
               {preview.skipped_no_phone} skipped (no phone)
+              {(preview.skipped_opted_out ?? 0) > 0 && (
+                <span className="text-coral"> · {preview.skipped_opted_out} opted out</span>
+              )}
               {preview.sample.length > 0 && (
                 <span className="text-muted">
                   {" "}
@@ -668,6 +880,9 @@ function CampaignDetail({
         <Stat label="sent" value={c.totals.sent} />
         <Stat label="failed" value={c.totals.failed} tone={c.totals.failed > 0 ? "coral" : undefined} />
         <Stat label="no phone" value={c.totals.skipped_no_phone} />
+        {(c.totals.skipped_opted_out ?? 0) > 0 && (
+          <Stat label="opted out" value={c.totals.skipped_opted_out ?? 0} tone="coral" />
+        )}
       </div>
 
       {delivery && Object.keys(delivery.counts).length > 0 && (

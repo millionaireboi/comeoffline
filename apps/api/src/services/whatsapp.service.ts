@@ -17,6 +17,7 @@ interface SendTemplateOptions {
   bodyParams?: string[]; // injected as {{1}}, {{2}}, ...
   headerImageUrl?: string; // optional: public HTTPS URL for IMAGE-header templates
   headerImageId?: string;  // preferred: WhatsApp media_id from uploadMedia() — image stays private to Meta's servers
+  headerVideoId?: string;  // WhatsApp media_id for VIDEO-header templates (mp4/3gpp via uploadMedia)
   // Button parameters by index. Required for AUTHENTICATION templates with a Copy-code or
   // URL button — the code (or URL fragment) must be passed alongside the body.
   buttonParamsByIndex?: Record<number, { subType: "url" | "copy_code" | "quick_reply"; text: string }>;
@@ -75,7 +76,12 @@ export async function sendTemplate(opts: SendTemplateOptions): Promise<CloudApiR
 
   const components: Array<Record<string, unknown>> = [];
 
-  if (opts.headerImageId) {
+  if (opts.headerVideoId) {
+    components.push({
+      type: "header",
+      parameters: [{ type: "video", video: { id: opts.headerVideoId } }],
+    });
+  } else if (opts.headerImageId) {
     components.push({
       type: "header",
       parameters: [{ type: "image", image: { id: opts.headerImageId } }],
@@ -184,6 +190,58 @@ export async function sendTemplate(opts: SendTemplateOptions): Promise<CloudApiR
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[whatsapp] network error:", { template: opts.templateName, to, message });
+    return { ok: false, error: message };
+  }
+}
+
+/**
+ * Send a free-form text message. Only deliverable inside the 24h customer-service window
+ * (i.e. the recipient messaged us within the last 24h) — outside it Meta rejects with
+ * error 131047 and a template must be used instead. Used by the admin inbox reply flow.
+ */
+export async function sendText(opts: { to: string; body: string }): Promise<CloudApiResult> {
+  const { phoneNumberId, accessToken } = getCreds();
+  const to = normalizeRecipient(opts.to);
+
+  const payload = {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to,
+    type: "text",
+    text: { body: opts.body, preview_url: true },
+  };
+
+  try {
+    const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/${phoneNumberId}/messages`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = (await res.json()) as {
+      messages?: { id: string }[];
+      error?: { message?: string; code?: number; error_data?: { details?: string }; fbtrace_id?: string };
+    };
+    if (!res.ok || data.error) {
+      const message = data.error?.message || `HTTP ${res.status}`;
+      console.error("[whatsapp] sendText error:", {
+        httpStatus: res.status,
+        code: data.error?.code,
+        message,
+        details: data.error?.error_data?.details,
+        to,
+      });
+      return { ok: false, error: message, code: data.error?.code, httpStatus: res.status, details: data.error };
+    }
+    const messageId = data.messages?.[0]?.id || "";
+    console.log(`[whatsapp] sent text to ${to} → wamid=${messageId}`);
+    return { ok: true, messageId, raw: data };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[whatsapp] sendText network error:", { to, message });
     return { ok: false, error: message };
   }
 }
@@ -448,12 +506,18 @@ export function templateVariableCount(template: TemplateRecord): {
   bodyText: string;
   bodyVarCount: number;
   hasImageHeader: boolean;
+  hasVideoHeader: boolean;
 } {
   const body = template.components?.find((c) => c.type?.toUpperCase() === "BODY");
   const header = template.components?.find((c) => c.type?.toUpperCase() === "HEADER");
   const bodyText = body?.text ?? "";
   const matches = bodyText.match(/\{\{\d+\}\}/g) ?? [];
   const unique = new Set(matches).size;
-  const hasImageHeader = (header?.format ?? "").toUpperCase() === "IMAGE";
-  return { bodyText, bodyVarCount: unique, hasImageHeader };
+  const headerFormat = (header?.format ?? "").toUpperCase();
+  return {
+    bodyText,
+    bodyVarCount: unique,
+    hasImageHeader: headerFormat === "IMAGE",
+    hasVideoHeader: headerFormat === "VIDEO",
+  };
 }

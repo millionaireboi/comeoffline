@@ -24,6 +24,10 @@ import crypto from "crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { env } from "../config/env";
 import { getDb } from "../config/firebase-admin";
+import {
+  recordInboundMessage,
+  type InboundWebhookMessage,
+} from "../services/whatsapp-inbox.service";
 
 const router = Router();
 
@@ -43,13 +47,7 @@ interface WhatsAppStatus {
   pricing?: { category?: string; pricing_model?: string };
 }
 
-interface WhatsAppInboundMessage {
-  from: string;
-  id: string;
-  timestamp: string;
-  type: string;
-  text?: { body: string };
-}
+type WhatsAppInboundMessage = InboundWebhookMessage;
 
 interface WhatsAppWebhookPayload {
   object?: string;
@@ -193,11 +191,18 @@ router.post("/", async (req: Request, res: Response) => {
           }
         }
 
-        // Inbound messages — log only (we don't currently process incoming WhatsApp).
+        // Inbound messages — persist into the admin inbox (replies to campaigns land here).
         for (const inbound of value.messages ?? []) {
           console.log(
             `[whatsapp-webhook] inbound type=${inbound.type} from=${inbound.from} id=${inbound.id}`,
           );
+          const profileName =
+            value.contacts?.find((c) => c.wa_id === inbound.from)?.profile?.name ?? null;
+          try {
+            await recordInboundMessage(inbound, profileName);
+          } catch (err) {
+            console.error("[whatsapp-webhook] failed to persist inbound message:", err);
+          }
         }
       }
     }

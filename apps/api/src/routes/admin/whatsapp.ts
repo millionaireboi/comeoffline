@@ -292,15 +292,18 @@ router.post("/whatsapp/upload-media", strictLimiter, requireAdmin, async (req: A
       res.status(400).json({ success: false, error: "dataUri required (e.g. 'data:image/png;base64,...')" });
       return;
     }
-    const match = dataUri.match(/^data:(image\/(?:png|jpeg|jpg));base64,(.+)$/);
+    const match = dataUri.match(/^data:(image\/(?:png|jpeg|jpg)|video\/(?:mp4|3gpp));base64,(.+)$/);
     if (!match) {
-      res.status(400).json({ success: false, error: "Only image/png and image/jpeg data URIs are supported here" });
+      res.status(400).json({ success: false, error: "Only image/png, image/jpeg, video/mp4 and video/3gpp data URIs are supported here" });
       return;
     }
     const mimeType = match[1];
     const buffer = Buffer.from(match[2], "base64");
-    if (buffer.length > 5 * 1024 * 1024) {
-      res.status(400).json({ success: false, error: "Image must be under 5MB" });
+    const isVideo = mimeType.startsWith("video/");
+    // Meta caps template header video at 16MB, but our JSON body limit means ~10MB binary max.
+    const maxBytes = (isVideo ? 10 : 5) * 1024 * 1024;
+    if (buffer.length > maxBytes) {
+      res.status(400).json({ success: false, error: `${isVideo ? "Video" : "Image"} must be under ${isVideo ? 10 : 5}MB` });
       return;
     }
     const result = await uploadMedia({ buffer, mimeType, filename: `header.${mimeType.split("/")[1]}` });

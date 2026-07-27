@@ -32,6 +32,7 @@ import adminBookingsRouter from "./routes/admin/bookings";
 import adminDiscountsRouter from "./routes/admin/discounts";
 import adminWhatsappRouter from "./routes/admin/whatsapp";
 import adminWhatsappCampaignsRouter from "./routes/admin/whatsapp-campaigns";
+import adminWhatsappInboxRouter from "./routes/admin/whatsapp-inbox";
 import adminLinksRouter from "./routes/admin/links";
 import publicLinksRouter from "./routes/links";
 import adminCreatorsRouter from "./routes/admin/creators";
@@ -52,7 +53,8 @@ app.set("trust proxy", 1);
 app.use(helmet());
 app.use(cors({ origin: env.allowedOrigins, credentials: true }));
 app.use(express.json({
-  limit: "10mb",
+  // 16mb: WhatsApp video template headers arrive as base64 data URIs (~10MB binary + 37% overhead)
+  limit: "16mb",
   verify: (req: any, _res, buf) => {
     req.rawBody = buf.toString();
   },
@@ -85,6 +87,7 @@ app.use("/api/admin/creators", adminLimiter, adminCreatorsRouter);
 app.use("/api/admin/team", adminLimiter, adminTeamRouter);
 app.use("/api/admin/prospects", adminLimiter, adminProspectsRouter);
 app.use("/api/admin", adminLimiter, adminWhatsappCampaignsRouter);
+app.use("/api/admin", adminLimiter, adminWhatsappInboxRouter);
 app.use("/api/admin", adminLimiter, adminWhatsappRouter);
 
 // Apply general rate limiting to all non-admin routes

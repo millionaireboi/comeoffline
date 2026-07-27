@@ -58,11 +58,25 @@ function parseAudience(input: unknown): CampaignAudience | null {
         return { type: "event", event_id: a.event_id };
       }
       return null;
-    case "manual":
+    case "manual": {
+      // Canonical: contacts [{phone, name?}] from a sheet upload; phones[] still accepted.
+      if (Array.isArray(a.contacts) && a.contacts.length > 0) {
+        const contacts = a.contacts
+          .filter(
+            (c): c is { phone: string; name?: unknown } =>
+              !!c && typeof c === "object" && typeof (c as { phone?: unknown }).phone === "string",
+          )
+          .map((c) => ({
+            phone: c.phone,
+            name: typeof c.name === "string" && c.name.trim() ? c.name.trim().slice(0, 80) : null,
+          }));
+        return contacts.length > 0 ? { type: "manual", contacts } : null;
+      }
       if (Array.isArray(a.phones) && a.phones.length > 0 && a.phones.every((p) => typeof p === "string")) {
         return { type: "manual", phones: a.phones as string[] };
       }
       return null;
+    }
     default:
       return null;
   }
@@ -102,13 +116,14 @@ router.get("/whatsapp/campaigns", requireAdmin, async (_req: AuthRequest, res) =
  */
 router.post("/whatsapp/campaigns", strictLimiter, requireAdmin, async (req: AuthRequest, res) => {
   try {
-    const { name, template_name, language_code, body_params, header_image_id, audience } =
+    const { name, template_name, language_code, body_params, header_image_id, header_video_id, audience } =
       req.body as {
         name?: string;
         template_name?: string;
         language_code?: string;
         body_params?: unknown;
         header_image_id?: string;
+        header_video_id?: string;
         audience?: unknown;
       };
 
@@ -125,7 +140,18 @@ router.post("/whatsapp/campaigns", strictLimiter, requireAdmin, async (req: Auth
       res.status(400).json({
         success: false,
         error:
-          "'audience' must be one of: {type:'all'}, {type:'status',status}, {type:'event',event_id}, {type:'purchasers'}, {type:'never_purchased'}, {type:'manual',phones[]}",
+          "'audience' must be one of: {type:'all'}, {type:'status',status}, {type:'event',event_id}, {type:'purchasers'}, {type:'never_purchased'}, {type:'manual',phones[]|contacts[]}",
+      });
+      return;
+    }
+    // The audience is stored on the campaign doc — Firestore caps docs at 1MB.
+    if (
+      parsedAudience.type === "manual" &&
+      (parsedAudience.contacts?.length ?? parsedAudience.phones?.length ?? 0) > 10_000
+    ) {
+      res.status(400).json({
+        success: false,
+        error: "Manual lists are capped at 10,000 contacts per campaign — split into batches (good for pacing the daily messaging limit anyway)",
       });
       return;
     }
@@ -156,7 +182,7 @@ router.post("/whatsapp/campaigns", strictLimiter, requireAdmin, async (req: Auth
       });
       return;
     }
-    const { bodyVarCount, hasImageHeader } = templateVariableCount(tpl);
+    const { bodyVarCount, hasImageHeader, hasVideoHeader } = templateVariableCount(tpl);
     if (params.length !== bodyVarCount) {
       res.status(400).json({
         success: false,
@@ -171,6 +197,13 @@ router.post("/whatsapp/campaigns", strictLimiter, requireAdmin, async (req: Auth
       });
       return;
     }
+    if (hasVideoHeader && !header_video_id) {
+      res.status(400).json({
+        success: false,
+        error: `Template "${template_name}" has a VIDEO header — upload an mp4 via /upload-media and pass header_video_id`,
+      });
+      return;
+    }
 
     const nowIso = new Date().toISOString();
     const db = await getDb();
@@ -181,6 +214,7 @@ router.post("/whatsapp/campaigns", strictLimiter, requireAdmin, async (req: Auth
       language_code: language_code ?? tpl.language ?? "en_US",
       body_params: params,
       header_image_id: header_image_id ?? null,
+      header_video_id: header_video_id ?? null,
       audience: parsedAudience,
       status: "draft",
       totals: { eligible: 0, sent: 0, failed: 0, skipped_no_phone: 0 },
@@ -298,6 +332,7 @@ router.post("/whatsapp/campaigns/:id/test", strictLimiter, requireAdmin, async (
         display_name: "there",
       }),
       headerImageId: campaign.header_image_id ?? undefined,
+      headerVideoId: campaign.header_video_id ?? undefined,
     });
     if (!result.ok) {
       res.status(502).json({ success: false, error: result.error, code: result.code, details: result.details });

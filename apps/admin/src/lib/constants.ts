@@ -3,7 +3,7 @@ export const instrumentSerif = {
   variable: "--font-instrument-serif",
 };
 
-export type Tab = "dashboard" | "events" | "bookings" | "discounts" | "links" | "creators" | "pipeline" | "check-in" | "validation" | "content" | "applications" | "members" | "safety" | "reports" | "contact" | "brands" | "marketing" | "whatsapp" | "settings" | "team";
+export type Tab = "dashboard" | "events" | "bookings" | "discounts" | "links" | "creators" | "pipeline" | "check-in" | "validation" | "content" | "applications" | "members" | "safety" | "reports" | "contact" | "brands" | "marketing" | "replies" | "whatsapp" | "settings" | "team";
 
 /** Two-level nav: groups ordered by how often they're needed. A tab lives in
  *  exactly one group; the group row + sub-tab row replace the old flat strip. */
@@ -19,7 +19,7 @@ export const TAB_GROUPS: TabGroup[] = [
   { key: "events", label: "events", emoji: "🎪", tabs: ["events", "bookings", "check-in", "content"] },
   { key: "growth", label: "growth", emoji: "📈", tabs: ["links", "discounts", "creators", "pipeline", "marketing"] },
   { key: "people", label: "people", emoji: "👥", tabs: ["members", "applications", "validation", "safety", "reports"] },
-  { key: "inbox", label: "inbox", emoji: "📬", tabs: ["contact", "brands"] },
+  { key: "inbox", label: "inbox", emoji: "📬", tabs: ["replies", "contact", "brands"] },
   { key: "system", label: "system", emoji: "⚙️", tabs: ["whatsapp", "settings", "team"] },
 ];
 

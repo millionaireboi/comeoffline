@@ -22,6 +22,7 @@ import { LinksTab } from "@/components/tabs/LinksTab";
 import { CreatorsTab } from "@/components/tabs/CreatorsTab";
 import { WhatsAppTab } from "@/components/tabs/WhatsAppTab";
 import { MarketingPanel } from "@/components/tabs/WhatsAppMarketingPanel";
+import { WhatsAppRepliesTab } from "@/components/tabs/WhatsAppRepliesTab";
 import { ReportsTab } from "@/components/tabs/ReportsTab";
 import { TeamTab } from "@/components/tabs/TeamTab";
 import { PipelineTab } from "@/components/tabs/PipelineTab";
@@ -191,6 +192,7 @@ function AdminDashboard() {
         {tab === "applications" && <TabErrorBoundary tabName="applications" key="applications"><ApplicationsTab /></TabErrorBoundary>}
         {tab === "members" && <TabErrorBoundary tabName="members" key="members"><MembersTab /></TabErrorBoundary>}
         {(tab === "safety" || tab === "reports") && <TabErrorBoundary tabName="safety" key="safety"><ReportsTab /></TabErrorBoundary>}
+        {tab === "replies" && <TabErrorBoundary tabName="replies" key="replies"><WhatsAppRepliesTab /></TabErrorBoundary>}
         {tab === "contact" && <TabErrorBoundary tabName="contact" key="contact"><ContactTab /></TabErrorBoundary>}
         {tab === "brands" && <TabErrorBoundary tabName="brands" key="brands"><BrandsTab /></TabErrorBoundary>}
         {tab === "whatsapp" && <TabErrorBoundary tabName="whatsapp" key="whatsapp"><WhatsAppTab /></TabErrorBoundary>}

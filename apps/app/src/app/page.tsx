@@ -59,6 +59,8 @@ export default function Home() {
   const fullProfileMode = useAppStore((s) => s.fullProfileMode);
   const showCompletionDialog = useAppStore((s) => s.showCompletionDialog);
   const eventDetailOpen = useAppStore((s) => s.eventDetailOpen);
+  const signInPromptOpen = useAppStore((s) => s.signInPromptOpen);
+  const setSignInPromptOpen = useAppStore((s) => s.setSignInPromptOpen);
   const [chatOpen, setChatOpen] = useState(false);
   const [quizActive, setQuizActive] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
@@ -288,6 +290,11 @@ export default function Home() {
     return () => { signal.cancelled = true; };
   }, [loading, tokenChecking, user, restoreActiveTicket]);
 
+  // Close the sign-in prompt once a session exists (express entry or PIN login).
+  useEffect(() => {
+    if (user) setSignInPromptOpen(false);
+  }, [user, setSignInPromptOpen]);
+
   // Trigger PWA install prompt after booking (when user transitions to countdown)
   useEffect(() => {
     if (
@@ -434,8 +441,11 @@ export default function Home() {
   let screen: React.ReactNode;
   switch (stage) {
     case "gate":
-      // One less step to booking: the phone entry screen IS the gate.
-      screen = <SignInScreen />;
+      // BookMyShow-style: logged-out visitors browse the feed freely; the
+      // sign-in screen appears only when they tap buy (or ask to sign in).
+      screen = signInPromptOpen
+        ? <SignInScreen onBack={() => setSignInPromptOpen(false)} />
+        : <EventFeed />;
       break;
     case "accepted":
       screen = <AcceptanceScreen />;

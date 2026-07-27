@@ -163,21 +163,28 @@ export async function signInByHandle(
 
   // Fallback: search by phone_number (E.164 format)
   if (!userDoc && isPhoneInput) {
-    // Normalize phone: strip non-digit chars (except leading +), ensure +prefix
-    const phoneQuery = strippedForPhoneCheck.startsWith("+") ? strippedForPhoneCheck : `+${strippedForPhoneCheck}`;
+    // Normalize phone: strip non-digit chars (except leading +), ensure +prefix.
+    // Numbers are stored E.164, so a bare 10-digit Indian number also needs +91.
+    const candidates = [
+      strippedForPhoneCheck.startsWith("+") ? strippedForPhoneCheck : `+${strippedForPhoneCheck}`,
+      ...(/^\d{10}$/.test(strippedForPhoneCheck) ? [`+91${strippedForPhoneCheck}`] : []),
+    ];
 
-    const phoneSnap = await db
-      .collection("users")
-      .where("phone_number", "==", phoneQuery)
-      .limit(2)
-      .get();
+    for (const phoneQuery of candidates) {
+      const phoneSnap = await db
+        .collection("users")
+        .where("phone_number", "==", phoneQuery)
+        .limit(2)
+        .get();
 
-    if (phoneSnap.size > 1) {
-      return { valid: false, error: "Multiple accounts found with this phone number. Please sign in with your handle instead." };
-    }
+      if (phoneSnap.size > 1) {
+        return { valid: false, error: "Multiple accounts found with this phone number. Please sign in with your handle instead." };
+      }
 
-    if (!phoneSnap.empty) {
-      userDoc = phoneSnap.docs[0];
+      if (!phoneSnap.empty) {
+        userDoc = phoneSnap.docs[0];
+        break;
+      }
     }
   }
 

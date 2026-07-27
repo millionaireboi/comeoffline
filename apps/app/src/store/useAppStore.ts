@@ -99,6 +99,11 @@ interface AppState {
   showCompletionDialog: boolean;
   setShowCompletionDialog: (show: boolean) => void;
 
+  // Logged-out visitors browse the feed freely; this opens the sign-in screen
+  // only when they commit (buy tap) or ask for it. BookMyShow-style.
+  signInPromptOpen: boolean;
+  setSignInPromptOpen: (open: boolean) => void;
+
   // Toast notifications
   toast: { message: string; type: "error" | "success" | "info" } | null;
   showToast: (message: string, type?: "error" | "success" | "info") => void;
@@ -161,6 +166,9 @@ export const useAppStore = create<AppState>()(
 
   pendingDeepLinkTierId: null,
   setPendingDeepLinkTierId: (id) => set({ pendingDeepLinkTierId: id }),
+
+  signInPromptOpen: false,
+  setSignInPromptOpen: (open) => set({ signInPromptOpen: open }),
 
   attribution: null,
   setAttribution: (attribution) => set({ attribution, attributionAt: attribution ? Date.now() : null }),

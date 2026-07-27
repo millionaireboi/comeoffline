@@ -210,6 +210,16 @@ export function EventDetail({ event, initialTierId, onClose, onRsvp, onTicketPur
       handleViewTicket();
       return;
     }
+    // Logged-out visitor committing to buy — this is the one moment we ask for
+    // a number. Intent is captured so after entry the feed reopens this event
+    // with the tier preselected.
+    if (!user) {
+      const { setPendingPurchaseEventId, setPendingDeepLinkTierId, setSignInPromptOpen } = useAppStore.getState();
+      setPendingPurchaseEventId(event.id);
+      if (selectedTierId) setPendingDeepLinkTierId(selectedTierId);
+      setSignInPromptOpen(true);
+      return;
+    }
     // Funnel: user committed to checkout (CTA tap with valid tier).
     posthog.capture(FUNNEL_CHECKOUT_OPENED, {
       event_id: event.id,

@@ -50,7 +50,7 @@ export function EventFeed() {
   // "Your people are going" — per-event counts of my connections with tickets
   const [connectionsGoing, setConnectionsGoing] = useState<Record<string, { count: number; names: string[] }>>({});
   useEffect(() => {
-    if (authLoading) return;
+    if (authLoading || !user) return;
     let cancelled = false;
     (async () => {
       try {
@@ -66,7 +66,7 @@ export function EventFeed() {
       }
     })();
     return () => { cancelled = true; };
-  }, [authLoading, getIdToken]);
+  }, [authLoading, user, getIdToken]);
 
   const tokenRetryCount = useRef(0);
 
@@ -75,15 +75,9 @@ export function EventFeed() {
     try {
       const token = await getIdToken();
       if (!token) {
-        // Auth may still be settling — retry up to 3 times with increasing delay
-        if (tokenRetryCount.current < 3) {
-          const delay = (tokenRetryCount.current + 1) * 1500;
-          tokenRetryCount.current++;
-          setTimeout(() => fetchEvents(), delay);
-          return;
-        }
-        setFetchError(true);
-        setLoading(false);
+        // Logged-out visitor — public browse mode (same feed the landing page uses).
+        const data = await apiFetch<{ success: boolean; data: Event[] }>("/api/events/public");
+        if (data.data) setEvents(data.data);
         return;
       }
       tokenRetryCount.current = 0;
@@ -308,6 +302,11 @@ export function EventFeed() {
   // Join waitlist for announced events
   const handleJoinWaitlist = useCallback(
     async (event: Event, spotsWanted: number) => {
+      if (!user) {
+        setPendingPurchaseEventId(event.id);
+        useAppStore.getState().setSignInPromptOpen(true);
+        return;
+      }
       if (actionLockRef.current) return;
       actionLockRef.current = true;
       setActionLoading(true);
@@ -330,7 +329,7 @@ export function EventFeed() {
         setActionLoading(false);
       }
     },
-    [getIdToken, setActiveWaitlistEntry],
+    [user, setPendingPurchaseEventId, getIdToken, setActiveWaitlistEntry],
   );
 
   // Leave waitlist
@@ -390,8 +389,20 @@ export function EventFeed() {
     <PullToRefresh onRefresh={fetchEvents} className="min-h-screen bg-cream pb-[120px]">
       <Noise />
 
+      {/* Logged-out visitors: quiet sign-in entry for returning members */}
+      {!user && (
+        <div className="flex justify-end px-5 pt-4">
+          <button
+            onClick={() => useAppStore.getState().setSignInPromptOpen(true)}
+            className="rounded-full border border-sand px-4 py-1.5 font-mono text-[11px] uppercase tracking-[2px] text-warm-brown transition-colors hover:border-caramel"
+          >
+            member? sign in
+          </button>
+        </div>
+      )}
+
       {/* Quiz reminder banner — fixed at top if user hasn't taken the quiz */}
-      {!user?.sign && (
+      {user && !user.sign && (
         <div
           className="sticky top-0 z-[100] flex items-center justify-between px-5 py-3"
           style={{ background: "linear-gradient(135deg, #1A1714, #2A2520)", borderBottom: "1px solid rgba(212,165,116,0.2)" }}

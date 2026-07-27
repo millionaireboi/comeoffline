@@ -322,6 +322,7 @@ export interface Event {
   seating?: SeatingConfig;
   cover_url?: string; // image or video URL for event cover
   cover_type?: "image" | "video"; // media type of the cover
+  cover_poster_url?: string; // poster frame for video covers — shows instantly on slow connections; also the og:image
   cover_focus?: string; // CSS object-position value for crop focus (e.g. "top", "center", "bottom")
   gallery_urls?: string[]; // additional images for carousel (images only)
   past_photos?: PastPhoto[]; // photos from previous editions — trust gallery on the detail page

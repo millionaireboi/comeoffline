@@ -66,6 +66,7 @@ export function CollapsibleHeader({ event, onClose }: CollapsibleHeaderProps) {
           {isVideo ? (
             <video
               src={event.cover_url}
+              poster={event.cover_poster_url}
               className="h-full w-full object-cover"
               style={{ objectPosition: event.cover_focus || "center" }}
               muted

@@ -49,11 +49,13 @@ export function EventCard({ event, index, onOpen, connectionsGoing, dateCount = 
           {event.cover_type === "video" ? (
             <video
               src={event.cover_url}
+              poster={event.cover_poster_url}
               className="h-48 w-full object-cover"
               style={{ objectPosition: event.cover_focus || "center" }}
               muted
               loop
               playsInline
+              autoPlay
               preload="metadata"
               onError={(e) => {
                 e.currentTarget.style.display = "none";

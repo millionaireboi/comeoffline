@@ -155,6 +155,7 @@ function CoverMedia({ event }: { event: any }) {
       <div style={{ position: "relative", width: "100%", height: 170, overflow: "hidden", flexShrink: 0 }}>
         <video
           src={event.cover_url}
+          poster={event.cover_poster_url}
           style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: event.cover_focus || "center", display: "block" }}
           muted
           loop

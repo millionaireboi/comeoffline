@@ -7,7 +7,7 @@ import { API_URL } from "@/lib/constants";
 interface MediaUploadProps {
   value?: string;
   mediaType?: "image" | "video";
-  onChange: (url: string, type: "image" | "video") => void;
+  onChange: (url: string, type: "image" | "video", posterUrl?: string) => void;
   onClear: () => void;
   pathPrefix?: string;
   maxImageWidth?: number;
@@ -80,6 +80,7 @@ export function MediaUpload({
 }: MediaUploadProps) {
   const { getIdToken } = useAuth();
   const [uploading, setUploading] = useState(false);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState("");
@@ -107,6 +108,7 @@ export function MediaUpload({
     }
 
     setUploading(true);
+    setUploadingVideo(isVideo);
     setError("");
 
     try {
@@ -130,7 +132,11 @@ export function MediaUpload({
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
-      onChange(data.data.url, data.data.media_type || (isImage ? "image" : "video"));
+      onChange(
+        data.data.url,
+        data.data.media_type || (isImage ? "image" : "video"),
+        data.data.poster_url,
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
@@ -277,7 +283,9 @@ export function MediaUpload({
             }`}
           >
             {uploading ? (
-              <p className="font-mono text-[11px] text-muted animate-pulse">uploading...</p>
+              <p className="font-mono text-[11px] text-muted animate-pulse">
+                {uploadingVideo ? "uploading & compressing video… can take a minute" : "uploading..."}
+              </p>
             ) : (
               <>
                 <svg className="mb-2 h-8 w-8 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>

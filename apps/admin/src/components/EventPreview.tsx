@@ -156,6 +156,7 @@ function DetailView({ event }: { event: Event }) {
           {event.cover_type === "video" ? (
             <video
               src={event.cover_url}
+              poster={event.cover_poster_url}
               className="h-[180px] w-full object-cover"
               muted
               loop

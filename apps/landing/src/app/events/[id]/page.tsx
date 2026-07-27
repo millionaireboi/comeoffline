@@ -39,6 +39,7 @@ interface PublicEvent {
   status: string;
   cover_url?: string;
   cover_type?: "image" | "video";
+  cover_poster_url?: string;
   gallery_urls?: string[];
   ticketing?: {
     enabled: boolean;
@@ -102,7 +103,17 @@ export async function generateMetadata({
       url: `https://comeoffline.com/events/${event.id}`,
       siteName: "come offline.",
       type: "website",
-      images: [{ url: event.cover_url && event.cover_type === "image" ? event.cover_url : "/Comeoffline socials.png", width: 1200, height: 630, alt: event.title }],
+      images: [{
+        // Video covers can't be an og:image — use their poster frame instead
+        url: event.cover_url && event.cover_type === "image"
+          ? event.cover_url
+          : event.cover_type === "video" && event.cover_poster_url
+            ? event.cover_poster_url
+            : "/Comeoffline socials.png",
+        width: 1200,
+        height: 630,
+        alt: event.title,
+      }],
     },
     twitter: {
       card: "summary_large_image",

@@ -38,6 +38,7 @@ interface PublicEvent {
   status: string;
   cover_url?: string;
   cover_type?: "image" | "video";
+  cover_poster_url?: string;
   gallery_urls?: string[];
   past_photos?: { url: string; caption?: string }[];
   ticketing?: {

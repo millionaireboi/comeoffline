@@ -4,6 +4,11 @@ import { requireAdmin, type AuthRequest } from "../../middleware/auth";
 import { asyncHandler } from "../../middleware/errorHandler";
 import { getStorageService } from "../../config/firebase-admin";
 import crypto from "crypto";
+import { spawn } from "child_process";
+import { promises as fs } from "fs";
+import os from "os";
+import path from "path";
+import ffmpegPath from "ffmpeg-static";
 
 const router = Router();
 
@@ -64,8 +69,68 @@ function validateDataUri(dataUri: string): { mediaType: "image" | "video"; ext: 
   return { mediaType: "video", ext: videoType };
 }
 
+function runFfmpeg(args: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (!ffmpegPath) return reject(new Error("ffmpeg binary not available"));
+    const proc = spawn(ffmpegPath, args, { stdio: ["ignore", "ignore", "pipe"] });
+    let stderr = "";
+    proc.stderr.on("data", (d) => { stderr += d; });
+    const timer = setTimeout(() => proc.kill("SIGKILL"), 180_000);
+    proc.on("error", (err) => { clearTimeout(timer); reject(err); });
+    proc.on("close", (code) => {
+      clearTimeout(timer);
+      if (code === 0) resolve();
+      else reject(new Error(`ffmpeg exited ${code}: ${stderr.slice(-400)}`));
+    });
+  });
+}
+
+/** Transcode a cover video into a light, stream-friendly MP4 and grab a
+ *  poster frame. 720p max / H.264 / CRF 28 / no audio (covers autoplay
+ *  muted) / +faststart so playback starts before the download finishes —
+ *  a 30MB phone clip comes out at a few MB and plays on slow connections.
+ *  Length capped at 60s. */
+async function transcodeVideo(
+  buffer: Buffer,
+  ext: string,
+): Promise<{ video: Buffer; poster: Buffer }> {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "cover-"));
+  const inPath = path.join(dir, `in.${ext}`);
+  const outPath = path.join(dir, "out.mp4");
+  const posterPath = path.join(dir, "poster.jpg");
+  try {
+    await fs.writeFile(inPath, buffer);
+    await runFfmpeg([
+      "-y", "-i", inPath,
+      "-vf", "scale='min(720,iw)':-2",
+      "-c:v", "libx264", "-crf", "28", "-preset", "veryfast",
+      "-pix_fmt", "yuv420p",
+      "-movflags", "+faststart",
+      "-an",
+      "-t", "60",
+      outPath,
+    ]);
+    await runFfmpeg(["-y", "-i", outPath, "-frames:v", "1", "-q:v", "4", posterPath]);
+    return { video: await fs.readFile(outPath), poster: await fs.readFile(posterPath) };
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+}
+
+async function saveToBucket(buffer: Buffer, filePath: string, contentType: string): Promise<string> {
+  const storage = await getStorageService();
+  const bucket = storage.bucket();
+  const file = bucket.file(filePath);
+  await file.save(buffer, { metadata: { contentType } });
+  await file.makePublic();
+  return `https://storage.googleapis.com/${bucket.name}/${filePath}`;
+}
+
 /** Upload a single media file to Firebase Storage */
-async function uploadSingle(dataUri: string, prefix: string): Promise<{ url: string; media_type: "image" | "video" }> {
+async function uploadSingle(
+  dataUri: string,
+  prefix: string,
+): Promise<{ url: string; media_type: "image" | "video"; poster_url?: string }> {
   const imageMatch = dataUri.match(/^data:image\/(\w+);base64,(.+)$/);
   const videoMatch = dataUri.match(/^data:video\/(\w+);base64,(.+)$/);
 
@@ -76,22 +141,27 @@ async function uploadSingle(dataUri: string, prefix: string): Promise<{ url: str
   const mimeSubtype = match[1];
   const ext = mimeSubtype === "jpeg" ? "jpg" : mimeSubtype === "quicktime" ? "mov" : mimeSubtype;
   const buffer = Buffer.from(match[2], "base64");
-  const filename = `${crypto.randomUUID()}.${ext}`;
-  const filePath = `${prefix}/${filename}`;
+  const id = crypto.randomUUID();
 
-  const storage = await getStorageService();
-  const bucket = storage.bucket();
-  const file = bucket.file(filePath);
+  if (mediaType === "video") {
+    try {
+      const { video, poster } = await transcodeVideo(buffer, ext);
+      const [url, posterUrl] = await Promise.all([
+        saveToBucket(video, `${prefix}/${id}.mp4`, "video/mp4"),
+        saveToBucket(poster, `${prefix}/${id}-poster.jpg`, "image/jpeg"),
+      ]);
+      return { url, media_type: "video", poster_url: posterUrl };
+    } catch (err) {
+      // Transcode failure shouldn't block the upload — store the original.
+      // (No poster in that case; players fall back to first-frame behavior.)
+      console.warn("[upload] video transcode failed, storing original:", err);
+      const url = await saveToBucket(buffer, `${prefix}/${id}.${ext}`, `video/${mimeSubtype}`);
+      return { url, media_type: "video" };
+    }
+  }
 
-  await file.save(buffer, {
-    metadata: { contentType: `${mediaType}/${mimeSubtype}` },
-  });
-  await file.makePublic();
-
-  return {
-    url: `https://storage.googleapis.com/${bucket.name}/${filePath}`,
-    media_type: mediaType,
-  };
+  const url = await saveToBucket(buffer, `${prefix}/${id}.${ext}`, `image/${mimeSubtype}`);
+  return { url, media_type: "image" };
 }
 
 /** POST /api/admin/upload — Upload image(s) or video to Firebase Storage */
@@ -133,7 +203,14 @@ router.post(
 
     if (image) {
       const result = await uploadSingle(image, prefix);
-      res.json({ success: true, data: { url: result.url, media_type: result.media_type } });
+      res.json({
+        success: true,
+        data: {
+          url: result.url,
+          media_type: result.media_type,
+          ...(result.poster_url && { poster_url: result.poster_url }),
+        },
+      });
     } else {
       const results = await Promise.all(
         (images as string[]).map((img) => uploadSingle(img, prefix))

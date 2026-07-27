@@ -995,6 +995,17 @@ function SummaryStep({
   const [promoError, setPromoError] = useState<string | null>(null);
   const [applying, setApplying] = useState(false);
 
+  // Guest cards render below the fold — scroll each newly added one into view
+  // so nobody bumps a dead pay button wondering what's missing.
+  const prevGuestCount = useRef(guests.length);
+  useEffect(() => {
+    if (guests.length > prevGuestCount.current) {
+      const el = document.getElementById(`wz-guest-${guests.length - 1}`);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    prevGuestCount.current = guests.length;
+  }, [guests.length]);
+
   const handleApply = async () => {
     const code = promoInput.trim();
     if (!code || applying) return;
@@ -1052,7 +1063,7 @@ function SummaryStep({
             your details
           </span>
           {identity.needsName && (
-            <div>
+            <div id="wz-name">
               <label className="mb-1.5 block font-sans text-[13px] text-warm-brown">
                 name on your ticket
               </label>
@@ -1068,7 +1079,7 @@ function SummaryStep({
             </div>
           )}
           {identity.needsDob && (
-            <div className={identity.needsName ? "mt-3" : ""}>
+            <div id="wz-dob" className={identity.needsName ? "mt-3" : ""}>
               <label className="mb-1.5 block font-sans text-[13px] text-warm-brown">
                 date of birth
               </label>
@@ -1091,11 +1102,11 @@ function SummaryStep({
             </div>
           )}
           {identity.needsPhone && (
-            <div className={identity.needsName || identity.needsDob ? "mt-3" : ""}>
+            <div id="wz-phone" className={identity.needsName || identity.needsDob ? "mt-3" : ""}>
               <label className="mb-1.5 block font-sans text-[13px] text-warm-brown">
                 phone number
               </label>
-              <div className="phone-input-wrapper rounded-xl border border-sand bg-cream/50 px-3 py-2.5">
+              <div className="phone-input-wrapper phone-input-light rounded-xl border border-sand bg-cream/50 px-3 py-2.5">
                 <PhoneInput
                   international
                   defaultCountry="IN"
@@ -1318,7 +1329,7 @@ function SummaryStep({
             const guestUnderAge =
               !!identity.minAge && !!guest.dob && (guestAge == null || guestAge < identity.minAge);
             return (
-              <div key={i} className="rounded-xl border border-sand/60 bg-cream/40 p-3.5">
+              <div key={i} id={`wz-guest-${i}`} className="rounded-xl border border-sand/60 bg-cream/40 p-3.5">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="font-mono text-[10px] uppercase tracking-[1px] text-muted">
                     guest {i + 2}
@@ -1394,7 +1405,7 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
       s.push({ type: "checkout", stepData: cs });
     }
     // If event has pickup points but no explicit pickup step, add one after checkout
-    if (event.pickup_points.length > 1 && !hasPickupStep) {
+    if ((event.pickup_points?.length || 0) > 1 && !hasPickupStep) {
       // Pickup is handled in the summary or from EventDetail — skip auto-add
     }
     // Summary is always last
@@ -1935,6 +1946,53 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
     }
   };
 
+  // ── Guided completion ─────────────────────────────────────────────
+  // A dead disabled button teaches nothing. On the summary step the CTA stays
+  // tappable when incomplete: tapping scrolls to the first missing field and
+  // names it.
+  const [guideMsg, setGuideMsg] = useState<string | null>(null);
+  const guideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const firstMissingField = (): { id: string; msg: string } | null => {
+    if (needsName && !ticketName.trim()) return { id: "wz-name", msg: "add the name for your ticket" };
+    if (event.min_age && needsDob) {
+      const age = ticketDob ? ageFromDob(ticketDob) : null;
+      if (age == null || age < event.min_age) return { id: "wz-dob", msg: "add your date of birth" };
+    }
+    if (needsPhone && (!ticketPhone || !isValidPhoneNumber(ticketPhone)))
+      return { id: "wz-phone", msg: "add your phone number" };
+    const gi = guests.findIndex((g) => !isGuestValid(g, event.min_age));
+    if (gi >= 0) return { id: `wz-guest-${gi}`, msg: `fill in guest ${gi + 2}'s details` };
+    return null;
+  };
+
+  const guideToMissing = () => {
+    const missing = firstMissingField();
+    if (!missing) return;
+    document.getElementById(missing.id)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setGuideMsg(missing.msg);
+    if (guideTimerRef.current) clearTimeout(guideTimerRef.current);
+    guideTimerRef.current = setTimeout(() => setGuideMsg(null), 3500);
+  };
+
+  // ── Scroll affordance ─────────────────────────────────────────────
+  // The sheet cuts content at ~90dvh; without a hint people never find the
+  // order summary / guest forms below the fold.
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [moreBelow, setMoreBelow] = useState(false);
+  const recalcMoreBelow = () => {
+    const el = contentRef.current;
+    if (!el) return;
+    setMoreBelow(el.scrollHeight - el.scrollTop - el.clientHeight > 48);
+  };
+  useEffect(() => {
+    recalcMoreBelow();
+    // Content height settles after paint (fonts, phone input) — check again
+    const t = setTimeout(recalcMoreBelow, 350);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep, guests.length, effectiveQty]);
+
   // Step title
   const stepTitle = () => {
     switch (step.type) {
@@ -2011,7 +2069,7 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
         </div>
 
         {/* Step content */}
-        <div className="max-h-[calc(90dvh-220px)] overflow-y-auto px-6 pb-6">
+        <div ref={contentRef} onScroll={recalcMoreBelow} className="max-h-[calc(90dvh-220px)] overflow-y-auto px-6 pb-6">
           {step.type === "tier" && (
             <TierStep
               tiers={tiers}
@@ -2129,20 +2187,43 @@ export function CheckoutWizard({ event, onComplete, onClose, loading, initialTie
           </div>
         )}
 
-        {/* CTA */}
+        {/* Scroll hint — floats above the CTA while content hides below the fold */}
+        {moreBelow && (
+          <div className="pointer-events-none absolute bottom-[130px] left-0 right-0 z-20 flex justify-center" style={{ animation: "fadeIn 0.3s ease both" }}>
+            <span className="rounded-full bg-near-black/85 px-3.5 py-1.5 font-mono text-[10px] text-cream shadow-lg">
+              scroll for more ↓
+            </span>
+          </div>
+        )}
+
+        {/* CTA — on the summary step it stays tappable when incomplete and
+            guides to the first missing field instead of sitting dead */}
         <div className="border-t border-sand bg-cream px-6 pt-4" style={{ paddingBottom: "calc(1.25rem + 56px + env(safe-area-inset-bottom, 0px))" }}>
           <button
-            onClick={handleNext}
-            disabled={!canProceed() || loading || savingIdentity}
+            onClick={() => {
+              if (step.type === "summary" && !canProceed() && !ageBlocked) {
+                guideToMissing();
+                return;
+              }
+              void handleNext();
+            }}
+            disabled={
+              loading || savingIdentity || (step.type === "summary" ? ageBlocked : !canProceed())
+            }
             className="w-full rounded-2xl py-[18px] font-sans text-base font-medium transition-opacity disabled:opacity-40"
             style={{
               background: canProceed() ? "#1A1715" : "#E8DDD0",
               color: canProceed() ? "#fff" : "#9B8E82",
-              cursor: !canProceed() || loading || savingIdentity ? "default" : "pointer",
+              cursor: loading || savingIdentity ? "default" : "pointer",
             }}
           >
             {ctaLabel()}
           </button>
+          {guideMsg && (
+            <p className="mt-2 text-center font-sans text-[12px] text-[#B85C4A]" style={{ animation: "fadeIn 0.2s ease both" }}>
+              {guideMsg} ↑
+            </p>
+          )}
         </div>
       </div>
 

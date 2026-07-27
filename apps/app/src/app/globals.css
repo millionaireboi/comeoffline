@@ -336,3 +336,26 @@ input::placeholder {
     transition: none !important;
   }
 }
+
+/* Light-surface phone input (checkout wizard) — the base .phone-input-wrapper
+   colors are for dark screens; cream text vanishes on the wizard's white card */
+.phone-input-light .PhoneInputInput {
+  color: #1A1715;
+}
+.phone-input-light .PhoneInputInput::placeholder {
+  color: rgba(155, 142, 130, 0.5);
+}
+.phone-input-light .PhoneInputCountrySelect {
+  color: #1A1715;
+  background: #fff;
+}
+.phone-input-light .PhoneInputCountrySelect option {
+  color: #1A1715;
+  background: #fff;
+}
+.phone-input-light .PhoneInputCountry {
+  background: rgba(232, 221, 208, 0.4);
+}
+.phone-input-light .PhoneInputCountrySelectArrow {
+  color: rgba(26, 23, 21, 0.5);
+}
